@@ -1,5 +1,34 @@
 # Add `swarm stats` command for usage statistics
 
+## Completion Notes (Agent cd59a862 - 2026-01-28)
+
+Task completed successfully. Implemented the `swarm stats` command with:
+
+**Files created:**
+- `cmd/stats.go` - Main command implementation
+- `cmd/stats_test.go` - Comprehensive unit tests
+
+**Features implemented:**
+- Status summary (running/paused/terminated counts)
+- Iteration counts (completed/total)
+- Top prompts by run count (limited to top 5)
+- Models used with agent counts
+- Runtime statistics (total and average)
+- `--format json` for machine-readable output
+- `--global` flag support via existing scope infrastructure
+- Handles empty prompt/model names gracefully (shown as "(none)"/"(unknown)")
+
+**All acceptance criteria met:**
+- ✅ `swarm stats` shows aggregate statistics for agents in current project
+- ✅ `swarm stats --global` shows statistics across all projects
+- ✅ `swarm stats --format json` outputs machine-readable JSON
+- ✅ Status counts accurate
+- ✅ Iteration counts accurate
+- ✅ Prompt stats sorted by run count
+- ✅ Model stats show distribution
+- ✅ Works with no agents (shows zeros)
+- ✅ All tests pass
+
 ## Problem
 
 Users who run many agents have no way to get a high-level overview of their agent usage patterns. Currently, `swarm list` shows individual agents, but there's no aggregate view that answers questions like:
