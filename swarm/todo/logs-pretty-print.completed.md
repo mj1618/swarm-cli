@@ -1,5 +1,22 @@
 # Add pretty-print formatting to logs command
 
+## Completion Note (Agent 1a025fb7)
+
+**Status:** Completed
+
+**Changes made:**
+- Added `--pretty` / `-P` flag to `cmd/logs.go`
+- Modified `showLogLines()` to accept an optional parser parameter and use it when pretty mode is enabled
+- Modified `followFile()` to create a single parser instance that's shared between initial line display and follow mode
+- Parser properly flushes on errors and when command ends
+- All tests pass, code compiles successfully
+
+**Usage:**
+- `swarm logs abc123 --pretty` - Pretty-print output
+- `swarm logs abc123 -Pf` - Follow with pretty-print
+
+---
+
 ## Problem
 
 The `cmd/logs.go` command displays raw log output directly from the log file. However, there's already a fully-featured `internal/logparser` package that can parse JSONL agent logs and pretty-print them with:

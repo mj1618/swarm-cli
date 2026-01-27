@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/matt/swarm-cli/internal/logparser"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +15,7 @@ import (
 var (
 	logsFollow bool
 	logsLines  int
+	logsPretty bool
 )
 
 var logsCmd = &cobra.Command{
@@ -60,7 +62,7 @@ in real-time, or --tail to specify the number of lines to show.`,
 			return followFile(agent.LogFile)
 		}
 
-		return showLogLines(agent.LogFile, logsLines)
+		return showLogLines(agent.LogFile, logsLines, nil)
 	},
 }
 
@@ -69,11 +71,14 @@ func init() {
 	logsCmd.Flags().IntVar(&logsLines, "tail", 50, "Number of lines to show from the end of the logs")
 	logsCmd.Flags().IntVarP(&logsLines, "lines", "n", 50, "Number of lines to show (alias for --tail)")
 	logsCmd.Flags().MarkHidden("lines") // Keep -n working but prefer --tail in docs
+	logsCmd.Flags().BoolVarP(&logsPretty, "pretty", "P", false, "Pretty-print log output with colors and formatting")
 	rootCmd.AddCommand(logsCmd)
 }
 
-// showLogLines shows the last n lines of a file
-func showLogLines(filepath string, n int) error {
+// showLogLines shows the last n lines of a file.
+// If parser is provided, lines are processed through it for pretty-printing.
+// If parser is nil and logsPretty is true, a new parser is created and flushed.
+func showLogLines(filepath string, n int, parser *logparser.Parser) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
@@ -112,8 +117,21 @@ func showLogLines(filepath string, n int) error {
 	}
 
 	// Print the lines
-	for _, line := range lines {
-		fmt.Println(line)
+	if logsPretty {
+		ownParser := parser == nil
+		if ownParser {
+			parser = logparser.NewParser(os.Stdout)
+		}
+		for _, line := range lines {
+			parser.ProcessLine(line)
+		}
+		if ownParser {
+			parser.Flush()
+		}
+	} else {
+		for _, line := range lines {
+			fmt.Println(line)
+		}
 	}
 
 	return nil
@@ -127,8 +145,14 @@ func followFile(filepath string) error {
 	}
 	defer file.Close()
 
+	// Create parser if pretty mode is enabled - used for both initial lines and follow
+	var parser *logparser.Parser
+	if logsPretty {
+		parser = logparser.NewParser(os.Stdout)
+	}
+
 	// First, show last few lines for context
-	if err := showLogLines(filepath, logsLines); err != nil {
+	if err := showLogLines(filepath, logsLines, parser); err != nil {
 		return err
 	}
 
@@ -149,10 +173,19 @@ func followFile(filepath string) error {
 				time.Sleep(100 * time.Millisecond)
 				continue
 			}
+			// Flush parser before returning error
+			if parser != nil {
+				parser.Flush()
+			}
 			return fmt.Errorf("error reading log file: %w", err)
 		}
 
-		// Print without extra newline since ReadString includes the \n
-		fmt.Print(line)
+		if logsPretty && parser != nil {
+			// Process through parser (strips the trailing newline itself)
+			parser.ProcessLine(line)
+		} else {
+			// Print without extra newline since ReadString includes the \n
+			fmt.Print(line)
+		}
 	}
 }
