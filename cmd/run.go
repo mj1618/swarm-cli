@@ -24,11 +24,13 @@ var (
 	runPrompt              string
 	runPromptFile          string
 	runPromptString        string
+	runStdin               bool
 	runIterations          int
 	runName                string
 	runDetach              bool
 	runInternalDetached    bool
 	runInternalTaskID      string
+	runInternalStdin       string
 	runEnv                 []string
 	runInternalEnv         []string
 	runTimeout             string
@@ -62,6 +64,15 @@ When running multiple iterations, agent failures do not stop the run.`,
 
   # Use an inline prompt string
   swarm run -s "Review the code for bugs"
+
+  # Read prompt from stdin
+  echo "Fix the bug in auth.go" | swarm run --stdin
+
+  # Pipe file contents as prompt
+  cat README.md | swarm run --stdin
+
+  # Combine stdin with a named prompt template
+  git diff | swarm run --stdin -p code-reviewer
 
   # Run with a specific model
   swarm run -p my-prompt -m claude-sonnet-4-20250514
@@ -132,6 +143,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 		var promptName string
 
 		// Count how many prompt sources were specified
+		// Note: --stdin can be combined with --prompt, but not with --prompt-file or --prompt-string
 		specifiedCount := 0
 		if runPrompt != "" {
 			specifiedCount++
@@ -143,8 +155,32 @@ When running multiple iterations, agent failures do not stop the run.`,
 			specifiedCount++
 		}
 
+		// --stdin can only combine with --prompt
+		if runStdin && (runPromptFile != "" || runPromptString != "") {
+			return fmt.Errorf("--stdin cannot be combined with --prompt-file or --prompt-string")
+		}
+
 		if specifiedCount > 1 {
 			return fmt.Errorf("only one of --prompt, --prompt-file, or --prompt-string can be specified")
+		}
+
+		// Handle stdin input
+		var stdinContent string
+		if runStdin {
+			// For detached child, use content passed from parent
+			if runInternalDetached && runInternalStdin != "" {
+				stdinContent = runInternalStdin
+			} else {
+				// Check if stdin has data
+				if !prompt.IsStdinPiped() {
+					return fmt.Errorf("--stdin specified but no input piped (use a pipe or redirect)")
+				}
+				var err error
+				stdinContent, err = prompt.LoadPromptFromStdin()
+				if err != nil {
+					return fmt.Errorf("failed to read prompt from stdin: %w", err)
+				}
+			}
 		}
 
 		switch {
@@ -159,6 +195,18 @@ When running multiple iterations, agent failures do not stop the run.`,
 			// Use direct string
 			promptName = "<string>"
 			promptContent = prompt.WrapPromptString(runPromptString)
+		case runStdin && runPrompt != "":
+			// Combine stdin with named prompt
+			promptName = runPrompt + "+stdin"
+			basePrompt, err := prompt.LoadPrompt(promptsDir, runPrompt)
+			if err != nil {
+				return fmt.Errorf("failed to load prompt: %w", err)
+			}
+			promptContent = prompt.CombinePrompts(basePrompt, stdinContent)
+		case runStdin:
+			// Use stdin content directly
+			promptName = "<stdin>"
+			promptContent = stdinContent
 		case runPrompt != "":
 			// Load from prompts directory
 			promptName = runPrompt
@@ -308,6 +356,10 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 			if runPromptString != "" {
 				detachedArgs = append(detachedArgs, "--prompt-string", runPromptString)
+			}
+			// Pass stdin content to child (already read in parent)
+			if runStdin && stdinContent != "" {
+				detachedArgs = append(detachedArgs, "--stdin", "--_internal-stdin", stdinContent)
 			}
 			if cmd.Flags().Changed("iterations") {
 				detachedArgs = append(detachedArgs, "--iterations", strconv.Itoa(runIterations))
@@ -613,6 +665,7 @@ func init() {
 	runCmd.Flags().StringVarP(&runPrompt, "prompt", "p", "", "Prompt name (from prompts directory)")
 	runCmd.Flags().StringVarP(&runPromptFile, "prompt-file", "f", "", "Path to prompt file")
 	runCmd.Flags().StringVarP(&runPromptString, "prompt-string", "s", "", "Prompt string (direct text)")
+	runCmd.Flags().BoolVarP(&runStdin, "stdin", "i", false, "Read prompt content from stdin")
 	runCmd.Flags().IntVarP(&runIterations, "iterations", "n", 1, "Number of iterations to run (default: 1)")
 	runCmd.Flags().StringVarP(&runName, "name", "N", "", "Name for the agent (for easier reference)")
 	runCmd.Flags().BoolVarP(&runDetach, "detach", "d", false, "Run in detached mode (background)")
@@ -623,6 +676,8 @@ func init() {
 	runCmd.Flags().MarkHidden("_internal-detached")
 	runCmd.Flags().StringVar(&runInternalTaskID, "_internal-task-id", "", "Internal flag for passing task ID to detached child")
 	runCmd.Flags().MarkHidden("_internal-task-id")
+	runCmd.Flags().StringVar(&runInternalStdin, "_internal-stdin", "", "Internal flag for passing stdin content to detached child")
+	runCmd.Flags().MarkHidden("_internal-stdin")
 	runCmd.Flags().StringArrayVar(&runInternalEnv, "_internal-env", nil, "Internal flag for passing env vars to detached child")
 	runCmd.Flags().MarkHidden("_internal-env")
 	runCmd.Flags().StringVar(&runInternalTimeout, "_internal-timeout", "", "Internal flag for passing timeout to detached child")

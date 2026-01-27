@@ -3,6 +3,7 @@ package prompt
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -135,6 +136,49 @@ Describe when the agent should consider the task complete.
 func InjectTaskID(promptContent, taskID string) string {
 	taskIDLine := fmt.Sprintf("Your Swarm Task ID is %s.", taskID)
 	return taskIDLine + "\n\n" + promptContent
+}
+
+// LoadPromptFromStdin reads prompt content from stdin.
+func LoadPromptFromStdin() (string, error) {
+	reader := bufio.NewReader(os.Stdin)
+	var builder strings.Builder
+
+	for {
+		line, err := reader.ReadString('\n')
+		builder.WriteString(line)
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return "", err
+		}
+	}
+
+	content := strings.TrimSpace(builder.String())
+	if content == "" {
+		return "", fmt.Errorf("stdin is empty")
+	}
+
+	return WrapPromptString(content), nil
+}
+
+// IsStdinPiped returns true if stdin has piped input (not a terminal).
+func IsStdinPiped() bool {
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (stat.Mode() & os.ModeCharDevice) == 0
+}
+
+// CombinePrompts combines a base prompt with additional content.
+// If the base prompt contains {{STDIN}}, it's replaced. Otherwise, content is appended.
+func CombinePrompts(base, additional string) string {
+	const placeholder = "{{STDIN}}"
+	if strings.Contains(base, placeholder) {
+		return strings.Replace(base, placeholder, additional, 1)
+	}
+	return base + "\n\n---\n\n" + additional
 }
 
 // SelectPrompt presents an interactive prompt selection and returns the selected prompt.

@@ -318,3 +318,82 @@ func TestListPromptsOnlyMdFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestCombinePrompts(t *testing.T) {
+	tests := []struct {
+		name       string
+		base       string
+		additional string
+		want       string
+	}{
+		{
+			name:       "with placeholder",
+			base:       "Review this code:\n\n{{STDIN}}\n\nFocus on bugs.",
+			additional: "func main() {}",
+			want:       "Review this code:\n\nfunc main() {}\n\nFocus on bugs.",
+		},
+		{
+			name:       "without placeholder",
+			base:       "Review this code:",
+			additional: "func main() {}",
+			want:       "Review this code:\n\n---\n\nfunc main() {}",
+		},
+		{
+			name:       "empty additional",
+			base:       "Base prompt",
+			additional: "",
+			want:       "Base prompt\n\n---\n\n",
+		},
+		{
+			name:       "multiple placeholders only replaces first",
+			base:       "{{STDIN}} and {{STDIN}}",
+			additional: "replaced",
+			want:       "replaced and {{STDIN}}",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := CombinePrompts(tt.base, tt.additional)
+			if got != tt.want {
+				t.Errorf("CombinePrompts() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestCombinePromptsPlaceholder(t *testing.T) {
+	base := `# Code Review
+
+Please review the following code:
+
+{{STDIN}}
+
+Focus on:
+- Security issues
+- Performance problems`
+
+	additional := `func getData() error {
+    return nil
+}`
+
+	result := CombinePrompts(base, additional)
+
+	// Should contain the injected code
+	if !strings.Contains(result, "func getData()") {
+		t.Error("Combined prompt should contain the additional content")
+	}
+
+	// Should not contain the placeholder
+	if strings.Contains(result, "{{STDIN}}") {
+		t.Error("Combined prompt should not contain placeholder")
+	}
+
+	// Should preserve surrounding content
+	if !strings.Contains(result, "Code Review") {
+		t.Error("Combined prompt should preserve header")
+	}
+	if !strings.Contains(result, "Security issues") {
+		t.Error("Combined prompt should preserve footer")
+	}
+}
