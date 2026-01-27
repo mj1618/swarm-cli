@@ -65,6 +65,37 @@ go build -o swarm .
 sudo mv swarm /usr/local/bin/
 ```
 
+## Choosing Your Agent Backend
+
+Swarm CLI supports two agent backends. Choose one based on what you have installed:
+
+| Backend | CLI Command | Best For |
+|---------|-------------|----------|
+| **Cursor** | `agent` | Cursor IDE users with agent CLI access |
+| **Claude Code** | `claude` | Standalone Claude Code CLI users |
+
+### Set Your Backend
+
+```bash
+# Use Cursor's agent CLI (default)
+swarm config set-backend cursor
+
+# Use Claude Code CLI
+swarm config set-backend claude-code
+```
+
+To verify your chosen backend is working:
+
+```bash
+# For Cursor
+agent --version
+
+# For Claude Code
+claude --version
+```
+
+The backend can also be configured per-project in `.swarm.toml` or globally in `~/.config/swarm/config.toml`. See the [Configuration](#configuration) section for details.
+
 ## Quick Start
 
 1. **Initialize configuration** (optional):
