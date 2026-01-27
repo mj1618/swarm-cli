@@ -109,11 +109,27 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 		return fmt.Errorf("failed to initialize state manager: %w", err)
 	}
 
+	// Get running agents to check for already-running tasks
+	runningAgents, _ := mgr.List(true) // true = only running
+	runningNames := make(map[string]bool)
+	for _, a := range runningAgents {
+		runningNames[a.Name] = true
+	}
+
 	var startedTasks []string
+	var skippedTasks []string
 	var failedTasks []string
 
 	for _, taskName := range taskNames {
 		task := tasks[taskName]
+
+		// Check if task is already running
+		effectiveName := task.EffectiveName(taskName)
+		if runningNames[effectiveName] {
+			fmt.Printf("  [%s] Already running, skipping\n", taskName)
+			skippedTasks = append(skippedTasks, taskName)
+			continue
+		}
 
 		// Generate task ID
 		taskID := state.GenerateID()
@@ -134,7 +150,6 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 		if task.Model != "" {
 			effectiveModel = task.Model
 		}
-		effectiveName := task.EffectiveName(taskName)
 		effectiveIterations := task.EffectiveIterations()
 
 		// Create log file
@@ -206,6 +221,9 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 	if len(startedTasks) > 0 {
 		fmt.Printf("Started %d task(s) in background. Use 'swarm list' to view status.\n", len(startedTasks))
 	}
+	if len(skippedTasks) > 0 {
+		fmt.Printf("Skipped %d task(s) already running: %v\n", len(skippedTasks), skippedTasks)
+	}
 	if len(failedTasks) > 0 {
 		fmt.Printf("Failed to start %d task(s): %v\n", len(failedTasks), failedTasks)
 	}
@@ -215,12 +233,37 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 
 // runTasksForeground runs all tasks in parallel and waits for them to complete.
 func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promptsDir, workingDir string) error {
+	// Initialize state manager to check for already-running tasks
+	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize state manager: %w", err)
+	}
+
+	// Get running agents to check for already-running tasks
+	runningAgents, _ := mgr.List(true) // true = only running
+	runningNames := make(map[string]bool)
+	for _, a := range runningAgents {
+		runningNames[a.Name] = true
+	}
+
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var failedTasks []string
+	var skippedTasks []string
+	var startedCount int
 
 	for _, taskName := range taskNames {
 		task := tasks[taskName]
+
+		// Check if task is already running
+		effectiveName := task.EffectiveName(taskName)
+		if runningNames[effectiveName] {
+			fmt.Printf("  [%s] Already running, skipping\n", taskName)
+			skippedTasks = append(skippedTasks, taskName)
+			continue
+		}
+
+		startedCount++
 		wg.Add(1)
 
 		go func(name string, t compose.Task) {
@@ -238,11 +281,16 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 	wg.Wait()
 
 	fmt.Println()
+	if len(skippedTasks) > 0 {
+		fmt.Printf("Skipped %d task(s) already running: %v\n", len(skippedTasks), skippedTasks)
+	}
 	if len(failedTasks) > 0 {
 		return fmt.Errorf("%d task(s) failed: %v", len(failedTasks), failedTasks)
 	}
 
-	fmt.Println("All tasks completed successfully.")
+	if startedCount > 0 {
+		fmt.Println("All tasks completed successfully.")
+	}
 	return nil
 }
 

@@ -32,7 +32,7 @@ Use --global to show agents from all directories.
 Filter options:
   --prompt, -p    Filter by prompt name (substring match, case-insensitive)
   --model, -m     Filter by model name (substring match, case-insensitive)
-  --status        Filter by status (running, paused, or terminated)
+  --status        Filter by status (running, pausing, paused, or terminated)
 
 Multiple filters are combined with AND logic (all conditions must match).`,
 	Example: `  # List running agents in current project
@@ -71,7 +71,7 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Validate status filter if provided
 		if listStatus != "" {
-			validStatuses := []string{"running", "paused", "terminated"}
+			validStatuses := []string{"running", "pausing", "paused", "terminated"}
 			isValid := false
 			for _, s := range validStatuses {
 				if strings.ToLower(listStatus) == s {
@@ -80,7 +80,7 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 				}
 			}
 			if !isValid {
-				return fmt.Errorf("invalid status filter %q: must be one of 'running', 'paused', or 'terminated'", listStatus)
+				return fmt.Errorf("invalid status filter %q: must be one of 'running', 'pausing', 'paused', or 'terminated'", listStatus)
 			}
 		}
 
@@ -174,15 +174,20 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 		for _, a := range agents {
 			statusColor := color.New(color.FgWhite)
 			statusStr := a.Status
-			switch a.Status {
-			case "running":
-				if a.Paused {
+		switch a.Status {
+		case "running":
+			if a.Paused {
+				if a.PausedAt != nil {
 					statusStr = "paused"
 					statusColor = color.New(color.FgYellow)
 				} else {
-					statusColor = color.New(color.FgGreen)
+					statusStr = "pausing"
+					statusColor = color.New(color.FgYellow)
 				}
-			case "terminated":
+			} else {
+				statusColor = color.New(color.FgGreen)
+			}
+		case "terminated":
 				statusColor = color.New(color.FgRed)
 			}
 
@@ -245,11 +250,15 @@ func filterAgents(agents []*state.AgentState, promptFilter, modelFilter, statusF
 			continue
 		}
 
-		// Check status filter (exact match for running/terminated, special handling for paused)
+		// Check status filter (exact match for running/terminated, special handling for pausing/paused)
 		if statusFilter != "" {
 			effectiveStatus := agent.Status
 			if agent.Status == "running" && agent.Paused {
-				effectiveStatus = "paused"
+				if agent.PausedAt != nil {
+					effectiveStatus = "paused"
+				} else {
+					effectiveStatus = "pausing"
+				}
 			}
 			if strings.ToLower(effectiveStatus) != statusFilter {
 				continue
@@ -270,5 +279,5 @@ func init() {
 	// Filter flags
 	listCmd.Flags().StringVarP(&listPrompt, "prompt", "p", "", "Filter by prompt name (substring match)")
 	listCmd.Flags().StringVarP(&listModel, "model", "m", "", "Filter by model name (substring match)")
-	listCmd.Flags().StringVar(&listStatus, "status", "", "Filter by status: running, paused, or terminated")
+	listCmd.Flags().StringVar(&listStatus, "status", "", "Filter by status: running, pausing, paused, or terminated")
 }

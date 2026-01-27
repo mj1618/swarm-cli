@@ -70,8 +70,13 @@ The agent can be specified by its process ID or name.`,
 		switch agent.Status {
 		case "running":
 			if agent.Paused {
-				statusStr = "paused"
-				statusColor = color.New(color.FgYellow)
+				if agent.PausedAt != nil {
+					statusStr = "paused"
+					statusColor = color.New(color.FgYellow)
+				} else {
+					statusStr = "pausing"
+					statusColor = color.New(color.FgYellow)
+				}
 			} else {
 				statusColor = color.New(color.FgGreen)
 			}

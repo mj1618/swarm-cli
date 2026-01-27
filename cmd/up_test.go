@@ -222,6 +222,240 @@ tasks:
 	}
 }
 
+func TestSkipAlreadyRunningTasks(t *testing.T) {
+	// This tests the logic for determining which tasks to skip based on running agents.
+	// We use the same logic as runTasksDetached/runTasksForeground to build the running names map.
+
+	tests := []struct {
+		name              string
+		runningNames      map[string]bool // Names of running agents
+		tasks             map[string]compose.Task
+		expectedSkipped   []string
+		expectedToStart   []string
+	}{
+		{
+			name:         "no running agents - all tasks start",
+			runningNames: map[string]bool{},
+			tasks: map[string]compose.Task{
+				"frontend": {PromptString: "test"},
+				"backend":  {PromptString: "test"},
+			},
+			expectedSkipped: []string{},
+			expectedToStart: []string{"frontend", "backend"},
+		},
+		{
+			name: "one running agent - skip matching task",
+			runningNames: map[string]bool{
+				"frontend": true,
+			},
+			tasks: map[string]compose.Task{
+				"frontend": {PromptString: "test"},
+				"backend":  {PromptString: "test"},
+			},
+			expectedSkipped: []string{"frontend"},
+			expectedToStart: []string{"backend"},
+		},
+		{
+			name: "all agents running - skip all tasks",
+			runningNames: map[string]bool{
+				"frontend": true,
+				"backend":  true,
+			},
+			tasks: map[string]compose.Task{
+				"frontend": {PromptString: "test"},
+				"backend":  {PromptString: "test"},
+			},
+			expectedSkipped: []string{"frontend", "backend"},
+			expectedToStart: []string{},
+		},
+		{
+			name: "task with custom name - match by effective name",
+			runningNames: map[string]bool{
+				"custom-frontend": true,
+			},
+			tasks: map[string]compose.Task{
+				"frontend": {PromptString: "test", Name: "custom-frontend"},
+				"backend":  {PromptString: "test"},
+			},
+			expectedSkipped: []string{"frontend"},
+			expectedToStart: []string{"backend"},
+		},
+		{
+			name: "running agent name doesn't match task key but matches custom name",
+			runningNames: map[string]bool{
+				"my-agent": true,
+			},
+			tasks: map[string]compose.Task{
+				"task1": {PromptString: "test", Name: "my-agent"},
+				"task2": {PromptString: "test"},
+			},
+			expectedSkipped: []string{"task1"},
+			expectedToStart: []string{"task2"},
+		},
+		{
+			name: "no overlap between running and tasks",
+			runningNames: map[string]bool{
+				"other-agent": true,
+			},
+			tasks: map[string]compose.Task{
+				"frontend": {PromptString: "test"},
+				"backend":  {PromptString: "test"},
+			},
+			expectedSkipped: []string{},
+			expectedToStart: []string{"frontend", "backend"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var skipped []string
+			var toStart []string
+
+			for taskName, task := range tt.tasks {
+				effectiveName := task.EffectiveName(taskName)
+				if tt.runningNames[effectiveName] {
+					skipped = append(skipped, taskName)
+				} else {
+					toStart = append(toStart, taskName)
+				}
+			}
+
+			// Check skipped count matches
+			if len(skipped) != len(tt.expectedSkipped) {
+				t.Errorf("skipped count = %d, want %d", len(skipped), len(tt.expectedSkipped))
+			}
+
+			// Check toStart count matches
+			if len(toStart) != len(tt.expectedToStart) {
+				t.Errorf("toStart count = %d, want %d", len(toStart), len(tt.expectedToStart))
+			}
+
+			// Verify skipped tasks are correct
+			for _, expected := range tt.expectedSkipped {
+				found := false
+				for _, s := range skipped {
+					if s == expected {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected task %q to be skipped, but it wasn't", expected)
+				}
+			}
+
+			// Verify toStart tasks are correct
+			for _, expected := range tt.expectedToStart {
+				found := false
+				for _, s := range toStart {
+					if s == expected {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected task %q to start, but it wasn't", expected)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildRunningNamesMap(t *testing.T) {
+	// This tests building the running names lookup map from agent states
+	// Similar to the logic in runTasksDetached/runTasksForeground
+
+	tests := []struct {
+		name           string
+		agents         []struct {
+			name   string
+			status string
+		}
+		onlyRunning    bool
+		expectedNames  map[string]bool
+	}{
+		{
+			name: "all running agents",
+			agents: []struct {
+				name   string
+				status string
+			}{
+				{"frontend", "running"},
+				{"backend", "running"},
+			},
+			onlyRunning: true,
+			expectedNames: map[string]bool{
+				"frontend": true,
+				"backend":  true,
+			},
+		},
+		{
+			name: "mix of running and terminated",
+			agents: []struct {
+				name   string
+				status string
+			}{
+				{"frontend", "running"},
+				{"backend", "terminated"},
+			},
+			onlyRunning: true,
+			expectedNames: map[string]bool{
+				"frontend": true,
+			},
+		},
+		{
+			name: "no running agents",
+			agents: []struct {
+				name   string
+				status string
+			}{
+				{"frontend", "terminated"},
+				{"backend", "terminated"},
+			},
+			onlyRunning:   true,
+			expectedNames: map[string]bool{},
+		},
+		{
+			name:          "empty agents list",
+			agents:        []struct {
+				name   string
+				status string
+			}{},
+			onlyRunning:   true,
+			expectedNames: map[string]bool{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Build the map as the code does
+			runningNames := make(map[string]bool)
+			for _, a := range tt.agents {
+				if !tt.onlyRunning || a.status == "running" {
+					runningNames[a.name] = true
+				}
+			}
+
+			// Verify the map matches expected
+			if len(runningNames) != len(tt.expectedNames) {
+				t.Errorf("runningNames length = %d, want %d", len(runningNames), len(tt.expectedNames))
+			}
+
+			for name := range tt.expectedNames {
+				if !runningNames[name] {
+					t.Errorf("expected name %q in runningNames, but not found", name)
+				}
+			}
+
+			for name := range runningNames {
+				if !tt.expectedNames[name] {
+					t.Errorf("unexpected name %q in runningNames", name)
+				}
+			}
+		})
+	}
+}
+
 func TestComposeFileValidationErrors(t *testing.T) {
 	// Create temp directory
 	tmpDir, err := os.MkdirTemp("", "up-validation-test")

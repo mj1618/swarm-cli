@@ -12,9 +12,9 @@ Make sure the file you choose doesn't have any dependencies that are not complet
 Make sure your work won't conflict with other work that is already in progress.
 If no tasks are found - skip the "Execute the task" step and go to the "If nothing to do" step.
 
-# Execute the task
+# Implement the task
 
-Then read the file and execute the task to completion, testing when you think you need to.
+Then read the file and execute the task to completion, adding tests and testing when you think you need to.
 When done, rename the file to ".completed.md" and add a note about what you did.
 If you can\'t complete the task, rename the file to ".pending.md" and add a note about what went wrong to the file.
 When you\'re done, `git add .`, `git commit -m "a suitable message` and `git push` your changes to the remote repository.
