@@ -80,6 +80,36 @@ func wrapPrompt(content string) string {
 	return strings.TrimSpace(content)
 }
 
+// LoadPromptRaw loads a prompt file without any processing.
+// Returns the raw file content as-is, suitable for display.
+func LoadPromptRaw(promptsDir, name string) (string, error) {
+	// Add .md extension if not present
+	filename := name
+	if !strings.HasSuffix(filename, ".md") {
+		filename = filename + ".md"
+	}
+
+	path := filepath.Join(promptsDir, filename)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("prompt not found: %s", name)
+		}
+		return "", err
+	}
+
+	return string(content), nil
+}
+
+// GetPromptPath returns the full path to a prompt file.
+func GetPromptPath(promptsDir, name string) string {
+	filename := name
+	if !strings.HasSuffix(filename, ".md") {
+		filename = filename + ".md"
+	}
+	return filepath.Join(promptsDir, filename)
+}
+
 // InjectTaskID injects the task ID at the beginning of the prompt content.
 func InjectTaskID(promptContent, taskID string) string {
 	taskIDLine := fmt.Sprintf("Your Swarm Task ID is %s.", taskID)
