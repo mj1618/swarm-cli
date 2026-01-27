@@ -1,14 +1,20 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"os"
+	"strings"
 
+	"github.com/mattn/go-isatty"
 	"github.com/matt/swarm-cli/internal/process"
+	"github.com/matt/swarm-cli/internal/scope"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 
 var killAllGraceful bool
+var killAllForce bool
 
 var killAllCmd = &cobra.Command{
 	Use:   "kill-all",
@@ -18,10 +24,16 @@ var killAllCmd = &cobra.Command{
 By default, agents are terminated immediately using SIGKILL. Use --graceful to allow
 each agent's current iteration to complete before terminating.
 
+The command will prompt for confirmation before terminating agents. Use --force to
+skip the confirmation prompt.
+
 The command operates on agents in the current project directory by default.
 Use --global to terminate all agents across all projects.`,
-	Example: `  # Terminate all agents immediately
+	Example: `  # Terminate all agents immediately (with confirmation)
   swarm kill-all
+
+  # Terminate without confirmation
+  swarm kill-all --force
 
   # Graceful termination (wait for current iterations)
   swarm kill-all --graceful
@@ -53,6 +65,50 @@ Use --global to terminate all agents across all projects.`,
 		if len(agents) == 0 {
 			fmt.Println("No running or paused agents found")
 			return nil
+		}
+
+		// Show confirmation unless --force is used
+		if !killAllForce {
+			scopeStr := "in this project"
+			if GetScope() == scope.ScopeGlobal {
+				scopeStr = "globally (all projects)"
+			}
+
+			fmt.Printf("This will terminate %d agent(s) %s", len(agents), scopeStr)
+
+			// List agents if small number (5 or fewer)
+			if len(agents) <= 5 {
+				fmt.Println(":")
+				for _, agent := range agents {
+					name := agent.ID
+					if agent.Name != "" {
+						name = fmt.Sprintf("%s (%s)", agent.Name, agent.ID)
+					}
+					fmt.Printf("  - %s\n", name)
+				}
+			} else {
+				fmt.Println(".")
+			}
+
+			// Check if stdin is a terminal (interactive mode)
+			if !isatty.IsTerminal(os.Stdin.Fd()) && !isatty.IsCygwinTerminal(os.Stdin.Fd()) {
+				fmt.Println("Non-interactive mode detected. Use --force to skip confirmation.")
+				fmt.Println("Aborted.")
+				return nil
+			}
+
+			fmt.Print("Are you sure? [y/N] ")
+			reader := bufio.NewReader(os.Stdin)
+			response, err := reader.ReadString('\n')
+			if err != nil {
+				return fmt.Errorf("failed to read response: %w", err)
+			}
+
+			response = strings.TrimSpace(strings.ToLower(response))
+			if response != "y" && response != "yes" {
+				fmt.Println("Aborted.")
+				return nil
+			}
 		}
 
 		count := 0
@@ -92,4 +148,5 @@ Use --global to terminate all agents across all projects.`,
 
 func init() {
 	killAllCmd.Flags().BoolVarP(&killAllGraceful, "graceful", "G", false, "Terminate after current iteration completes")
+	killAllCmd.Flags().BoolVarP(&killAllForce, "force", "f", false, "Skip confirmation prompt")
 }
