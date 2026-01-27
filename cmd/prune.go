@@ -11,6 +11,7 @@ import (
 )
 
 var pruneForce bool
+var pruneLogs bool
 
 var pruneCmd = &cobra.Command{
 	Use:   "prune",
@@ -18,12 +19,20 @@ var pruneCmd = &cobra.Command{
 	Long: `Remove all terminated agents from the state.
 
 This command removes all agents that are no longer running. By default,
-it will prompt for confirmation. Use --force to skip the confirmation.`,
+it will prompt for confirmation. Use --force to skip the confirmation.
+
+Use --logs to also delete the log files associated with pruned agents.`,
 	Example: `  # Remove all terminated agents (with confirmation)
   swarm prune
 
   # Remove all terminated agents without confirmation
-  swarm prune --force`,
+  swarm prune --force
+
+  # Remove terminated agents and their log files
+  swarm prune --logs
+
+  # Remove agents and logs without confirmation
+  swarm prune --logs --force`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
@@ -52,7 +61,11 @@ it will prompt for confirmation. Use --force to skip the confirmation.`,
 
 		// Confirm unless --force is specified
 		if !pruneForce {
-			fmt.Printf("This will remove %d terminated agent(s). Are you sure? [y/N] ", len(terminated))
+			if pruneLogs {
+				fmt.Printf("This will remove %d terminated agent(s) and their log files. Are you sure? [y/N] ", len(terminated))
+			} else {
+				fmt.Printf("This will remove %d terminated agent(s). Are you sure? [y/N] ", len(terminated))
+			}
 			reader := bufio.NewReader(os.Stdin)
 			response, err := reader.ReadString('\n')
 			if err != nil {
@@ -68,21 +81,39 @@ it will prompt for confirmation. Use --force to skip the confirmation.`,
 
 		// Remove all terminated agents
 		removed := 0
+		logsRemoved := 0
 		for _, agent := range terminated {
 			if err := mgr.Remove(agent.ID); err != nil {
 				fmt.Printf("Warning: failed to remove agent %s: %v\n", agent.ID, err)
 				continue
 			}
+
+			// Clean up log file if requested
+			if pruneLogs && agent.LogFile != "" {
+				if err := os.Remove(agent.LogFile); err != nil {
+					if !os.IsNotExist(err) {
+						fmt.Printf("Warning: failed to remove log file %s: %v\n", agent.LogFile, err)
+					}
+				} else {
+					logsRemoved++
+				}
+			}
+
 			fmt.Println(agent.ID)
 			removed++
 		}
 
-		fmt.Printf("Removed %d agent(s).\n", removed)
+		if pruneLogs && logsRemoved > 0 {
+			fmt.Printf("Removed %d agent(s) and %d log file(s).\n", removed, logsRemoved)
+		} else {
+			fmt.Printf("Removed %d agent(s).\n", removed)
+		}
 		return nil
 	},
 }
 
 func init() {
 	pruneCmd.Flags().BoolVarP(&pruneForce, "force", "f", false, "Do not prompt for confirmation")
+	pruneCmd.Flags().BoolVar(&pruneLogs, "logs", false, "Also delete log files for pruned agents")
 	rootCmd.AddCommand(pruneCmd)
 }
