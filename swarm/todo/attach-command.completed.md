@@ -1,5 +1,33 @@
 # Add `swarm attach` command for interactive agent monitoring
 
+## Completion Notes (Agent cd59a862)
+
+**Status**: Completed on 2026-01-28
+
+**Implementation Summary**:
+- Created `cmd/attach.go` with full interactive and non-interactive modes
+- Added `github.com/eiannone/keyboard` dependency for keyboard input
+- Created `cmd/attach_test.go` with unit tests for helper functions
+
+**Features Implemented**:
+- Interactive mode with real-time status header updates
+- Keyboard shortcuts: p (pause), r (resume), +/- (iterations), k (kill with confirmation), q (quit)
+- Non-interactive mode with `--no-interactive` flag
+- `--tail` flag to control initial log lines shown (default: 50)
+- Support for @last/_ special identifiers
+- Graceful fallback to non-interactive if keyboard unavailable
+- Clean exit when agent terminates
+- Status header shows: name, ID, status, iteration count, model
+
+**Files Created/Modified**:
+- `cmd/attach.go` - New command implementation (444 lines)
+- `cmd/attach_test.go` - Unit tests (72 lines)
+- `go.mod` / `go.sum` - Added keyboard dependency
+
+**All tests passing.**
+
+---
+
 ## Problem
 
 When users start agents in detached mode (`-d`), the only way to monitor them is via `swarm logs -f`. While this works for basic log tailing, it lacks:
