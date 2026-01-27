@@ -455,8 +455,61 @@ When running multiple iterations, agent failures do not stop the run.`,
 			return nil
 		}
 
-		// For single iteration, run directly without state management overhead
+		// For single iteration, run with state tracking but simpler flow (no loop/pause/signal handling)
 		if effectiveIterations == 1 {
+			// Create state manager with scope
+			mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
+			if err != nil {
+				return fmt.Errorf("failed to initialize state manager: %w", err)
+			}
+
+			// Calculate timeout_at if total timeout is set
+			var timeoutAt *time.Time
+			if totalTimeout > 0 {
+				t := time.Now().Add(totalTimeout)
+				timeoutAt = &t
+			}
+
+			// Register single-iteration agent in state
+			agentState := &state.AgentState{
+				ID:          taskID,
+				Name:        effectiveName,
+				PID:         os.Getpid(),
+				Prompt:      promptName,
+				Model:       effectiveModel,
+				StartedAt:   time.Now(),
+				Iterations:  1,
+				CurrentIter: 1,
+				Status:      "running",
+				WorkingDir:  workingDir,
+				EnvNames:    envNames,
+				TimeoutAt:   timeoutAt,
+			}
+
+			if err := mgr.Register(agentState); err != nil {
+				return fmt.Errorf("failed to register agent: %w", err)
+			}
+
+			// Track if we timed out for proper exit code
+			timedOut := false
+
+			// Ensure cleanup on exit
+			defer func() {
+				if timedOut {
+					agentState.TimeoutReason = "total"
+				}
+				agentState.Status = "terminated"
+				now := time.Now()
+				agentState.TerminatedAt = &now
+				if agentState.ExitReason == "" {
+					agentState.ExitReason = "completed"
+				}
+				_ = mgr.Update(agentState)
+				if timedOut {
+					os.Exit(124) // Exit code 124 matches GNU timeout convention
+				}
+			}()
+
 			fmt.Printf("Running agent with prompt: %s, model: %s\n", promptName, effectiveModel)
 
 			// Use iter-timeout for single iteration, or total timeout if only that is set
@@ -474,12 +527,19 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 
 			runner := agent.NewRunner(cfg)
-			err := runner.Run(os.Stdout)
-			if err != nil && strings.Contains(err.Error(), "timed out") {
-				fmt.Printf("\n[swarm] %v\n", err)
-				os.Exit(124) // Exit code 124 matches GNU timeout convention
+			err = runner.Run(os.Stdout)
+			if err != nil {
+				agentState.FailedIters = 1
+				agentState.LastError = err.Error()
+				if strings.Contains(err.Error(), "timed out") {
+					timedOut = true
+					fmt.Printf("\n[swarm] %v\n", err)
+					return nil // Let defer handle the exit
+				}
+				return err
 			}
-			return err
+			agentState.SuccessfulIters = 1
+			return nil
 		}
 
 		// Create state manager with scope
