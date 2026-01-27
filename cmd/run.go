@@ -40,6 +40,8 @@ var (
 	runInternalIterTimeout string
 	runWorkingDir          string
 	runInternalStartIter   int
+	runOnComplete          string
+	runInternalOnComplete  string
 )
 
 var runCmd = &cobra.Command{
@@ -347,6 +349,13 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 		}
 
+		// Determine effective on-complete hook
+		// For detached child, use value passed from parent
+		effectiveOnComplete := runOnComplete
+		if runInternalDetached && runInternalOnComplete != "" {
+			effectiveOnComplete = runInternalOnComplete
+		}
+
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
 			// Use pre-generated task ID for log file
@@ -399,6 +408,10 @@ When running multiple iterations, agent failures do not stop the run.`,
 			if runWorkingDir != "" {
 				detachedArgs = append(detachedArgs, "--working-dir", workingDir)
 			}
+			// Pass on-complete hook to child
+			if runOnComplete != "" {
+				detachedArgs = append(detachedArgs, "--_internal-on-complete", runOnComplete)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
@@ -433,6 +446,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				WorkingDir:  workingDir,
 				EnvNames:    envNames,
 				TimeoutAt:   timeoutAt,
+				OnComplete:  runOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -485,6 +499,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				WorkingDir:  workingDir,
 				EnvNames:    envNames,
 				TimeoutAt:   timeoutAt,
+				OnComplete:  effectiveOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -506,6 +521,14 @@ When running multiple iterations, agent failures do not stop the run.`,
 					agentState.ExitReason = "completed"
 				}
 				_ = mgr.Update(agentState)
+
+				// Execute on-complete hook
+				if agentState.OnComplete != "" {
+					if err := agent.ExecuteOnCompleteHook(agentState); err != nil {
+						fmt.Printf("[swarm] Warning: on-complete hook failed: %v\n", err)
+					}
+				}
+
 				if timedOut {
 					os.Exit(124) // Exit code 124 matches GNU timeout convention
 				}
@@ -584,6 +607,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				WorkingDir:  workingDir,
 				EnvNames:    envNames,
 				TimeoutAt:   timeoutAt,
+				OnComplete:  effectiveOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -629,6 +653,14 @@ When running multiple iterations, agent failures do not stop the run.`,
 				agentState.ExitReason = "completed"
 			}
 			_ = mgr.Update(agentState)
+
+			// Execute on-complete hook
+			if agentState.OnComplete != "" {
+				if err := agent.ExecuteOnCompleteHook(agentState); err != nil {
+					fmt.Printf("[swarm] Warning: on-complete hook failed: %v\n", err)
+				}
+			}
+
 			if timedOut {
 				os.Exit(124) // Exit code 124 matches GNU timeout convention
 			}
@@ -801,6 +833,9 @@ func init() {
 	runCmd.Flags().IntVar(&runInternalStartIter, "_internal-start-iter", 0, "Internal flag for passing start iteration to detached child")
 	runCmd.Flags().MarkHidden("_internal-start-iter")
 	runCmd.Flags().StringVarP(&runWorkingDir, "working-dir", "C", "", "Run agent in specified directory")
+	runCmd.Flags().StringVar(&runOnComplete, "on-complete", "", "Command to run when agent completes")
+	runCmd.Flags().StringVar(&runInternalOnComplete, "_internal-on-complete", "", "Internal flag for passing on-complete to detached child")
+	runCmd.Flags().MarkHidden("_internal-on-complete")
 
 	// Add dynamic completion for prompt and model flags
 	runCmd.RegisterFlagCompletionFunc("prompt", completePromptName)

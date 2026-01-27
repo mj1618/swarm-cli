@@ -26,6 +26,7 @@ var (
 	restartEnv           []string
 	restartContinue      bool
 	restartInternalStart int
+	restartOnComplete    string
 )
 
 var restartCmd = &cobra.Command{
@@ -236,6 +237,10 @@ from iteration 1.`,
 			for _, e := range expandedEnv {
 				detachedArgs = append(detachedArgs, "--_internal-env", e)
 			}
+			// Pass on-complete hook to child
+			if restartOnComplete != "" {
+				detachedArgs = append(detachedArgs, "--_internal-on-complete", restartOnComplete)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, effectiveWorkingDir)
@@ -257,6 +262,7 @@ from iteration 1.`,
 				LogFile:     logFile,
 				WorkingDir:  effectiveWorkingDir,
 				EnvNames:    envNames,
+				OnComplete:  restartOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -306,6 +312,7 @@ from iteration 1.`,
 			Status:      "running",
 			WorkingDir:  effectiveWorkingDir,
 			EnvNames:    envNames,
+			OnComplete:  restartOnComplete,
 		}
 
 		if err := mgr.Register(agentState); err != nil {
@@ -328,6 +335,13 @@ from iteration 1.`,
 				agentState.ExitReason = "completed"
 			}
 			_ = mgr.Update(agentState)
+
+			// Execute on-complete hook
+			if agentState.OnComplete != "" {
+				if err := agent.ExecuteOnCompleteHook(agentState); err != nil {
+					fmt.Printf("[swarm] Warning: on-complete hook failed: %v\n", err)
+				}
+			}
 		}()
 
 		// Handle signals
@@ -456,6 +470,7 @@ func init() {
 	restartCmd.Flags().BoolVarP(&restartContinue, "continue", "c", false, "Continue from last iteration instead of starting from 1")
 	restartCmd.Flags().IntVar(&restartInternalStart, "_internal-start-iter", 0, "Internal flag for passing start iteration to detached child")
 	restartCmd.Flags().MarkHidden("_internal-start-iter")
+	restartCmd.Flags().StringVar(&restartOnComplete, "on-complete", "", "Command to run when agent completes")
 
 	// Add dynamic completion for agent identifier and model flag
 	restartCmd.ValidArgsFunction = completeAgentIdentifier

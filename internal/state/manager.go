@@ -43,6 +43,9 @@ type AgentState struct {
 	SuccessfulIters int    `json:"successful_iterations"` // Iterations that completed without error
 	FailedIters     int    `json:"failed_iterations"`     // Iterations that errored
 	LastError       string `json:"last_error,omitempty"`  // Last error message if any
+
+	// Hooks
+	OnComplete string `json:"on_complete,omitempty"` // Command to run when agent completes
 }
 
 // State holds all agent states.
