@@ -17,7 +17,7 @@ func TestManagerFullLifecycle(t *testing.T) {
 	}
 
 	// 1. Start with empty state
-	agents, _ := mgr.List()
+	agents, _ := mgr.List(false)
 	initialCount := len(agents)
 
 	// 2. Register multiple agents
@@ -51,7 +51,7 @@ func TestManagerFullLifecycle(t *testing.T) {
 	}
 
 	// 3. Verify registration
-	listed, err := mgr.List()
+	listed, err := mgr.List(false)
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -254,7 +254,7 @@ func TestEmptyStateFile(t *testing.T) {
 	}
 
 	// List should work even with empty state
-	agents, err := mgr.List()
+	agents, err := mgr.List(false)
 	if err != nil {
 		t.Fatalf("List on empty state failed: %v", err)
 	}

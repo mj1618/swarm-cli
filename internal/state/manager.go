@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"sync"
 	"syscall"
 	"time"
@@ -184,7 +185,9 @@ func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
 // List returns agents filtered by the manager's scope.
 // For ScopeProject, only returns agents started in the manager's working directory.
 // For ScopeGlobal, returns all agents.
-func (m *Manager) List() ([]*AgentState, error) {
+// If onlyRunning is true, only returns agents with status "running".
+// Results are always sorted by StartedAt time (oldest first).
+func (m *Manager) List(onlyRunning bool) ([]*AgentState, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 
@@ -202,8 +205,17 @@ func (m *Manager) List() ([]*AgentState, error) {
 		if m.scope == scope.ScopeProject && agent.WorkingDir != m.workingDir {
 			continue
 		}
+		// Filter by status if onlyRunning is true
+		if onlyRunning && agent.Status != "running" {
+			continue
+		}
 		agents = append(agents, agent)
 	}
+
+	// Sort by StartedAt time (oldest first)
+	sort.Slice(agents, func(i, j int) bool {
+		return agents[i].StartedAt.Before(agents[j].StartedAt)
+	})
 
 	return agents, nil
 }

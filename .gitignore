@@ -1,5 +1,7 @@
 # Binaries
+swarm
 swarm-cli
+dist/
 *.exe
 *.exe~
 *.dll

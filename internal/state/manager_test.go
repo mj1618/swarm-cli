@@ -189,7 +189,7 @@ func TestManagerList(t *testing.T) {
 	_ = mgr.Register(agent2)
 
 	// List agents
-	agents, err := mgr.List()
+	agents, err := mgr.List(false)
 	if err != nil {
 		t.Fatalf("List failed: %v", err)
 	}
@@ -367,4 +367,107 @@ func TestConcurrentAccess(t *testing.T) {
 
 	// Cleanup
 	_ = mgr.Remove(agent.ID)
+}
+
+func TestManagerListSortingAndFiltering(t *testing.T) {
+	mgr, err := NewManager()
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Create agents with different start times and statuses
+	now := time.Now()
+	agent1 := &AgentState{
+		ID:        GenerateID(),
+		PID:       11111,
+		Prompt:    "oldest-running",
+		StartedAt: now.Add(-3 * time.Hour), // Oldest
+		Status:    "running",
+	}
+	agent2 := &AgentState{
+		ID:        GenerateID(),
+		PID:       22222,
+		Prompt:    "middle-terminated",
+		StartedAt: now.Add(-2 * time.Hour), // Middle
+		Status:    "terminated",
+	}
+	agent3 := &AgentState{
+		ID:        GenerateID(),
+		PID:       33333,
+		Prompt:    "newest-running",
+		StartedAt: now.Add(-1 * time.Hour), // Newest
+		Status:    "running",
+	}
+
+	// Register in non-chronological order
+	_ = mgr.Register(agent3)
+	_ = mgr.Register(agent1)
+	_ = mgr.Register(agent2)
+
+	// Test: List all agents (onlyRunning=false) should include all 3, sorted by StartedAt
+	allAgents, err := mgr.List(false)
+	if err != nil {
+		t.Fatalf("List(false) failed: %v", err)
+	}
+
+	// Find our test agents
+	var ourAgents []*AgentState
+	for _, a := range allAgents {
+		if a.ID == agent1.ID || a.ID == agent2.ID || a.ID == agent3.ID {
+			ourAgents = append(ourAgents, a)
+		}
+	}
+
+	if len(ourAgents) != 3 {
+		t.Fatalf("Expected 3 agents, got %d", len(ourAgents))
+	}
+
+	// Verify sorting: oldest should be first
+	if ourAgents[0].ID != agent1.ID {
+		t.Errorf("Expected oldest agent first, got %s", ourAgents[0].Prompt)
+	}
+	if ourAgents[1].ID != agent2.ID {
+		t.Errorf("Expected middle agent second, got %s", ourAgents[1].Prompt)
+	}
+	if ourAgents[2].ID != agent3.ID {
+		t.Errorf("Expected newest agent third, got %s", ourAgents[2].Prompt)
+	}
+
+	// Test: List only running agents (onlyRunning=true) should exclude terminated
+	runningAgents, err := mgr.List(true)
+	if err != nil {
+		t.Fatalf("List(true) failed: %v", err)
+	}
+
+	// Find our running test agents
+	var ourRunningAgents []*AgentState
+	for _, a := range runningAgents {
+		if a.ID == agent1.ID || a.ID == agent2.ID || a.ID == agent3.ID {
+			ourRunningAgents = append(ourRunningAgents, a)
+		}
+	}
+
+	if len(ourRunningAgents) != 2 {
+		t.Fatalf("Expected 2 running agents, got %d", len(ourRunningAgents))
+	}
+
+	// Verify terminated agent is not included
+	for _, a := range ourRunningAgents {
+		if a.ID == agent2.ID {
+			t.Error("Terminated agent should not be in running list")
+		}
+	}
+
+	// Verify sorting still applies: oldest running should be first
+	if ourRunningAgents[0].ID != agent1.ID {
+		t.Errorf("Expected oldest running agent first, got %s", ourRunningAgents[0].Prompt)
+	}
+	if ourRunningAgents[1].ID != agent3.ID {
+		t.Errorf("Expected newest running agent second, got %s", ourRunningAgents[1].Prompt)
+	}
+
+	// Cleanup
+	_ = mgr.Remove(agent1.ID)
+	_ = mgr.Remove(agent2.ID)
+	_ = mgr.Remove(agent3.ID)
 }

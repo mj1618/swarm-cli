@@ -10,18 +10,24 @@ import (
 	"github.com/spf13/cobra"
 )
 
+var listAll bool
+
 var listCmd = &cobra.Command{
 	Use:   "list",
 	Short: "List running agents",
 	Long: `List running agents with their status and configuration.
 
-By default, only shows agents started in the current directory.
+By default, only shows running agents started in the current directory.
+Use --all to include terminated agents.
 Use --global to show agents from all directories.`,
-	Example: `  # List agents in current project
+	Example: `  # List running agents in current project
   swarm list
 
+  # List all agents (including terminated) in current project
+  swarm list -a
+
   # List all agents across all projects
-  swarm list -g`,
+  swarm list -g -a`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
@@ -29,16 +35,26 @@ Use --global to show agents from all directories.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agents, err := mgr.List()
+		// By default show only running agents, use --all to show all
+		onlyRunning := !listAll
+		agents, err := mgr.List(onlyRunning)
 		if err != nil {
 			return fmt.Errorf("failed to list agents: %w", err)
 		}
 
 		if len(agents) == 0 {
 			if GetScope() == scope.ScopeProject {
-				fmt.Println("No agents found in this project. Use --global to list all agents.")
+				if onlyRunning {
+					fmt.Println("No running agents found in this project. Use --all to show terminated agents, or --global to list all projects.")
+				} else {
+					fmt.Println("No agents found in this project. Use --global to list all agents.")
+				}
 			} else {
-				fmt.Println("No running agents found.")
+				if onlyRunning {
+					fmt.Println("No running agents found. Use --all to show terminated agents.")
+				} else {
+					fmt.Println("No agents found.")
+				}
 			}
 			return nil
 		}
@@ -107,4 +123,8 @@ Use --global to show agents from all directories.`,
 
 		return nil
 	},
+}
+
+func init() {
+	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "Show all agents including terminated")
 }

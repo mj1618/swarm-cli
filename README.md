@@ -16,22 +16,52 @@ A command-line tool for running and managing AI agents. Swarm CLI allows you to 
 
 ### Prerequisites
 
-- Go 1.22 or later
-- One of the supported agent backends:
-  - [Cursor](https://cursor.sh) with the `agent` CLI
-  - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+You need one of the supported agent backends installed:
+- [Cursor](https://cursor.sh) with the `agent` CLI
+- [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
 
-### Build from source
+### Download Binary (Recommended)
 
+Download the latest binary for your platform from the [releases page](https://github.com/mj1618/swarm-cli/releases/latest).
+
+**macOS (Apple Silicon):**
 ```bash
-git clone https://github.com/matt/swarm-cli.git
-cd swarm-cli
-go build -o swarm .
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_darwin_arm64.tar.gz | tar xz
+sudo mv swarm /usr/local/bin/
 ```
 
-Optionally, move the binary to your PATH:
+**macOS (Intel):**
+```bash
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_darwin_amd64.tar.gz | tar xz
+sudo mv swarm /usr/local/bin/
+```
+
+**Linux (x64):**
+```bash
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_linux_amd64.tar.gz | tar xz
+sudo mv swarm /usr/local/bin/
+```
+
+**Linux (ARM64):**
+```bash
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_linux_arm64.tar.gz | tar xz
+sudo mv swarm /usr/local/bin/
+```
+
+### Install with Go
+
+If you have Go installed:
 
 ```bash
+go install github.com/mj1618/swarm-cli@latest
+```
+
+### Build from Source
+
+```bash
+git clone https://github.com/mj1618/swarm-cli.git
+cd swarm-cli
+go build -o swarm .
 sudo mv swarm /usr/local/bin/
 ```
 
