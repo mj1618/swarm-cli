@@ -93,6 +93,8 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 	rootCmd.AddCommand(diffCmd)
 	rootCmd.AddCommand(summaryCmd)
+	rootCmd.AddCommand(pauseAllCmd)
+	rootCmd.AddCommand(resumeAllCmd)
 }
 
 // GetScope returns the current scope (project or global).
