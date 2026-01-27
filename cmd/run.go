@@ -39,6 +39,7 @@ var (
 	runInternalTimeout     string
 	runInternalIterTimeout string
 	runWorkingDir          string
+	runInternalStartIter   int
 )
 
 var runCmd = &cobra.Command{
@@ -549,6 +550,12 @@ When running multiple iterations, agent failures do not stop the run.`,
 		}
 
 		var agentState *state.AgentState
+		// Calculate starting iteration (usually 1, unless passed via internal flag for --continue)
+		startingIteration := 1
+		if runInternalStartIter > 0 {
+			startingIteration = runInternalStartIter
+		}
+
 		if runInternalDetached {
 			// Detached child: retrieve existing state registered by parent
 			agentState, err = mgr.Get(taskID)
@@ -631,8 +638,8 @@ When running multiple iterations, agent failures do not stop the run.`,
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-		// Run iterations (0 means unlimited)
-		for i := 1; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
+		// Run iterations (0 means unlimited), starting from startingIteration
+		for i := startingIteration; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
 			// Check for total timeout before starting iteration
 			select {
 			case <-timeoutCtx.Done():
@@ -791,6 +798,8 @@ func init() {
 	runCmd.Flags().MarkHidden("_internal-timeout")
 	runCmd.Flags().StringVar(&runInternalIterTimeout, "_internal-iter-timeout", "", "Internal flag for passing iter-timeout to detached child")
 	runCmd.Flags().MarkHidden("_internal-iter-timeout")
+	runCmd.Flags().IntVar(&runInternalStartIter, "_internal-start-iter", 0, "Internal flag for passing start iteration to detached child")
+	runCmd.Flags().MarkHidden("_internal-start-iter")
 	runCmd.Flags().StringVarP(&runWorkingDir, "working-dir", "C", "", "Run agent in specified directory")
 
 	// Add dynamic completion for prompt and model flags

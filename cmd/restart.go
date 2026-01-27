@@ -18,12 +18,14 @@ import (
 )
 
 var (
-	restartModel      string
-	restartIterations int
-	restartForever    bool
-	restartName       string
-	restartDetach     bool
-	restartEnv        []string
+	restartModel         string
+	restartIterations    int
+	restartForever       bool
+	restartName          string
+	restartDetach        bool
+	restartEnv           []string
+	restartContinue      bool
+	restartInternalStart int
 )
 
 var restartCmd = &cobra.Command{
@@ -37,7 +39,10 @@ The agent can be specified by its ID, name, or special identifier:
 If the original name is taken by a running agent, a number suffix (-2, -3, etc.)
 will be appended automatically to make the name unique.
 
-You can optionally override the model, iterations, or name.`,
+You can optionally override the model, iterations, or name.
+
+Use --continue to resume from where the agent left off instead of starting
+from iteration 1.`,
 	Example: `  # Restart by ID
   swarm restart abc123
 
@@ -50,6 +55,12 @@ You can optionally override the model, iterations, or name.`,
 
   # Restart in detached mode
   swarm restart my-agent -d
+
+  # Continue from last iteration (if agent was at 15/20, starts at 16/20)
+  swarm restart my-agent --continue
+
+  # Continue with more iterations
+  swarm restart my-agent -c -n 30
 
   # Override iterations
   swarm restart my-agent -n 20
@@ -131,6 +142,29 @@ You can optionally override the model, iterations, or name.`,
 			return fmt.Errorf("cannot use --forever with --iterations (use -n 0 for unlimited)")
 		}
 
+		// Calculate starting iteration for --continue flag
+		startingIteration := 1
+		if restartContinue {
+			startingIteration = oldAgent.CurrentIter + 1
+
+			// Validate there are iterations remaining (unless unlimited)
+			if effectiveIterations > 0 && startingIteration > effectiveIterations {
+				return fmt.Errorf("agent already completed all %d iterations; use --iterations to add more", oldAgent.Iterations)
+			}
+
+			// If CurrentIter is 0, agent was terminated before completing first iteration
+			if startingIteration <= 1 {
+				startingIteration = 1
+			}
+
+			fmt.Printf("Continuing from iteration %d\n", startingIteration)
+		}
+
+		// For detached child process, use the internal start flag
+		if restartInternalStart > 0 {
+			startingIteration = restartInternalStart
+		}
+
 		effectiveName := oldAgent.Name
 		if cmd.Flags().Changed("name") {
 			effectiveName = restartName
@@ -194,6 +228,10 @@ You can optionally override the model, iterations, or name.`,
 			if effectiveName != "" {
 				detachedArgs = append(detachedArgs, "--name", effectiveName)
 			}
+			// Pass starting iteration if --continue was used
+			if restartContinue {
+				detachedArgs = append(detachedArgs, "--_internal-start-iter", strconv.Itoa(startingIteration))
+			}
 			// Pass expanded env vars to child
 			for _, e := range expandedEnv {
 				detachedArgs = append(detachedArgs, "--_internal-env", e)
@@ -214,7 +252,7 @@ You can optionally override the model, iterations, or name.`,
 				Model:       effectiveModel,
 				StartedAt:   time.Now(),
 				Iterations:  effectiveIterations,
-				CurrentIter: 0,
+				CurrentIter: startingIteration - 1, // Will be incremented to startingIteration in first loop
 				Status:      "running",
 				LogFile:     logFile,
 				WorkingDir:  effectiveWorkingDir,
@@ -230,7 +268,11 @@ You can optionally override the model, iterations, or name.`,
 			if effectiveIterations == 0 {
 				fmt.Println("Iterations: unlimited")
 			} else {
-				fmt.Printf("Iterations: %d\n", effectiveIterations)
+				if startingIteration > 1 {
+					fmt.Printf("Iterations: %d (starting from %d)\n", effectiveIterations, startingIteration)
+				} else {
+					fmt.Printf("Iterations: %d\n", effectiveIterations)
+				}
 			}
 			fmt.Printf("Log file: %s\n", logFile)
 			return nil
@@ -260,7 +302,7 @@ You can optionally override the model, iterations, or name.`,
 			Model:       effectiveModel,
 			StartedAt:   time.Now(),
 			Iterations:  effectiveIterations,
-			CurrentIter: 0,
+			CurrentIter: startingIteration - 1, // Will be incremented to startingIteration in first loop
 			Status:      "running",
 			WorkingDir:  effectiveWorkingDir,
 			EnvNames:    envNames,
@@ -292,8 +334,8 @@ You can optionally override the model, iterations, or name.`,
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-		// Run iterations (0 means unlimited)
-		for i := 1; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
+		// Run iterations (0 means unlimited), starting from startingIteration
+		for i := startingIteration; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
 			// Check for control signals from state
 			currentState, err := mgr.Get(agentState.ID)
 			if err == nil && currentState != nil {
@@ -411,6 +453,9 @@ func init() {
 	restartCmd.Flags().StringVarP(&restartName, "name", "N", "", "Name for the agent (overrides original)")
 	restartCmd.Flags().BoolVarP(&restartDetach, "detach", "d", false, "Run in detached mode (background)")
 	restartCmd.Flags().StringArrayVarP(&restartEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")
+	restartCmd.Flags().BoolVarP(&restartContinue, "continue", "c", false, "Continue from last iteration instead of starting from 1")
+	restartCmd.Flags().IntVar(&restartInternalStart, "_internal-start-iter", 0, "Internal flag for passing start iteration to detached child")
+	restartCmd.Flags().MarkHidden("_internal-start-iter")
 
 	// Add dynamic completion for agent identifier and model flag
 	restartCmd.ValidArgsFunction = completeAgentIdentifier
