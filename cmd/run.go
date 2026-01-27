@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -26,6 +27,8 @@ var (
 	runDetach           bool
 	runInternalDetached bool
 	runInternalTaskID   string
+	runEnv              []string
+	runInternalEnv      []string
 )
 
 var runCmd = &cobra.Command{
@@ -149,6 +152,40 @@ When running multiple iterations, agent failures do not stop the run.`,
 			effectiveIterations = runIterations
 		}
 
+		// Parse and expand environment variables
+		// If running as detached child, use the env vars passed from parent
+		var expandedEnv []string
+		var envNames []string
+		envSource := runEnv
+		if runInternalDetached && len(runInternalEnv) > 0 {
+			// Detached child: env vars are already expanded by parent
+			expandedEnv = runInternalEnv
+			for _, e := range expandedEnv {
+				if idx := strings.Index(e, "="); idx > 0 {
+					envNames = append(envNames, e[:idx])
+				}
+			}
+		} else if len(envSource) > 0 {
+			expandedEnv = make([]string, 0, len(envSource))
+			for _, e := range envSource {
+				if strings.Contains(e, "=") {
+					// KEY=VALUE format - use as-is
+					expandedEnv = append(expandedEnv, e)
+					if idx := strings.Index(e, "="); idx > 0 {
+						envNames = append(envNames, e[:idx])
+					}
+				} else {
+					// KEY format - look up from environment
+					if val, ok := os.LookupEnv(e); ok {
+						expandedEnv = append(expandedEnv, fmt.Sprintf("%s=%s", e, val))
+						envNames = append(envNames, e)
+					} else {
+						return fmt.Errorf("environment variable %s not set", e)
+					}
+				}
+			}
+		}
+
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
 			// Use pre-generated task ID for log file
@@ -180,6 +217,10 @@ When running multiple iterations, agent failures do not stop the run.`,
 			if runName != "" {
 				detachedArgs = append(detachedArgs, "--name", runName)
 			}
+			// Pass expanded env vars to child (already expanded in parent)
+			for _, e := range expandedEnv {
+				detachedArgs = append(detachedArgs, "--_internal-env", e)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
@@ -205,6 +246,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			Status:      "running",
 			LogFile:     logFile,
 			WorkingDir:  workingDir,
+			EnvNames:    envNames,
 		}
 
 		if err := mgr.Register(agentState); err != nil {
@@ -226,6 +268,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				Model:   effectiveModel,
 				Prompt:  promptContent,
 				Command: appConfig.Command,
+				Env:     expandedEnv,
 			}
 
 			runner := agent.NewRunner(cfg)
@@ -258,6 +301,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				CurrentIter: 0,
 				Status:      "running",
 				WorkingDir:  workingDir,
+				EnvNames:    envNames,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -349,6 +393,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				Model:   agentState.Model,
 				Prompt:  promptContent,
 				Command: appConfig.Command,
+				Env:     expandedEnv,
 			}
 
 			// Run agent - errors should NOT stop the run
@@ -380,8 +425,11 @@ func init() {
 	runCmd.Flags().IntVarP(&runIterations, "iterations", "n", 1, "Number of iterations to run (default: 1)")
 	runCmd.Flags().StringVarP(&runName, "name", "N", "", "Name for the agent (for easier reference)")
 	runCmd.Flags().BoolVarP(&runDetach, "detach", "d", false, "Run in detached mode (background)")
+	runCmd.Flags().StringArrayVarP(&runEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")
 	runCmd.Flags().BoolVar(&runInternalDetached, "_internal-detached", false, "Internal flag for detached execution")
 	runCmd.Flags().MarkHidden("_internal-detached")
 	runCmd.Flags().StringVar(&runInternalTaskID, "_internal-task-id", "", "Internal flag for passing task ID to detached child")
 	runCmd.Flags().MarkHidden("_internal-task-id")
+	runCmd.Flags().StringArrayVar(&runInternalEnv, "_internal-env", nil, "Internal flag for passing env vars to detached child")
+	runCmd.Flags().MarkHidden("_internal-env")
 }

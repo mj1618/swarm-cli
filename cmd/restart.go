@@ -22,6 +22,7 @@ var (
 	restartIterations int
 	restartName       string
 	restartDetach     bool
+	restartEnv        []string
 )
 
 var restartCmd = &cobra.Command{
@@ -130,6 +131,30 @@ You can optionally override the model, iterations, or name.`,
 		// Use original working directory for the restarted agent
 		effectiveWorkingDir := oldAgent.WorkingDir
 
+		// Parse and expand environment variables (does not preserve original env vars)
+		var expandedEnv []string
+		var envNames []string
+		if len(restartEnv) > 0 {
+			expandedEnv = make([]string, 0, len(restartEnv))
+			for _, e := range restartEnv {
+				if strings.Contains(e, "=") {
+					// KEY=VALUE format - use as-is
+					expandedEnv = append(expandedEnv, e)
+					if idx := strings.Index(e, "="); idx > 0 {
+						envNames = append(envNames, e[:idx])
+					}
+				} else {
+					// KEY format - look up from environment
+					if val, ok := os.LookupEnv(e); ok {
+						expandedEnv = append(expandedEnv, fmt.Sprintf("%s=%s", e, val))
+						envNames = append(envNames, e)
+					} else {
+						return fmt.Errorf("environment variable %s not set", e)
+					}
+				}
+			}
+		}
+
 		// Handle detached mode
 		if restartDetach {
 			// Generate agent ID and log file
@@ -157,6 +182,10 @@ You can optionally override the model, iterations, or name.`,
 			if effectiveName != "" {
 				detachedArgs = append(detachedArgs, "--name", effectiveName)
 			}
+			// Pass expanded env vars to child
+			for _, e := range expandedEnv {
+				detachedArgs = append(detachedArgs, "--_internal-env", e)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, effectiveWorkingDir)
@@ -177,6 +206,7 @@ You can optionally override the model, iterations, or name.`,
 				Status:      "running",
 				LogFile:     logFile,
 				WorkingDir:  effectiveWorkingDir,
+				EnvNames:    envNames,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -198,6 +228,7 @@ You can optionally override the model, iterations, or name.`,
 				Model:   effectiveModel,
 				Prompt:  promptContent,
 				Command: appConfig.Command,
+				Env:     expandedEnv,
 			}
 
 			runner := agent.NewRunner(cfg)
@@ -216,6 +247,7 @@ You can optionally override the model, iterations, or name.`,
 			CurrentIter: 0,
 			Status:      "running",
 			WorkingDir:  effectiveWorkingDir,
+			EnvNames:    envNames,
 		}
 
 		if err := mgr.Register(agentState); err != nil {
@@ -306,6 +338,7 @@ You can optionally override the model, iterations, or name.`,
 				Model:   agentState.Model,
 				Prompt:  promptContent,
 				Command: appConfig.Command,
+				Env:     expandedEnv,
 			}
 
 			// Run agent - errors should NOT stop the run
@@ -334,4 +367,5 @@ func init() {
 	restartCmd.Flags().IntVarP(&restartIterations, "iterations", "n", 0, "Number of iterations (overrides original)")
 	restartCmd.Flags().StringVarP(&restartName, "name", "N", "", "Name for the agent (overrides original)")
 	restartCmd.Flags().BoolVarP(&restartDetach, "detach", "d", false, "Run in detached mode (background)")
+	restartCmd.Flags().StringArrayVarP(&restartEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")
 }

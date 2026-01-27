@@ -103,6 +103,15 @@ The agent can be specified by its ID, name, or special identifier:
 			fmt.Printf("Terminate:     %s\n", agent.TerminateMode)
 		}
 
+		if len(agent.EnvNames) > 0 {
+			fmt.Println()
+			bold.Println("Environment Variables")
+			fmt.Println("─────────────────────────────────")
+			for _, name := range agent.EnvNames {
+				fmt.Printf("  %s\n", name)
+			}
+		}
+
 		if agent.LogFile != "" {
 			fmt.Println()
 			bold.Println("Log File")

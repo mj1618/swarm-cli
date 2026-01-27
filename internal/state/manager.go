@@ -31,6 +31,7 @@ type AgentState struct {
 	PausedAt      *time.Time `json:"paused_at,omitempty"` // When agent entered pause loop
 	LogFile       string     `json:"log_file"`
 	WorkingDir    string     `json:"working_dir"` // Directory where agent was started
+	EnvNames      []string   `json:"env_names,omitempty"` // Environment variable names (values not stored for security)
 }
 
 // State holds all agent states.

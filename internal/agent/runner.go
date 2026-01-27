@@ -30,6 +30,12 @@ func (r *Runner) Run(out io.Writer) error {
 	args := r.config.Command.ExpandArgs(r.config.Model, r.config.Prompt)
 	r.cmd = exec.Command(r.config.Command.Executable, args...)
 
+	// Apply custom environment variables if specified
+	// Inherit parent environment and append custom vars (later values override earlier)
+	if len(r.config.Env) > 0 {
+		r.cmd.Env = append(os.Environ(), r.config.Env...)
+	}
+
 	// Set up pipes
 	stdout, err := r.cmd.StdoutPipe()
 	if err != nil {

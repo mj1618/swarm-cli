@@ -12,4 +12,7 @@ type Config struct {
 
 	// Command holds the command configuration (executable and args template)
 	Command config.CommandConfig
+
+	// Env holds environment variables in KEY=VALUE format to pass to the agent process
+	Env []string
 }
