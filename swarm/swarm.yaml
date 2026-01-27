@@ -1,0 +1,8 @@
+version: "1"
+tasks:
+  planner:
+    prompt: planner
+    iterations: 10
+  coder:
+    prompt: coder
+    iterations: 20

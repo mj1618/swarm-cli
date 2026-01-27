@@ -75,6 +75,9 @@ func init() {
 	rootCmd.Version = version.Version
 
 	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(upCmd)
+	rootCmd.AddCommand(downCmd)
+	rootCmd.AddCommand(composeStopCmd)
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(inspectCmd)

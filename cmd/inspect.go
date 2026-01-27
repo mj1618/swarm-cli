@@ -13,13 +13,13 @@ import (
 var inspectFormat string
 
 var inspectCmd = &cobra.Command{
-	Use:     "inspect [agent-id-or-name]",
+	Use:     "inspect [process-id-or-name]",
 	Aliases: []string{"view"},
 	Short:   "Display detailed information about an agent",
 	Long: `Display detailed information about a specific agent including its status, configuration, and logs.
 
-The agent can be specified by its ID or name.`,
-	Example: `  # Inspect by agent ID
+The agent can be specified by its process ID or name.`,
+	Example: `  # Inspect by process ID
   swarm inspect abc123
 
   # Inspect by agent name
@@ -29,7 +29,7 @@ The agent can be specified by its ID or name.`,
   swarm inspect abc123 --format json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		agentIdentifier := args[0]
+		processIdentifier := args[0]
 
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
@@ -37,7 +37,7 @@ The agent can be specified by its ID or name.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(agentIdentifier)
+		agent, err := mgr.GetByNameOrID(processIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

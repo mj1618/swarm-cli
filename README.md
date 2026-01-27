@@ -210,6 +210,37 @@ swarm run -p my-task -m gpt-5.2
 swarm run -p my-task -n 20 -d
 ```
 
+### `swarm up`
+
+Run multiple tasks defined in a compose file (`./swarm/swarm.yaml` by default). Similar to `docker compose up`.
+
+```bash
+swarm up [task...] [flags]
+```
+
+**Flags:**
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--file` | `-f` | Path to compose file (default: `./swarm/swarm.yaml`) |
+| `--detach` | `-d` | Run all tasks in background |
+
+**Examples:**
+```bash
+# Run all tasks from ./swarm/swarm.yaml
+swarm up
+
+# Run specific tasks only
+swarm up frontend backend
+
+# Run in detached mode
+swarm up -d
+
+# Use a custom compose file
+swarm up -f custom.yaml
+```
+
+See [Running Multiple Tasks (Compose)](#running-multiple-tasks-compose) for compose file format.
+
 ### `swarm list`
 
 List running agents with their status and configuration.
@@ -599,6 +630,94 @@ swarm config set-backend cursor
 cd ~/projects/backend  
 swarm config set-backend cursor
 # Edit .swarm.toml to use more capable model for backend work
+```
+
+### Running Multiple Tasks (Compose)
+
+Define multiple tasks in a `swarm.yaml` file and run them all with a single command, similar to docker compose.
+
+**Create a compose file** at `./swarm/swarm.yaml`:
+
+```yaml
+version: "1"
+tasks:
+  frontend:
+    prompt: frontend-task
+    model: sonnet-4.5
+    iterations: 10
+
+  backend:
+    prompt: backend-task
+    iterations: 5
+
+  tests:
+    prompt-string: "Run all tests and fix any failures"
+    iterations: 20
+```
+
+**Run all tasks:**
+
+```bash
+# Run all tasks from ./swarm/swarm.yaml
+swarm up
+
+# Run in detached mode (background)
+swarm up -d
+
+# Run specific tasks only
+swarm up frontend backend
+
+# Use a custom compose file
+swarm up -f custom.yaml
+```
+
+**Compose file options:**
+
+| Field | Description |
+|-------|-------------|
+| `prompt` | Name of a prompt from the prompts directory |
+| `prompt-file` | Path to an arbitrary prompt file |
+| `prompt-string` | Direct prompt text |
+| `model` | Model to use (optional, overrides config) |
+| `iterations` | Number of iterations (optional, default: 1) |
+| `name` | Custom agent name (optional, defaults to task name) |
+
+Only one prompt source is allowed per task (`prompt`, `prompt-file`, or `prompt-string`).
+
+**Example: Full-stack development workflow:**
+
+```yaml
+version: "1"
+tasks:
+  api-improvements:
+    prompt: api-improvements
+    model: opus-4.5-thinking
+    iterations: 10
+
+  frontend-features:
+    prompt: frontend-features
+    model: sonnet-4.5
+    iterations: 15
+
+  documentation:
+    prompt-file: ./docs/doc-updates.md
+    iterations: 5
+
+  code-review:
+    prompt-string: "Review recent changes for bugs and security issues"
+    name: reviewer
+    iterations: 3
+```
+
+```bash
+# Start all tasks in background
+swarm up -d
+
+# Monitor progress
+swarm list
+
+# View specific task logs
+swarm logs api-improvements
 ```
 
 ## Troubleshooting
