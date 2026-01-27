@@ -110,6 +110,27 @@ func GetPromptPath(promptsDir, name string) string {
 	return filepath.Join(promptsDir, filename)
 }
 
+// DefaultTemplate returns a starter template for new prompts.
+func DefaultTemplate() string {
+	return `# Task
+
+Describe what you want the agent to accomplish.
+
+# Context
+
+Any relevant context about the codebase or task.
+
+# Requirements
+
+- Requirement 1
+- Requirement 2
+
+# Exit condition
+
+Describe when the agent should consider the task complete.
+`
+}
+
 // InjectTaskID injects the task ID at the beginning of the prompt content.
 func InjectTaskID(promptContent, taskID string) string {
 	taskIDLine := fmt.Sprintf("Your Swarm Task ID is %s.", taskID)
