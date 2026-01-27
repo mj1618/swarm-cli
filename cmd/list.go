@@ -15,6 +15,7 @@ import (
 var listAll bool
 var listQuiet bool
 var listFormat string
+var listName string
 var listPrompt string
 var listModel string
 var listStatus string
@@ -30,6 +31,7 @@ Use --all to include terminated agents.
 Use --global to show agents from all directories.
 
 Filter options:
+  --name, -N      Filter by agent name (substring match, case-insensitive)
   --prompt, -p    Filter by prompt name (substring match, case-insensitive)
   --model, -m     Filter by model name (substring match, case-insensitive)
   --status        Filter by status (running, pausing, paused, or terminated)
@@ -53,6 +55,10 @@ Multiple filters are combined with AND logic (all conditions must match).`,
   # Output as JSON
   swarm list --format json
 
+  # Filter by name
+  swarm list --name coder
+  swarm list -N frontend
+
   # Filter by prompt name
   swarm list --prompt coder
   swarm list -p planner
@@ -66,6 +72,7 @@ Multiple filters are combined with AND logic (all conditions must match).`,
   swarm list --status terminated -a
 
   # Combine filters
+  swarm list --name coder --status running
   swarm list --prompt coder --model sonnet
   swarm list -a --status terminated --prompt planner`,
 	RunE: func(cmd *cobra.Command, args []string) error {
@@ -98,10 +105,10 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 		}
 
 		// Apply filters
-		agents = filterAgents(agents, listPrompt, listModel, listStatus)
+		agents = filterAgents(agents, listName, listPrompt, listModel, listStatus)
 
 		// Check for helpful hints when no agents match
-		if len(agents) == 0 && (listPrompt != "" || listModel != "" || listStatus != "") {
+		if len(agents) == 0 && (listName != "" || listPrompt != "" || listModel != "" || listStatus != "") {
 			// Check if filtering for terminated without -a flag
 			if strings.ToLower(listStatus) == "terminated" && !listAll {
 				if !listQuiet {
@@ -227,19 +234,25 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 	},
 }
 
-// filterAgents applies prompt, model, and status filters to the agent list.
+// filterAgents applies name, prompt, model, and status filters to the agent list.
 // All non-empty filters must match (AND logic).
-func filterAgents(agents []*state.AgentState, promptFilter, modelFilter, statusFilter string) []*state.AgentState {
-	if promptFilter == "" && modelFilter == "" && statusFilter == "" {
+func filterAgents(agents []*state.AgentState, nameFilter, promptFilter, modelFilter, statusFilter string) []*state.AgentState {
+	if nameFilter == "" && promptFilter == "" && modelFilter == "" && statusFilter == "" {
 		return agents
 	}
 
+	nameFilter = strings.ToLower(nameFilter)
 	promptFilter = strings.ToLower(promptFilter)
 	modelFilter = strings.ToLower(modelFilter)
 	statusFilter = strings.ToLower(statusFilter)
 
 	var filtered []*state.AgentState
 	for _, agent := range agents {
+		// Check name filter (substring, case-insensitive)
+		if nameFilter != "" && !strings.Contains(strings.ToLower(agent.Name), nameFilter) {
+			continue
+		}
+
 		// Check prompt filter (substring, case-insensitive)
 		if promptFilter != "" && !strings.Contains(strings.ToLower(agent.Prompt), promptFilter) {
 			continue
@@ -277,6 +290,7 @@ func init() {
 	listCmd.Flags().StringVar(&listFormat, "format", "", "Output format: json or table (default)")
 
 	// Filter flags
+	listCmd.Flags().StringVarP(&listName, "name", "N", "", "Filter by agent name (substring match)")
 	listCmd.Flags().StringVarP(&listPrompt, "prompt", "p", "", "Filter by prompt name (substring match)")
 	listCmd.Flags().StringVarP(&listModel, "model", "m", "", "Filter by model name (substring match)")
 	listCmd.Flags().StringVar(&listStatus, "status", "", "Filter by status: running, pausing, paused, or terminated")
