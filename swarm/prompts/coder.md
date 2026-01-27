@@ -1,6 +1,13 @@
+# Find unfinished tasks
+
+Use your agent id to find tasks that you left unfinished by looking for files named:
+./swarm/todo/*.{your-swarm-agent-id}.processing.md
+
+If you found a task to continue, skip the "Find a task to complete" section and jump straight to "Execute the task".
 
 # Find a task to complete
-Look under the ./swarm/todo/ folder for a file suffixed with ".pending.md" - and claim it as a task by renaming it to ".processing.md".
+
+Look under the ./swarm/todo/ folder for a file suffixed with ".pending.md" - and claim it as a task by renaming it to ".{your-swarm-agent-id}.processing.md".
 Make sure the file you choose doesn't have any dependencies that are not completed.
 Make sure your work won't conflict with other work that is already in progress.
 If no tasks are found - skip the "Execute the task" step and go to the "If nothing to do" step.
