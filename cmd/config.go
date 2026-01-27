@@ -96,7 +96,7 @@ By default, updates the project config (swarm/.swarm.toml). Use --global to upda
 
   # Update global config instead of project
   swarm config set-backend claude-code --global`,
-	Args: cobra.ExactArgs(1),
+	Args:      cobra.ExactArgs(1),
 	ValidArgs: config.ValidBackends(),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		backend := strings.ToLower(args[0])
@@ -159,12 +159,81 @@ By default, updates the project config (swarm/.swarm.toml). Use --global to upda
 	},
 }
 
+var configSetModelCmd = &cobra.Command{
+	Use:   "set-model [model]",
+	Short: "Set the default model",
+	Long: `Set the default model for agent runs.
+
+The model is used when no --model flag is specified on the run command.
+By default, updates the project config (swarm/.swarm.toml). Use --global to update the global config.
+
+Note: Model names are not validated - different backends support different models,
+and the backend CLI will report an error if the model is invalid.`,
+	Example: `  # Set default model for project
+  swarm config set-model opus
+
+  # Set model in global config
+  swarm config set-model claude-sonnet-4-20250514 --global`,
+	Args: cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		model := strings.TrimSpace(args[0])
+
+		// Validate that model is not empty
+		if model == "" {
+			return fmt.Errorf("model cannot be empty")
+		}
+
+		// Determine config path
+		var configPath string
+		var err error
+		if configGlobal {
+			configPath, err = config.GlobalConfigPath()
+			if err != nil {
+				return fmt.Errorf("failed to determine global config path: %w", err)
+			}
+		} else {
+			configPath = config.ProjectConfigPath()
+		}
+
+		// Load existing config or start with defaults
+		cfg := config.DefaultConfig()
+		if _, err := os.Stat(configPath); err == nil {
+			// Config file exists, load it first to preserve other settings
+			loadedCfg, err := config.Load()
+			if err != nil {
+				return fmt.Errorf("failed to load existing config: %w", err)
+			}
+			cfg = loadedCfg
+		}
+
+		// Update the model
+		cfg.Model = model
+
+		// Create parent directory if needed
+		dir := filepath.Dir(configPath)
+		if err := os.MkdirAll(dir, 0755); err != nil {
+			return fmt.Errorf("failed to create directory %s: %w", dir, err)
+		}
+
+		// Write updated config
+		if err := os.WriteFile(configPath, []byte(cfg.ToTOML()), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+
+		fmt.Printf("Default model set to %q\n", model)
+		fmt.Printf("Updated config: %s\n", configPath)
+		return nil
+	},
+}
+
 func init() {
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configPathCmd)
 	configCmd.AddCommand(configSetBackendCmd)
+	configCmd.AddCommand(configSetModelCmd)
 
 	configSetBackendCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
+	configSetModelCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
 
 	rootCmd.AddCommand(configCmd)
 }
