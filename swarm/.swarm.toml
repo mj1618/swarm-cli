@@ -1,0 +1,31 @@
+# swarm-cli configuration
+
+# Backend specifies which agent CLI to use
+# Options: "cursor" (Cursor's agent CLI) or "claude-code" (Anthropic's Claude Code CLI)
+backend = "claude-code"
+
+# Default model for agent runs
+# For cursor: e.g., "opus-4.5-thinking"
+# For claude-code: e.g., "opus", "sonnet"
+model = "opus"
+
+# Default iterations for run command
+iterations = 1
+
+# Agent command configuration
+[command]
+# The base command to run (e.g., "agent" for cursor, "claude" for claude-code)
+executable = "claude"
+
+# Arguments template - {model} and {prompt} are replaced at runtime
+args = [
+  "-p",
+  "--model",
+  "{model}",
+  "--dangerously-skip-permissions",
+  "{prompt}"
+]
+
+# If true, output streams directly without parsing (for claude-code)
+# If false, output is parsed through the log parser (for cursor)
+raw_output = true

@@ -5,4 +5,4 @@ tasks:
     iterations: 20
   coder:
     prompt: coder
-    iterations: 30
+    iterations: 33

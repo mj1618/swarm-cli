@@ -1,5 +1,18 @@
 # Add confirmation prompt to `swarm kill-all` command
 
+## Completed by agent 5a26f1d6
+
+### Changes made:
+- Modified `cmd/kill_all.go` to add confirmation prompt before killing agents
+- Added `--force` / `-f` flag to skip confirmation (for scripting)
+- Confirmation shows scope context (project vs global)
+- Confirmation lists agent names/IDs when count <= 5
+- Non-interactive stdin without `--force` aborts safely
+- Updated command help and examples
+- Added tests in `cmd/kill_all_test.go`
+
+All acceptance criteria have been met.
+
 ## Problem
 
 The `swarm kill-all` command immediately terminates all running and paused agents without any confirmation prompt. This is dangerous because:
