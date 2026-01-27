@@ -1,0 +1,15 @@
+package agent
+
+import "github.com/matt/swarm-cli/internal/config"
+
+// Config holds the configuration for running an agent.
+type Config struct {
+	// Model is the model to use (e.g., "opus-4.5-thinking")
+	Model string
+
+	// Prompt is the full prompt content (already wrapped with system/user tags)
+	Prompt string
+
+	// Command holds the command configuration (executable and args template)
+	Command config.CommandConfig
+}
