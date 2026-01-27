@@ -11,6 +11,7 @@ import (
 var (
 	updateIterations     int
 	updateModel          string
+	updateName           string
 	updateTerminate      bool
 	updateTerminateAfter bool
 )
@@ -35,7 +36,11 @@ The agent can be specified by its ID or name.`,
   swarm update abc123 --iterations 50
 
   # Change model for next iteration
-  swarm update my-agent --model claude-sonnet-4-20250514`,
+  swarm update my-agent --model claude-sonnet-4-20250514
+
+  # Rename an agent
+  swarm update abc123 --name new-name
+  swarm update my-agent -N better-name`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -51,7 +56,41 @@ The agent can be specified by its ID or name.`,
 			return fmt.Errorf("agent not found: %w", err)
 		}
 
-		if agent.Status != "running" {
+		// Handle name update first (works for both running and terminated agents)
+		nameUpdated := false
+		if cmd.Flags().Changed("name") {
+			if updateName == "" {
+				return fmt.Errorf("name cannot be empty")
+			}
+			if updateName != agent.Name {
+				// Check for name conflicts with other running agents
+				allAgents, err := mgr.List(true) // true = only running
+				if err != nil {
+					return fmt.Errorf("failed to check name availability: %w", err)
+				}
+				for _, other := range allAgents {
+					if other.ID != agent.ID && other.Name == updateName {
+						return fmt.Errorf("name '%s' is already in use by agent %s", updateName, other.ID)
+					}
+				}
+				oldName := agent.Name
+				agent.Name = updateName
+				nameUpdated = true
+				fmt.Printf("Renamed agent from '%s' to '%s'\n", oldName, updateName)
+			}
+			// If same name, skip silently (no error, no message)
+		}
+
+		// For operations other than rename, agent must be running
+		requiresRunning := updateTerminate || updateTerminateAfter ||
+			cmd.Flags().Changed("iterations") || cmd.Flags().Changed("model")
+		if requiresRunning && agent.Status != "running" {
+			if nameUpdated {
+				// Save the name change even if we can't do other operations
+				if err := mgr.Update(agent); err != nil {
+					return fmt.Errorf("failed to update agent state: %w", err)
+				}
+			}
 			return fmt.Errorf("agent is not running (status: %s)", agent.Status)
 		}
 
@@ -81,7 +120,7 @@ The agent can be specified by its ID or name.`,
 		}
 
 		// Handle configuration changes
-		updated := false
+		updated := nameUpdated
 
 		if cmd.Flags().Changed("iterations") {
 			agent.Iterations = updateIterations
@@ -110,6 +149,7 @@ The agent can be specified by its ID or name.`,
 func init() {
 	updateCmd.Flags().IntVarP(&updateIterations, "iterations", "n", 0, "Set new iteration count")
 	updateCmd.Flags().StringVarP(&updateModel, "model", "m", "", "Set model for next iteration")
+	updateCmd.Flags().StringVarP(&updateName, "name", "N", "", "Set new name for the agent")
 	updateCmd.Flags().BoolVar(&updateTerminate, "terminate", false, "Terminate agent immediately")
 	updateCmd.Flags().BoolVar(&updateTerminateAfter, "terminate-after", false, "Terminate after current iteration")
 }

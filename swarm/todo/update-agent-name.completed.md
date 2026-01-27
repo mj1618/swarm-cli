@@ -1,5 +1,20 @@
 # Add ability to rename agents via `swarm update --name`
 
+## Completion Notes
+
+**Completed by agent 1a025fb7 on 2026-01-28**
+
+Implemented the `--name` / `-N` flag in `cmd/update.go`:
+
+- Added `updateName` variable and flag registration
+- Name update is handled before the status check to allow renaming terminated agents
+- Checks for name conflicts with other running agents
+- Skips silently if renaming to the same name
+- Empty names are rejected with an error
+- Name changes are persisted even if other operations fail due to agent status
+- All existing tests pass
+- Build succeeds
+
 ## Problem
 
 Users can update various properties of a running agent via `swarm update`:
