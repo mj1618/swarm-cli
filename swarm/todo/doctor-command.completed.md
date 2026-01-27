@@ -557,3 +557,24 @@ No new dependencies required. Uses existing:
 - Exit code is 0 if all pass, 1 if any warnings, 2 if any failures
 - Works on first run (no existing config/state)
 - Handles permission and disk errors gracefully
+
+---
+
+## Completion Notes (cd59a862)
+
+Implemented `swarm doctor` command in `cmd/doctor.go`.
+
+**Features implemented:**
+- All 5 diagnostic checks: Configuration, Backend, State, Disk Space, Prompts
+- JSON output format with `--format json`
+- Single check mode with `--check <name>`
+- Exit codes: 0 (pass), 1 (warnings), 2 (failures)
+- Color-coded output with ✓/⚠/✗ status indicators
+- Actionable suggestions for failed/warning checks
+
+**Testing:**
+- Verified all checks pass in healthy environment
+- Verified JSON output is valid
+- Verified --check flag filters correctly
+- Verified invalid check names produce helpful error
+- All existing tests pass
