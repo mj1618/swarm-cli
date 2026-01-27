@@ -186,9 +186,9 @@ func TestInspectCommand(t *testing.T) {
 		t.Fatal("inspect command not found")
 	}
 
-	// Inspect requires exactly 1 argument (agent-id)
-	if cmd.Use != "inspect [agent-id-or-name]" {
-		t.Errorf("inspect command Use should be 'inspect [agent-id-or-name]', got '%s'", cmd.Use)
+	// Inspect requires exactly 1 argument (process-id)
+	if cmd.Use != "inspect [process-id-or-name]" {
+		t.Errorf("inspect command Use should be 'inspect [process-id-or-name]', got '%s'", cmd.Use)
 	}
 
 	// Check that "view" is an alias
