@@ -73,5 +73,5 @@ the current iteration to complete before terminating.`,
 }
 
 func init() {
-	killCmd.Flags().BoolVarP(&killGraceful, "graceful", "g", false, "Terminate after current iteration completes")
+	killCmd.Flags().BoolVarP(&killGraceful, "graceful", "G", false, "Terminate after current iteration completes")
 }
