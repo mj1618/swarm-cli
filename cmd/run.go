@@ -532,6 +532,11 @@ When running multiple iterations, agent failures do not stop the run.`,
 				agentState.TimeoutReason = "total"
 			}
 			agentState.Status = "terminated"
+			now := time.Now()
+			agentState.TerminatedAt = &now
+			if agentState.ExitReason == "" {
+				agentState.ExitReason = "completed"
+			}
 			_ = mgr.Update(agentState)
 			if timedOut {
 				os.Exit(124) // Exit code 124 matches GNU timeout convention
@@ -571,10 +576,12 @@ When running multiple iterations, agent failures do not stop the run.`,
 				// Check for termination
 				if currentState.TerminateMode == "immediate" {
 					fmt.Println("\n[swarm] Received immediate termination signal")
+					agentState.ExitReason = "killed"
 					return nil
 				}
 				if currentState.TerminateMode == "after_iteration" && i > 1 {
 					fmt.Println("\n[swarm] Terminating after iteration as requested")
+					agentState.ExitReason = "killed"
 					return nil
 				}
 
@@ -596,6 +603,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 						if currentState.TerminateMode != "" {
 							if currentState.TerminateMode == "immediate" {
 								fmt.Println("\n[swarm] Received immediate termination signal")
+								agentState.ExitReason = "killed"
 								return nil
 							}
 							break
@@ -629,6 +637,8 @@ When running multiple iterations, agent failures do not stop the run.`,
 			// Run agent - errors should NOT stop the run (including iteration timeouts)
 			runner := agent.NewRunner(cfg)
 			if err := runner.RunWithContext(timeoutCtx, os.Stdout); err != nil {
+				agentState.FailedIters++
+				agentState.LastError = err.Error()
 				if strings.Contains(err.Error(), "timed out") {
 					fmt.Printf("\n[swarm] Iteration %d timed out after %v (continuing)\n", i, iterTimeout)
 					// Record that this iteration timed out
@@ -639,12 +649,16 @@ When running multiple iterations, agent failures do not stop the run.`,
 				} else {
 					fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
 				}
+			} else {
+				agentState.SuccessfulIters++
 			}
+			_ = mgr.Update(agentState)
 
 			// Check for signals and total timeout
 			select {
 			case sig := <-sigChan:
 				fmt.Printf("\n[swarm] Received signal %v, stopping\n", sig)
+				agentState.ExitReason = "signal"
 				return nil
 			case <-timeoutCtx.Done():
 				fmt.Println("\n[swarm] Total timeout reached, stopping")

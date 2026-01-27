@@ -260,6 +260,11 @@ You can optionally override the model, iterations, or name.`,
 		// Ensure cleanup on exit
 		defer func() {
 			agentState.Status = "terminated"
+			now := time.Now()
+			agentState.TerminatedAt = &now
+			if agentState.ExitReason == "" {
+				agentState.ExitReason = "completed"
+			}
 			_ = mgr.Update(agentState)
 		}()
 
@@ -287,10 +292,12 @@ You can optionally override the model, iterations, or name.`,
 				// Check for termination
 				if currentState.TerminateMode == "immediate" {
 					fmt.Println("\n[swarm] Received immediate termination signal")
+					agentState.ExitReason = "killed"
 					return nil
 				}
 				if currentState.TerminateMode == "after_iteration" && i > 1 {
 					fmt.Println("\n[swarm] Terminating after iteration as requested")
+					agentState.ExitReason = "killed"
 					return nil
 				}
 
@@ -312,6 +319,7 @@ You can optionally override the model, iterations, or name.`,
 						if currentState.TerminateMode != "" {
 							if currentState.TerminateMode == "immediate" {
 								fmt.Println("\n[swarm] Received immediate termination signal")
+								agentState.ExitReason = "killed"
 								return nil
 							}
 							break
@@ -344,13 +352,19 @@ You can optionally override the model, iterations, or name.`,
 			// Run agent - errors should NOT stop the run
 			runner := agent.NewRunner(cfg)
 			if err := runner.Run(os.Stdout); err != nil {
+				agentState.FailedIters++
+				agentState.LastError = err.Error()
 				fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
+			} else {
+				agentState.SuccessfulIters++
 			}
+			_ = mgr.Update(agentState)
 
 			// Check for signals
 			select {
 			case sig := <-sigChan:
 				fmt.Printf("\n[swarm] Received signal %v, stopping\n", sig)
+				agentState.ExitReason = "signal"
 				return nil
 			default:
 				// Continue

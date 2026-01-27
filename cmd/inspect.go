@@ -92,8 +92,30 @@ The agent can be specified by its ID, name, or special identifier:
 		statusColor.Println(statusStr)
 
 		fmt.Printf("Started:       %s\n", agent.StartedAt.Format(time.RFC3339))
-		fmt.Printf("Running for:   %s\n", time.Since(agent.StartedAt).Round(time.Second))
+		if agent.TerminatedAt != nil {
+			fmt.Printf("Terminated:    %s\n", agent.TerminatedAt.Format(time.RFC3339))
+			duration := agent.TerminatedAt.Sub(agent.StartedAt).Round(time.Second)
+			fmt.Printf("Runtime:       %s\n", duration)
+		} else {
+			fmt.Printf("Running for:   %s\n", time.Since(agent.StartedAt).Round(time.Second))
+		}
+
+		if agent.ExitReason != "" {
+			fmt.Printf("Exit reason:   %s\n", agent.ExitReason)
+		}
+
 		fmt.Printf("Iteration:     %d/%d\n", agent.CurrentIter, agent.Iterations)
+
+		// Show iteration breakdown if there were any iterations
+		if agent.SuccessfulIters > 0 || agent.FailedIters > 0 {
+			fmt.Printf("Successful:    %d\n", agent.SuccessfulIters)
+			fmt.Printf("Failed:        %d\n", agent.FailedIters)
+			total := agent.SuccessfulIters + agent.FailedIters
+			if total > 0 {
+				rate := float64(agent.SuccessfulIters) / float64(total) * 100
+				fmt.Printf("Success rate:  %.0f%%\n", rate)
+			}
+		}
 
 		if agent.WorkingDir != "" {
 			fmt.Printf("Directory:     %s\n", agent.WorkingDir)
@@ -123,6 +145,18 @@ The agent can be specified by its ID, name, or special identifier:
 			for _, name := range agent.EnvNames {
 				fmt.Printf("  %s\n", name)
 			}
+		}
+
+		if agent.LastError != "" {
+			fmt.Println()
+			bold.Println("Last Error")
+			fmt.Println("─────────────────────────────────")
+			// Truncate very long errors
+			errMsg := agent.LastError
+			if len(errMsg) > 500 {
+				errMsg = errMsg[:500] + "..."
+			}
+			fmt.Println(errMsg)
 		}
 
 		if agent.LogFile != "" {

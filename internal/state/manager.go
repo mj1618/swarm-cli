@@ -34,6 +34,15 @@ type AgentState struct {
 	EnvNames      []string   `json:"env_names,omitempty"` // Environment variable names (values not stored for security)
 	TimeoutAt     *time.Time `json:"timeout_at,omitempty"`     // When total timeout will trigger
 	TimeoutReason string     `json:"timeout_reason,omitempty"` // "total" or "iteration" when terminated by timeout
+
+	// Termination tracking
+	TerminatedAt *time.Time `json:"terminated_at,omitempty"` // When agent stopped
+	ExitReason   string     `json:"exit_reason,omitempty"`   // completed, killed, signal, error
+
+	// Iteration outcomes
+	SuccessfulIters int    `json:"successful_iterations"` // Iterations that completed without error
+	FailedIters     int    `json:"failed_iterations"`     // Iterations that errored
+	LastError       string `json:"last_error,omitempty"`  // Last error message if any
 }
 
 // State holds all agent states.
@@ -340,10 +349,18 @@ func (m *Manager) cleanup() error {
 	}
 
 	changed := false
+	now := time.Now()
 	for id, agent := range state.Agents {
 		// Check if process is still running
-		if !isProcessRunning(agent.PID) {
+		if agent.Status == "running" && !isProcessRunning(agent.PID) {
 			agent.Status = "terminated"
+			// If the process died without setting exit reason, it crashed
+			if agent.ExitReason == "" {
+				agent.ExitReason = "crashed"
+			}
+			if agent.TerminatedAt == nil {
+				agent.TerminatedAt = &now
+			}
 			state.Agents[id] = agent
 			changed = true
 		}

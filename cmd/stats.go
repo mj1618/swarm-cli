@@ -20,8 +20,11 @@ type Stats struct {
 	Terminated int `json:"terminated"`
 	Total      int `json:"total"`
 
-	IterationsCompleted int `json:"iterations_completed"`
-	IterationsTotal     int `json:"iterations_total"`
+	IterationsCompleted  int     `json:"iterations_completed"`
+	IterationsTotal      int     `json:"iterations_total"`
+	IterationsSuccessful int     `json:"iterations_successful"`
+	IterationsFailed     int     `json:"iterations_failed"`
+	SuccessRate          float64 `json:"success_rate"`
 
 	PromptStats []PromptStat `json:"prompt_stats"`
 	ModelStats  []ModelStat  `json:"model_stats"`
@@ -111,6 +114,8 @@ func calculateStats(agents []*state.AgentState) Stats {
 		// Iteration counts
 		stats.IterationsCompleted += agent.CurrentIter
 		stats.IterationsTotal += agent.Iterations
+		stats.IterationsSuccessful += agent.SuccessfulIters
+		stats.IterationsFailed += agent.FailedIters
 
 		// Prompt stats
 		promptName := agent.Prompt
@@ -138,12 +143,17 @@ func calculateStats(agents []*state.AgentState) Stats {
 		// Runtime calculation
 		var endTime time.Time
 		if agent.Status == "terminated" {
-			// For terminated agents, use an estimate based on iterations
-			// Each iteration is roughly 5 minutes (heuristic)
-			endTime = agent.StartedAt.Add(time.Duration(agent.CurrentIter) * 5 * time.Minute)
-			// But cap it at now if that would be in the future
-			if endTime.After(now) {
-				endTime = now
+			if agent.TerminatedAt != nil {
+				// Use actual termination time if available
+				endTime = *agent.TerminatedAt
+			} else {
+				// For terminated agents without TerminatedAt, use an estimate based on iterations
+				// Each iteration is roughly 5 minutes (heuristic)
+				endTime = agent.StartedAt.Add(time.Duration(agent.CurrentIter) * 5 * time.Minute)
+				// But cap it at now if that would be in the future
+				if endTime.After(now) {
+					endTime = now
+				}
 			}
 		} else {
 			endTime = now
@@ -171,6 +181,12 @@ func calculateStats(agents []*state.AgentState) Stats {
 		stats.AverageRuntimeSeconds = stats.TotalRuntimeSeconds / int64(stats.Total)
 	}
 
+	// Calculate success rate
+	totalIterOutcomes := stats.IterationsSuccessful + stats.IterationsFailed
+	if totalIterOutcomes > 0 {
+		stats.SuccessRate = float64(stats.IterationsSuccessful) / float64(totalIterOutcomes) * 100
+	}
+
 	return stats
 }
 
@@ -196,8 +212,13 @@ func printStats(stats Stats) {
 	fmt.Println()
 
 	bold.Println("Iterations")
-	fmt.Printf("  Completed: %d\n", stats.IterationsCompleted)
-	fmt.Printf("  Total:     %d\n", stats.IterationsTotal)
+	fmt.Printf("  Completed:  %d\n", stats.IterationsCompleted)
+	fmt.Printf("  Total:      %d\n", stats.IterationsTotal)
+	if stats.IterationsSuccessful > 0 || stats.IterationsFailed > 0 {
+		fmt.Printf("  Successful: %d\n", stats.IterationsSuccessful)
+		fmt.Printf("  Failed:     %d\n", stats.IterationsFailed)
+		fmt.Printf("  Success rate: %.1f%%\n", stats.SuccessRate)
+	}
 	fmt.Println()
 
 	if len(stats.PromptStats) > 0 {
