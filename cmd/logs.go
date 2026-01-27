@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -15,11 +16,17 @@ import (
 )
 
 var (
-	logsFollow bool
-	logsLines  int
-	logsPretty bool
-	logsSince  string
-	logsUntil  string
+	logsFollow        bool
+	logsLines         int
+	logsPretty        bool
+	logsSince         string
+	logsUntil         string
+	logsGrep          []string // grep patterns (regex)
+	logsGrepInvert    bool     // invert match (show non-matching lines)
+	logsGrepCase      bool     // case-sensitive matching
+	logsContext       int      // context lines (-C)
+	logsContextBefore int      // lines before match (-B)
+	logsContextAfter  int      // lines after match (-A)
 )
 
 var logsCmd = &cobra.Command{
@@ -38,7 +45,11 @@ Use --since and --until to filter logs by timestamp. Supported formats:
 - Relative duration: 30s, 5m, 2h, 1d
 - RFC3339: 2024-01-28T10:00:00Z
 - Date-time: 2024-01-28 10:00:00 or 2024-01-28 10:00
-- Date only: 2024-01-28 (interpreted as start of day)`,
+- Date only: 2024-01-28 (interpreted as start of day)
+
+Use --grep to filter log lines by pattern (regex). The pattern is case-insensitive
+by default. Use --case-sensitive for case-sensitive matching. Multiple --grep
+flags can be specified to match any of the patterns (OR logic).`,
 	Example: `  # Show last 50 lines of agent abc123
   swarm logs abc123
 
@@ -59,7 +70,29 @@ Use --since and --until to filter logs by timestamp. Supported formats:
   swarm logs abc123 --since 2h --until 30m
 
   # Show logs since a specific date
-  swarm logs abc123 --since "2024-01-28 10:00:00"`,
+  swarm logs abc123 --since "2024-01-28 10:00:00"
+
+  # Filter logs by pattern (case-insensitive)
+  swarm logs abc123 --grep error
+
+  # Case-sensitive grep
+  swarm logs abc123 --grep Error --case-sensitive
+
+  # Regex pattern
+  swarm logs abc123 --grep "tool_use.*Read"
+
+  # Show context around matches
+  swarm logs abc123 --grep error -C 3
+  swarm logs abc123 --grep error -B 2 -A 5
+
+  # Invert match (show non-matching lines)
+  swarm logs abc123 --grep "^\[swarm\]" --invert
+
+  # Multiple patterns (OR logic)
+  swarm logs abc123 --grep error --grep warning
+
+  # Combine with other flags
+  swarm logs abc123 --grep error --since 30m --pretty`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -104,16 +137,46 @@ Use --since and --until to filter logs by timestamp. Supported formats:
 			return fmt.Errorf("--since time must be before --until time")
 		}
 
+		// Compile grep patterns
+		var grepPatterns []*regexp.Regexp
+		for _, pattern := range logsGrep {
+			flags := ""
+			if !logsGrepCase {
+				flags = "(?i)"
+			}
+			re, err := regexp.Compile(flags + pattern)
+			if err != nil {
+				return fmt.Errorf("invalid grep pattern %q: %w", pattern, err)
+			}
+			grepPatterns = append(grepPatterns, re)
+		}
+
+		// Calculate context lines (explicit -B/-A override -C)
+		contextBefore := logsContext
+		contextAfter := logsContext
+		if logsContextBefore > 0 {
+			contextBefore = logsContextBefore
+		}
+		if logsContextAfter > 0 {
+			contextAfter = logsContextAfter
+		}
+
 		if logsFollow {
 			// Warn if --until is used with --follow
 			if logsUntil != "" {
 				fmt.Println("Warning: --until is ignored when using --follow")
 				untilTime = time.Time{}
 			}
-			return followFile(agent.LogFile, sinceTime, untilTime)
+			// Warn if context is used with --follow
+			if contextBefore > 0 || contextAfter > 0 {
+				fmt.Println("Warning: context flags (-C/-B/-A) are ignored when using --follow")
+				contextBefore = 0
+				contextAfter = 0
+			}
+			return followFile(agent.LogFile, sinceTime, untilTime, grepPatterns, logsGrepInvert)
 		}
 
-		return showLogLines(agent.LogFile, logsLines, nil, sinceTime, untilTime)
+		return showLogLines(agent.LogFile, logsLines, nil, sinceTime, untilTime, grepPatterns, logsGrepInvert, contextBefore, contextAfter)
 	},
 }
 
@@ -125,6 +188,12 @@ func init() {
 	logsCmd.Flags().BoolVarP(&logsPretty, "pretty", "P", false, "Pretty-print log output with colors and formatting")
 	logsCmd.Flags().StringVar(&logsSince, "since", "", "Show logs since timestamp (e.g., 30m, 2h, 2024-01-28 10:00)")
 	logsCmd.Flags().StringVar(&logsUntil, "until", "", "Show logs until timestamp (e.g., 1h, 2024-01-28 12:00)")
+	logsCmd.Flags().StringArrayVar(&logsGrep, "grep", nil, "Filter lines matching pattern (regex, case-insensitive by default)")
+	logsCmd.Flags().BoolVar(&logsGrepInvert, "invert", false, "Invert match (show non-matching lines)")
+	logsCmd.Flags().BoolVar(&logsGrepCase, "case-sensitive", false, "Make grep pattern case-sensitive")
+	logsCmd.Flags().IntVarP(&logsContext, "context", "C", 0, "Show N lines of context around matches")
+	logsCmd.Flags().IntVarP(&logsContextBefore, "before", "B", 0, "Show N lines before each match")
+	logsCmd.Flags().IntVarP(&logsContextAfter, "after", "A", 0, "Show N lines after each match")
 	rootCmd.AddCommand(logsCmd)
 }
 
@@ -210,11 +279,30 @@ func isLineInTimeRange(line string, since, until time.Time) bool {
 	return true
 }
 
+// matchesGrep returns true if the line matches any of the grep patterns.
+// If invert is true, returns true if the line matches NONE of the patterns.
+// If patterns is empty, returns true (no filter).
+func matchesGrep(line string, patterns []*regexp.Regexp, invert bool) bool {
+	if len(patterns) == 0 {
+		return true // No filter, include all
+	}
+
+	for _, re := range patterns {
+		if re.MatchString(line) {
+			return !invert
+		}
+	}
+	return invert
+}
+
 // showLogLines shows the last n lines of a file.
 // If parser is provided, lines are processed through it for pretty-printing.
 // If parser is nil and logsPretty is true, a new parser is created and flushed.
 // If since/until are non-zero, only lines within the time range are shown.
-func showLogLines(filepath string, n int, parser *logparser.Parser, since, until time.Time) error {
+// If grepPatterns is non-empty, only lines matching the patterns are shown.
+// If invert is true, shows lines NOT matching the patterns.
+// contextBefore/contextAfter add context lines around matches (like grep -B/-A).
+func showLogLines(filepath string, n int, parser *logparser.Parser, since, until time.Time, grepPatterns []*regexp.Regexp, invert bool, contextBefore, contextAfter int) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
@@ -234,14 +322,22 @@ func showLogLines(filepath string, n int, parser *logparser.Parser, since, until
 	}
 
 	hasTimeFilter := !since.IsZero() || !until.IsZero()
+	hasGrepFilter := len(grepPatterns) > 0
+	hasContext := contextBefore > 0 || contextAfter > 0
 
 	// Read the file and collect lines
-	lines := make([]string, 0, n)
 	scanner := bufio.NewScanner(file)
 
 	// Use a larger buffer for potentially long lines
 	buf := make([]byte, 0, 64*1024)
 	scanner.Buffer(buf, 1024*1024)
+
+	// For grep with context, we need to track all lines and their match status
+	type lineWithMatch struct {
+		text    string
+		matches bool
+	}
+	var allLines []lineWithMatch
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -251,9 +347,11 @@ func showLogLines(filepath string, n int, parser *logparser.Parser, since, until
 			continue
 		}
 
-		lines = append(lines, line)
-		if len(lines) > n {
-			lines = lines[1:] // Keep only last n lines
+		if hasGrepFilter {
+			matches := matchesGrep(line, grepPatterns, invert)
+			allLines = append(allLines, lineWithMatch{text: line, matches: matches})
+		} else {
+			allLines = append(allLines, lineWithMatch{text: line, matches: true})
 		}
 	}
 
@@ -261,8 +359,58 @@ func showLogLines(filepath string, n int, parser *logparser.Parser, since, until
 		return fmt.Errorf("error reading log file: %w", err)
 	}
 
-	if len(lines) == 0 && hasTimeFilter {
-		fmt.Println("(no matching log lines in the specified time range)")
+	// Apply grep filter with optional context
+	var filtered []string
+	if hasGrepFilter && hasContext {
+		// Mark lines to include based on proximity to matches
+		include := make([]bool, len(allLines))
+		for i, l := range allLines {
+			if l.matches {
+				// Include this line and context
+				start := i - contextBefore
+				if start < 0 {
+					start = 0
+				}
+				end := i + contextAfter + 1
+				if end > len(allLines) {
+					end = len(allLines)
+				}
+				for j := start; j < end; j++ {
+					include[j] = true
+				}
+			}
+		}
+
+		// Collect included lines, adding separators between non-adjacent groups
+		lastIncluded := -2 // Track last included index for separator logic
+		for i, l := range allLines {
+			if include[i] {
+				// Add separator if there's a gap (non-adjacent)
+				if lastIncluded >= 0 && i > lastIncluded+1 {
+					filtered = append(filtered, "--")
+				}
+				filtered = append(filtered, l.text)
+				lastIncluded = i
+			}
+		}
+	} else {
+		// Simple filter without context
+		for _, l := range allLines {
+			if l.matches {
+				filtered = append(filtered, l.text)
+			}
+		}
+	}
+
+	// Keep last n lines
+	if len(filtered) > n {
+		filtered = filtered[len(filtered)-n:]
+	}
+
+	if len(filtered) == 0 {
+		if hasTimeFilter || hasGrepFilter {
+			fmt.Println("(no matching log lines)")
+		}
 		return nil
 	}
 
@@ -272,14 +420,19 @@ func showLogLines(filepath string, n int, parser *logparser.Parser, since, until
 		if ownParser {
 			parser = logparser.NewParser(os.Stdout)
 		}
-		for _, line := range lines {
-			parser.ProcessLine(line)
+		for _, line := range filtered {
+			// Don't pretty-print the separator
+			if line == "--" {
+				fmt.Println("--")
+			} else {
+				parser.ProcessLine(line)
+			}
 		}
 		if ownParser {
 			parser.Flush()
 		}
 	} else {
-		for _, line := range lines {
+		for _, line := range filtered {
 			fmt.Println(line)
 		}
 	}
@@ -290,7 +443,9 @@ func showLogLines(filepath string, n int, parser *logparser.Parser, since, until
 // followFile follows a file in real-time.
 // If since is non-zero, only shows lines with timestamps after that time.
 // The until parameter is ignored in follow mode (warning already shown to user).
-func followFile(filepath string, since, until time.Time) error {
+// If grepPatterns is non-empty, only lines matching the patterns are shown.
+// Context flags are not supported in follow mode (warning already shown to user).
+func followFile(filepath string, since, until time.Time, grepPatterns []*regexp.Regexp, invert bool) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
@@ -303,8 +458,8 @@ func followFile(filepath string, since, until time.Time) error {
 		parser = logparser.NewParser(os.Stdout)
 	}
 
-	// First, show last few lines for context (with time filter applied)
-	if err := showLogLines(filepath, logsLines, parser, since, until); err != nil {
+	// First, show last few lines for context (with time and grep filter applied, no context lines in follow mode)
+	if err := showLogLines(filepath, logsLines, parser, since, until, grepPatterns, invert, 0, 0); err != nil {
 		return err
 	}
 
@@ -334,6 +489,11 @@ func followFile(filepath string, since, until time.Time) error {
 
 		// Apply time filter for follow mode (only --since matters, --until is ignored)
 		if !since.IsZero() && !isLineInTimeRange(line, since, time.Time{}) {
+			continue
+		}
+
+		// Apply grep filter
+		if !matchesGrep(line, grepPatterns, invert) {
 			continue
 		}
 
