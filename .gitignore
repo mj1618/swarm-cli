@@ -1,6 +1,6 @@
 # Binaries
 /swarm
-/swarm-cli
+swarm-cli
 dist/
 *.exe
 *.exe~

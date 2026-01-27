@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/compose"
 	"github.com/matt/swarm-cli/internal/detach"
+	"github.com/matt/swarm-cli/internal/output"
 	"github.com/matt/swarm-cli/internal/prompt"
 	"github.com/matt/swarm-cli/internal/scope"
 	"github.com/matt/swarm-cli/internal/state"
@@ -246,36 +248,52 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 		runningNames[a.Name] = true
 	}
 
-	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var failedTasks []string
+	// Collect tasks that will actually run (not skipped)
+	var tasksToRun []string
 	var skippedTasks []string
-	var startedCount int
 
 	for _, taskName := range taskNames {
 		task := tasks[taskName]
-
-		// Check if task is already running
 		effectiveName := task.EffectiveName(taskName)
 		if runningNames[effectiveName] {
 			fmt.Printf("  [%s] Already running, skipping\n", taskName)
 			skippedTasks = append(skippedTasks, taskName)
 			continue
 		}
+		tasksToRun = append(tasksToRun, taskName)
+	}
 
-		startedCount++
+	if len(tasksToRun) == 0 {
+		if len(skippedTasks) > 0 {
+			fmt.Printf("\nSkipped %d task(s) already running: %v\n", len(skippedTasks), skippedTasks)
+		}
+		return nil
+	}
+
+	// Create prefixed writer group for colored, synchronized output
+	writers := output.NewWriterGroup(os.Stdout, tasksToRun)
+
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var failedTasks []string
+
+	for _, taskName := range tasksToRun {
+		task := tasks[taskName]
+		writer := writers.Get(taskName)
+
 		wg.Add(1)
 
-		go func(name string, t compose.Task) {
+		go func(name string, t compose.Task, out *output.PrefixedWriter) {
 			defer wg.Done()
+			defer out.Flush()
 
-			if err := runSingleTask(name, t, promptsDir, workingDir); err != nil {
+			if err := runSingleTask(name, t, promptsDir, workingDir, out); err != nil {
 				mu.Lock()
 				failedTasks = append(failedTasks, name)
 				mu.Unlock()
-				fmt.Printf("\n[%s] Error: %v\n", name, err)
+				fmt.Fprintf(out, "Error: %v\n", err)
 			}
-		}(taskName, task)
+		}(taskName, task, writer)
 	}
 
 	wg.Wait()
@@ -288,14 +306,13 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 		return fmt.Errorf("%d task(s) failed: %v", len(failedTasks), failedTasks)
 	}
 
-	if startedCount > 0 {
-		fmt.Println("All tasks completed successfully.")
-	}
+	fmt.Println("All tasks completed successfully.")
 	return nil
 }
 
 // runSingleTask runs a single task in the foreground.
-func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir string) error {
+// The out parameter is used for all task output (supports prefixed writers for parallel execution).
+func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir string, out io.Writer) error {
 	// Generate task ID
 	taskID := state.GenerateID()
 
@@ -316,7 +333,7 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 	effectiveName := task.EffectiveName(taskName)
 	effectiveIterations := task.EffectiveIterations()
 
-	fmt.Printf("\n[%s] Starting (model: %s, iterations: %d)\n", taskName, effectiveModel, effectiveIterations)
+	fmt.Fprintf(out, "Starting (model: %s, iterations: %d)\n", effectiveModel, effectiveIterations)
 
 	// For single iteration, run directly
 	if effectiveIterations == 1 {
@@ -326,10 +343,10 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 			Command: appConfig.Command,
 		}
 		runner := agent.NewRunner(cfg)
-		if err := runner.Run(os.Stdout); err != nil {
+		if err := runner.Run(out); err != nil {
 			return err
 		}
-		fmt.Printf("\n[%s] Completed\n", taskName)
+		fmt.Fprintf(out, "Completed\n")
 		return nil
 	}
 
@@ -373,11 +390,11 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 				agentState.Model = currentState.Model
 			}
 			if currentState.TerminateMode == "immediate" {
-				fmt.Printf("\n[%s] Received termination signal\n", taskName)
+				fmt.Fprintf(out, "Received termination signal\n")
 				return nil
 			}
 			if currentState.TerminateMode == "after_iteration" && i > 1 {
-				fmt.Printf("\n[%s] Terminating after iteration\n", taskName)
+				fmt.Fprintf(out, "Terminating after iteration\n")
 				return nil
 			}
 		}
@@ -385,7 +402,7 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		agentState.CurrentIter = i
 		_ = mgr.Update(agentState)
 
-		fmt.Printf("\n[%s] === Iteration %d/%d ===\n", taskName, i, agentState.Iterations)
+		fmt.Fprintf(out, "=== Iteration %d/%d ===\n", i, agentState.Iterations)
 
 		cfg := agent.Config{
 			Model:   agentState.Model,
@@ -394,12 +411,12 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		}
 
 		runner := agent.NewRunner(cfg)
-		if err := runner.Run(os.Stdout); err != nil {
-			fmt.Printf("\n[%s] Agent error (continuing): %v\n", taskName, err)
+		if err := runner.Run(out); err != nil {
+			fmt.Fprintf(out, "Agent error (continuing): %v\n", err)
 		}
 	}
 
-	fmt.Printf("\n[%s] Completed (%d iterations)\n", taskName, agentState.Iterations)
+	fmt.Fprintf(out, "Completed (%d iterations)\n", agentState.Iterations)
 	return nil
 }
 
