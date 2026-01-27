@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/matt/swarm-cli/internal/label"
 	"github.com/matt/swarm-cli/internal/process"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
@@ -14,6 +15,8 @@ var (
 	updateName           string
 	updateTerminate      bool
 	updateTerminateAfter bool
+	updateFilterLabels   []string
+	updateSetLabels      []string
 )
 
 var updateCmd = &cobra.Command{
@@ -23,7 +26,12 @@ var updateCmd = &cobra.Command{
 	Long: `Update the configuration of a running agent or terminate it.
 
 The agent can be specified by its ID, name, or special identifier:
-  - @last or _ : the most recently started agent`,
+  - @last or _ : the most recently started agent
+
+Use --filter-label to update all agents matching the specified labels.
+When using --filter-label, the agent-id-or-name argument is not required.
+
+Use --set-label to add or update labels on an agent.`,
 	Example: `  # Terminate immediately (by ID)
   swarm update abc123 --terminate
 
@@ -45,17 +53,96 @@ The agent can be specified by its ID, name, or special identifier:
 
   # Rename an agent
   swarm update abc123 --name new-name
-  swarm update my-agent -N better-name`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		agentIdentifier := args[0]
+  swarm update my-agent -N better-name
 
+  # Add or update labels on an agent
+  swarm update abc123 --set-label team=frontend
+  swarm update abc123 --set-label priority=high --set-label env=staging
+
+  # Update iterations for all agents with a specific label
+  swarm update --filter-label team=frontend --iterations 50
+
+  # Update model for all agents with multiple labels
+  swarm update --filter-label env=staging --filter-label priority=high -m claude-sonnet-4-20250514`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
 		if err != nil {
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
+		// Parse set-labels
+		var labelsToSet map[string]string
+		if len(updateSetLabels) > 0 {
+			labelsToSet, err = label.ParseMultiple(updateSetLabels)
+			if err != nil {
+				return fmt.Errorf("invalid set-label: %w", err)
+			}
+		}
+
+		// Handle label-based batch update
+		if len(updateFilterLabels) > 0 {
+			labelFilters, err := label.ParseMultiple(updateFilterLabels)
+			if err != nil {
+				return fmt.Errorf("invalid filter-label: %w", err)
+			}
+
+			// For batch operations, we need at least one actual update
+			if !cmd.Flags().Changed("iterations") && !cmd.Flags().Changed("model") && len(labelsToSet) == 0 {
+				return fmt.Errorf("batch update requires at least one change (--iterations, --model, or --set-label)")
+			}
+
+			// Get all running agents
+			agents, err := mgr.List(true) // true = only running
+			if err != nil {
+				return fmt.Errorf("failed to list agents: %w", err)
+			}
+
+			// Filter by labels
+			var matched []*state.AgentState
+			for _, agent := range agents {
+				if label.Match(agent.Labels, labelFilters) {
+					matched = append(matched, agent)
+				}
+			}
+
+			if len(matched) == 0 {
+				fmt.Println("No running agents found matching the specified labels")
+				return nil
+			}
+
+			// Update all matching agents
+			updated := 0
+			for _, agent := range matched {
+				if cmd.Flags().Changed("iterations") {
+					agent.Iterations = updateIterations
+				}
+				if cmd.Flags().Changed("model") {
+					agent.Model = updateModel
+				}
+				if len(labelsToSet) > 0 {
+					agent.Labels = label.Merge(agent.Labels, labelsToSet)
+				}
+
+				if err := mgr.Update(agent); err != nil {
+					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
+					continue
+				}
+				fmt.Printf("Updated agent %s\n", agent.ID)
+				updated++
+			}
+
+			fmt.Printf("Updated %d agent(s)\n", updated)
+			return nil
+		}
+
+		// Single agent mode - require argument
+		if len(args) == 0 {
+			return fmt.Errorf("agent-id-or-name is required (or use --filter-label for batch operations)")
+		}
+
+		agentIdentifier := args[0]
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
@@ -86,12 +173,20 @@ The agent can be specified by its ID, name, or special identifier:
 			// If same name, skip silently (no error, no message)
 		}
 
-		// For operations other than rename, agent must be running
+		// Handle label updates (works for both running and terminated agents)
+		labelsUpdated := false
+		if len(labelsToSet) > 0 {
+			agent.Labels = label.Merge(agent.Labels, labelsToSet)
+			labelsUpdated = true
+			fmt.Printf("Updated labels: %s\n", label.Format(agent.Labels))
+		}
+
+		// For operations other than rename and labels, agent must be running
 		requiresRunning := updateTerminate || updateTerminateAfter ||
 			cmd.Flags().Changed("iterations") || cmd.Flags().Changed("model")
 		if requiresRunning && agent.Status != "running" {
-			if nameUpdated {
-				// Save the name change even if we can't do other operations
+			if nameUpdated || labelsUpdated {
+				// Save changes even if we can't do other operations
 				if err := mgr.Update(agent); err != nil {
 					return fmt.Errorf("failed to update agent state: %w", err)
 				}
@@ -125,7 +220,7 @@ The agent can be specified by its ID, name, or special identifier:
 		}
 
 		// Handle configuration changes
-		updated := nameUpdated
+		updated := nameUpdated || labelsUpdated
 
 		if cmd.Flags().Changed("iterations") {
 			agent.Iterations = updateIterations
@@ -157,6 +252,8 @@ func init() {
 	updateCmd.Flags().StringVarP(&updateName, "name", "N", "", "Set new name for the agent")
 	updateCmd.Flags().BoolVar(&updateTerminate, "terminate", false, "Terminate agent immediately")
 	updateCmd.Flags().BoolVar(&updateTerminateAfter, "terminate-after", false, "Terminate after current iteration")
+	updateCmd.Flags().StringArrayVar(&updateFilterLabels, "filter-label", nil, "Filter agents by label for batch operations (can be repeated)")
+	updateCmd.Flags().StringArrayVarP(&updateSetLabels, "set-label", "l", nil, "Set or update label on agent (key=value format, can be repeated)")
 
 	// Add dynamic completion for agent identifier and model flag
 	updateCmd.ValidArgsFunction = completeAgentIdentifier

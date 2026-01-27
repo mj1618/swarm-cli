@@ -10,6 +10,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/detach"
+	"github.com/matt/swarm-cli/internal/label"
 	"github.com/matt/swarm-cli/internal/prompt"
 	"github.com/matt/swarm-cli/internal/runner"
 	"github.com/matt/swarm-cli/internal/scope"
@@ -40,6 +41,8 @@ var (
 	runInternalStartIter   int
 	runOnComplete          string
 	runInternalOnComplete  string
+	runLabels              []string
+	runInternalLabels      []string
 )
 
 var runCmd = &cobra.Command{
@@ -48,7 +51,10 @@ var runCmd = &cobra.Command{
 	Long: `Run an agent with a specified prompt and model.
 
 By default, runs a single iteration. Use -n to run multiple iterations.
-When running multiple iterations, agent failures do not stop the run.`,
+When running multiple iterations, agent failures do not stop the run.
+
+Labels can be attached to agents for categorization and filtering using the
+--label (-l) flag. Labels are key-value pairs in the format key=value.`,
 	Example: `  # Interactive prompt selection (single iteration)
   swarm run
 
@@ -86,7 +92,13 @@ When running multiple iterations, agent failures do not stop the run.`,
   swarm run -p coder -C /path/to/project
 
   # Run agent in a subdirectory
-  swarm run -p frontend -C ./frontend -d`,
+  swarm run -p frontend -C ./frontend -d
+
+  # Run with labels for categorization
+  swarm run -p task -l team=frontend -l priority=high
+
+  # Run with multiple labels
+  swarm run -p task -l env=staging -l ticket=PROJ-123 -d`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get working directory (from flag or current)
 		var workingDir string
@@ -354,6 +366,21 @@ When running multiple iterations, agent failures do not stop the run.`,
 			effectiveOnComplete = runInternalOnComplete
 		}
 
+		// Parse labels
+		// For detached child, use labels passed from parent
+		var labels map[string]string
+		labelSource := runLabels
+		if runInternalDetached && len(runInternalLabels) > 0 {
+			labelSource = runInternalLabels
+		}
+		if len(labelSource) > 0 {
+			var err error
+			labels, err = label.ParseMultiple(labelSource)
+			if err != nil {
+				return fmt.Errorf("invalid label: %w", err)
+			}
+		}
+
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
 			// Use pre-generated task ID for log file
@@ -410,6 +437,10 @@ When running multiple iterations, agent failures do not stop the run.`,
 			if runOnComplete != "" {
 				detachedArgs = append(detachedArgs, "--_internal-on-complete", runOnComplete)
 			}
+			// Pass labels to child
+			for _, l := range runLabels {
+				detachedArgs = append(detachedArgs, "--_internal-label", l)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
@@ -433,6 +464,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			agentState := &state.AgentState{
 				ID:          taskID,
 				Name:        effectiveName,
+				Labels:      labels,
 				PID:         pid,
 				Prompt:      promptName,
 				Model:       effectiveModel,
@@ -487,6 +519,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			agentState := &state.AgentState{
 				ID:          taskID,
 				Name:        effectiveName,
+				Labels:      labels,
 				PID:         os.Getpid(),
 				Prompt:      promptName,
 				Model:       effectiveModel,
@@ -595,6 +628,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			agentState = &state.AgentState{
 				ID:          taskID,
 				Name:        effectiveName,
+				Labels:      labels,
 				PID:         os.Getpid(),
 				Prompt:      promptName,
 				Model:       effectiveModel,
@@ -684,6 +718,9 @@ func init() {
 	runCmd.Flags().StringVar(&runOnComplete, "on-complete", "", "Command to run when agent completes")
 	runCmd.Flags().StringVar(&runInternalOnComplete, "_internal-on-complete", "", "Internal flag for passing on-complete to detached child")
 	runCmd.Flags().MarkHidden("_internal-on-complete")
+	runCmd.Flags().StringArrayVarP(&runLabels, "label", "l", nil, "Label to attach (key=value format, can be repeated)")
+	runCmd.Flags().StringArrayVar(&runInternalLabels, "_internal-label", nil, "Internal flag for passing labels to detached child")
+	runCmd.Flags().MarkHidden("_internal-label")
 
 	// Add dynamic completion for prompt and model flags
 	runCmd.RegisterFlagCompletionFunc("prompt", completePromptName)

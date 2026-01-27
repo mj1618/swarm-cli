@@ -17,9 +17,10 @@ import (
 
 // AgentState represents the state of a running agent.
 type AgentState struct {
-	ID            string     `json:"id"`
-	Name          string     `json:"name,omitempty"`
-	PID           int        `json:"pid"`
+	ID            string            `json:"id"`
+	Name          string            `json:"name,omitempty"`
+	Labels        map[string]string `json:"labels,omitempty"`
+	PID           int               `json:"pid"`
 	Prompt        string     `json:"prompt"`
 	Model         string     `json:"model"`
 	StartedAt     time.Time  `json:"started_at"`

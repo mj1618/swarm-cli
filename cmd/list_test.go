@@ -76,7 +76,7 @@ func TestFilterAgentsByStatus(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			filtered := filterAgents(agents, "", "", "", tt.statusFilter)
+			filtered := filterAgents(agents, "", "", "", tt.statusFilter, nil)
 
 			// Check expected IDs are present
 			for _, expectedID := range tt.expectedIDs {
@@ -138,7 +138,7 @@ func TestFilterAgentsCaseInsensitive(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.filter, func(t *testing.T) {
-			filtered := filterAgents(agents, "", "", "", tc.filter)
+			filtered := filterAgents(agents, "", "", "", tc.filter, nil)
 			if len(filtered) != 1 {
 				t.Errorf("expected 1 result for filter %q, got %d", tc.filter, len(filtered))
 				return
@@ -182,7 +182,7 @@ func TestFilterAgentsCombinedFilters(t *testing.T) {
 
 	// Test combined prompt + status filter
 	t.Run("prompt and pausing status", func(t *testing.T) {
-		filtered := filterAgents(agents, "", "coder", "", "pausing")
+		filtered := filterAgents(agents, "", "coder", "", "pausing", nil)
 		if len(filtered) != 1 {
 			t.Errorf("expected 1 result, got %d", len(filtered))
 			return
@@ -194,7 +194,7 @@ func TestFilterAgentsCombinedFilters(t *testing.T) {
 
 	// Test combined model + status filter
 	t.Run("model and paused status", func(t *testing.T) {
-		filtered := filterAgents(agents, "", "", "sonnet", "paused")
+		filtered := filterAgents(agents, "", "", "sonnet", "paused", nil)
 		if len(filtered) != 1 {
 			t.Errorf("expected 1 result, got %d", len(filtered))
 			return
@@ -289,7 +289,7 @@ func TestFilterAgentsByName(t *testing.T) {
 
 	// Test name filter
 	t.Run("filter by name substring", func(t *testing.T) {
-		filtered := filterAgents(agents, "coder", "", "", "")
+		filtered := filterAgents(agents, "coder", "", "", "", nil)
 		if len(filtered) != 2 {
 			t.Errorf("expected 2 agents, got %d", len(filtered))
 		}
@@ -310,7 +310,7 @@ func TestFilterAgentsByName(t *testing.T) {
 
 	// Test case insensitivity
 	t.Run("case insensitive match", func(t *testing.T) {
-		filtered := filterAgents(agents, "CODER", "", "", "")
+		filtered := filterAgents(agents, "CODER", "", "", "", nil)
 		if len(filtered) != 2 {
 			t.Errorf("expected 2 agents with case-insensitive match, got %d", len(filtered))
 		}
@@ -318,7 +318,7 @@ func TestFilterAgentsByName(t *testing.T) {
 
 	// Test combined name + model filter
 	t.Run("name and model combined", func(t *testing.T) {
-		filtered := filterAgents(agents, "coder", "", "opus", "")
+		filtered := filterAgents(agents, "coder", "", "opus", "", nil)
 		if len(filtered) != 1 {
 			t.Errorf("expected 1 agent matching name AND model, got %d", len(filtered))
 		}
@@ -329,7 +329,7 @@ func TestFilterAgentsByName(t *testing.T) {
 
 	// Test combined name + status filter
 	t.Run("name and status combined", func(t *testing.T) {
-		filtered := filterAgents(agents, "coder", "", "", "running")
+		filtered := filterAgents(agents, "coder", "", "", "running", nil)
 		if len(filtered) != 2 {
 			t.Errorf("expected 2 agents matching name AND status, got %d", len(filtered))
 		}
@@ -337,7 +337,7 @@ func TestFilterAgentsByName(t *testing.T) {
 
 	// Test no match
 	t.Run("no match for nonexistent name", func(t *testing.T) {
-		filtered := filterAgents(agents, "nonexistent", "", "", "")
+		filtered := filterAgents(agents, "nonexistent", "", "", "", nil)
 		if len(filtered) != 0 {
 			t.Errorf("expected 0 agents, got %d", len(filtered))
 		}
@@ -346,7 +346,7 @@ func TestFilterAgentsByName(t *testing.T) {
 	// Test empty name agents don't match
 	t.Run("empty name agents don't match filter", func(t *testing.T) {
 		// Filtering for "task" should not match the empty-named agent by name
-		filtered := filterAgents(agents, "task", "", "", "")
+		filtered := filterAgents(agents, "task", "", "", "", nil)
 		if len(filtered) != 0 {
 			t.Errorf("expected 0 agents (empty name shouldn't match), got %d", len(filtered))
 		}
@@ -354,7 +354,7 @@ func TestFilterAgentsByName(t *testing.T) {
 
 	// Test exact name match
 	t.Run("exact name match", func(t *testing.T) {
-		filtered := filterAgents(agents, "reviewer", "", "", "")
+		filtered := filterAgents(agents, "reviewer", "", "", "", nil)
 		if len(filtered) != 1 {
 			t.Errorf("expected 1 agent, got %d", len(filtered))
 		}

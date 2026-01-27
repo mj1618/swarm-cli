@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/matt/swarm-cli/internal/label"
 	"github.com/matt/swarm-cli/internal/scope"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
@@ -22,6 +23,8 @@ var listStatus string
 var listCount bool
 var listLast int
 var listLatest bool
+var listLabels []string
+var listShowLabels bool
 
 var listCmd = &cobra.Command{
 	Use:     "list",
@@ -38,11 +41,13 @@ Filter options:
   --prompt, -p    Filter by prompt name (substring match, case-insensitive)
   --model, -m     Filter by model name (substring match, case-insensitive)
   --status        Filter by status (running, pausing, paused, or terminated)
+  --label, -L     Filter by label (key=value for exact match, key for existence check)
 
 Output options:
   --count         Output only the count of matching agents
   --last, -n      Show only the N most recently started agents
   --latest, -l    Show only the most recently started agent (same as --last 1)
+  --show-labels   Show labels column in table output
 
 Multiple filters are combined with AND logic (all conditions must match).`,
 	Example: `  # List running agents in current project
@@ -100,7 +105,22 @@ Multiple filters are combined with AND logic (all conditions must match).`,
   swarm list --name coder --status running
   swarm list --prompt coder --model sonnet
   swarm list -a --status terminated --prompt planner
-  swarm list --name coder --last 3`,
+  swarm list --name coder --last 3
+
+  # Filter by label (exact match)
+  swarm list --label team=frontend
+
+  # Filter by label existence (has the label, any value)
+  swarm list --label team
+
+  # Multiple label filters (AND logic)
+  swarm list --label team=frontend --label priority=high
+
+  # Show labels column
+  swarm list --show-labels
+
+  # Combine label filter with other filters
+  swarm list --label team=frontend --status running --last 5`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Handle --latest as alias for --last 1
 		if listLatest {
@@ -130,6 +150,12 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 			}
 		}
 
+		// Parse label filters
+		labelFilters, err := label.ParseMultiple(listLabels)
+		if err != nil {
+			return fmt.Errorf("invalid label filter: %w", err)
+		}
+
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
 		if err != nil {
@@ -144,7 +170,7 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 		}
 
 		// Apply filters
-		agents = filterAgents(agents, listName, listPrompt, listModel, listStatus)
+		agents = filterAgents(agents, listName, listPrompt, listModel, listStatus, labelFilters)
 
 		// Apply --last limit (agents are sorted oldest-first, so we want last N)
 		if listLast > 0 && len(agents) > listLast {
@@ -169,7 +195,7 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 		}
 
 		// Check for helpful hints when no agents match
-		if len(agents) == 0 && (listName != "" || listPrompt != "" || listModel != "" || listStatus != "") {
+		if len(agents) == 0 && (listName != "" || listPrompt != "" || listModel != "" || listStatus != "" || len(listLabels) > 0) {
 			// Check if filtering for terminated without -a flag
 			if strings.ToLower(listStatus) == "terminated" && !listAll {
 				if !listQuiet {
@@ -227,16 +253,27 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 			colStatus    = 12
 			colIteration = 10
 			colDir       = 30
+			colLabels    = 30
 		)
 
-		// Header - include DIRECTORY column in global mode
+		// Header - include DIRECTORY column in global mode, LABELS column if --show-labels
 		header := color.New(color.Bold)
 		if GetScope() == scope.ScopeGlobal {
-			header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
-				colID, "ID", colName, "NAME", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
+			if listShowLabels {
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colLabels, "LABELS", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
+			} else {
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
+			}
 		} else {
-			header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
-				colID, "ID", colName, "NAME", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
+			if listShowLabels {
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colLabels, "LABELS", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
+			} else {
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
+			}
 		}
 
 		for _, a := range agents {
@@ -282,8 +319,18 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 				name = name[:colName-3] + "..."
 			}
 
+			// Format labels for display
+			labelsStr := label.Format(a.Labels)
+			if len(labelsStr) > colLabels {
+				labelsStr = labelsStr[:colLabels-3] + "..."
+			}
+
 			// Print fixed-width columns, with status colored separately
-			fmt.Printf("%-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colPrompt, prompt, colModel, a.Model)
+			if listShowLabels {
+				fmt.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colLabels, labelsStr, colPrompt, prompt, colModel, a.Model)
+			} else {
+				fmt.Printf("%-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colPrompt, prompt, colModel, a.Model)
+			}
 			statusColor.Printf("%-*s", colStatus, statusStr)
 			if GetScope() == scope.ScopeGlobal {
 				dir := a.WorkingDir
@@ -300,10 +347,10 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 	},
 }
 
-// filterAgents applies name, prompt, model, and status filters to the agent list.
+// filterAgents applies name, prompt, model, status, and label filters to the agent list.
 // All non-empty filters must match (AND logic).
-func filterAgents(agents []*state.AgentState, nameFilter, promptFilter, modelFilter, statusFilter string) []*state.AgentState {
-	if nameFilter == "" && promptFilter == "" && modelFilter == "" && statusFilter == "" {
+func filterAgents(agents []*state.AgentState, nameFilter, promptFilter, modelFilter, statusFilter string, labelFilters map[string]string) []*state.AgentState {
+	if nameFilter == "" && promptFilter == "" && modelFilter == "" && statusFilter == "" && len(labelFilters) == 0 {
 		return agents
 	}
 
@@ -344,6 +391,11 @@ func filterAgents(agents []*state.AgentState, nameFilter, promptFilter, modelFil
 			}
 		}
 
+		// Check label filters
+		if len(labelFilters) > 0 && !label.Match(agent.Labels, labelFilters) {
+			continue
+		}
+
 		filtered = append(filtered, agent)
 	}
 
@@ -367,4 +419,8 @@ func init() {
 	// Last/Latest flags
 	listCmd.Flags().IntVarP(&listLast, "last", "n", 0, "Show only the N most recently started agents")
 	listCmd.Flags().BoolVarP(&listLatest, "latest", "l", false, "Show only the most recently started agent")
+
+	// Label flags
+	listCmd.Flags().StringArrayVarP(&listLabels, "label", "L", nil, "Filter by label (key=value for exact match, key for existence check)")
+	listCmd.Flags().BoolVar(&listShowLabels, "show-labels", false, "Show labels column in table output")
 }

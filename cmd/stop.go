@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/matt/swarm-cli/internal/label"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -11,6 +12,7 @@ import (
 var (
 	stopNoWait  bool
 	stopTimeout int
+	stopLabels  []string
 )
 
 var stopCmd = &cobra.Command{
@@ -25,7 +27,10 @@ The agent will finish its current iteration and then wait until resumed
 with the 'start' command. Use 'kill' to terminate a paused agent.
 
 By default, the command waits until the agent has finished its current
-iteration and entered the paused state. Use --no-wait to return immediately.`,
+iteration and entered the paused state. Use --no-wait to return immediately.
+
+Use --label to stop all running agents matching the specified labels.
+When using --label, the agent-id-or-name argument is not required.`,
 	Example: `  # Stop an agent by ID (waits for pause)
   swarm stop abc123
 
@@ -40,17 +45,69 @@ iteration and entered the paused state. Use --no-wait to return immediately.`,
   swarm stop my-agent --no-wait
 
   # Custom timeout (default 300 seconds)
-  swarm stop my-agent --timeout 60`,
-	Args: cobra.ExactArgs(1),
-	RunE: func(cmd *cobra.Command, args []string) error {
-		agentIdentifier := args[0]
+  swarm stop my-agent --timeout 60
 
+  # Stop all agents with a specific label
+  swarm stop --label team=backend
+
+  # Stop all agents with multiple labels (AND logic)
+  swarm stop --label env=staging --label priority=low`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
 		if err != nil {
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
+		// Handle label-based batch stop
+		if len(stopLabels) > 0 {
+			labelFilters, err := label.ParseMultiple(stopLabels)
+			if err != nil {
+				return fmt.Errorf("invalid label filter: %w", err)
+			}
+
+			// Get all running agents
+			agents, err := mgr.List(true) // true = only running
+			if err != nil {
+				return fmt.Errorf("failed to list agents: %w", err)
+			}
+
+			// Filter by labels and not already paused
+			var matched []*state.AgentState
+			for _, agent := range agents {
+				if label.Match(agent.Labels, labelFilters) && !agent.Paused {
+					matched = append(matched, agent)
+				}
+			}
+
+			if len(matched) == 0 {
+				fmt.Println("No running agents found matching the specified labels (or all matching agents are already paused)")
+				return nil
+			}
+
+			// Stop all matching agents
+			stopped := 0
+			for _, agent := range matched {
+				agent.Paused = true
+				if err := mgr.Update(agent); err != nil {
+					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
+					continue
+				}
+				fmt.Printf("Agent %s will pause after current iteration\n", agent.ID)
+				stopped++
+			}
+
+			fmt.Printf("Stopped %d agent(s)\n", stopped)
+			return nil
+		}
+
+		// Single agent mode - require argument
+		if len(args) == 0 {
+			return fmt.Errorf("agent-id-or-name is required (or use --label for batch operations)")
+		}
+
+		agentIdentifier := args[0]
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
@@ -113,6 +170,7 @@ iteration and entered the paused state. Use --no-wait to return immediately.`,
 func init() {
 	stopCmd.Flags().BoolVar(&stopNoWait, "no-wait", false, "Return immediately without waiting for agent to pause")
 	stopCmd.Flags().IntVar(&stopTimeout, "timeout", 300, "Maximum seconds to wait for agent to pause")
+	stopCmd.Flags().StringArrayVarP(&stopLabels, "label", "l", nil, "Stop agents matching label (can be repeated for AND logic)")
 
 	// Add dynamic completion for agent identifier
 	stopCmd.ValidArgsFunction = completeRunningAgentIdentifier

@@ -9,6 +9,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/detach"
+	"github.com/matt/swarm-cli/internal/label"
 	"github.com/matt/swarm-cli/internal/prompt"
 	"github.com/matt/swarm-cli/internal/runner"
 	"github.com/matt/swarm-cli/internal/scope"
@@ -17,15 +18,17 @@ import (
 )
 
 var (
-	restartModel         string
-	restartIterations    int
-	restartForever       bool
-	restartName          string
-	restartDetach        bool
-	restartEnv           []string
-	restartContinue      bool
-	restartInternalStart int
-	restartOnComplete    string
+	restartModel          string
+	restartIterations     int
+	restartForever        bool
+	restartName           string
+	restartDetach         bool
+	restartEnv            []string
+	restartContinue       bool
+	restartInternalStart  int
+	restartOnComplete     string
+	restartLabels         []string
+	restartInternalLabels []string
 )
 
 var restartCmd = &cobra.Command{
@@ -42,7 +45,10 @@ will be appended automatically to make the name unique.
 You can optionally override the model, iterations, or name.
 
 Use --continue to resume from where the agent left off instead of starting
-from iteration 1.`,
+from iteration 1.
+
+Labels from the original agent are preserved. Use --label to add or override
+labels on the restarted agent.`,
 	Example: `  # Restart by ID
   swarm restart abc123
 
@@ -69,7 +75,11 @@ from iteration 1.`,
   swarm restart my-agent -m claude-sonnet-4-20250514
 
   # Override name
-  swarm restart my-agent -N new-name`,
+  swarm restart my-agent -N new-name
+
+  # Add or override labels (original labels are preserved)
+  swarm restart my-agent -l priority=high
+  swarm restart my-agent -l team=frontend -l env=staging`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -173,6 +183,27 @@ from iteration 1.`,
 		// Use original working directory for the restarted agent
 		effectiveWorkingDir := oldAgent.WorkingDir
 
+		// Handle labels: preserve original labels, allow adding/overriding with new ones
+		// For detached child, use labels passed from parent
+		var effectiveLabels map[string]string
+		if len(restartInternalLabels) > 0 {
+			effectiveLabels, err = label.ParseMultiple(restartInternalLabels)
+			if err != nil {
+				return fmt.Errorf("invalid label: %w", err)
+			}
+		} else {
+			// Start with original labels
+			effectiveLabels = oldAgent.Labels
+			// Add/override with new labels if provided
+			if len(restartLabels) > 0 {
+				newLabels, err := label.ParseMultiple(restartLabels)
+				if err != nil {
+					return fmt.Errorf("invalid label: %w", err)
+				}
+				effectiveLabels = label.Merge(effectiveLabels, newLabels)
+			}
+		}
+
 		// Parse and expand environment variables (does not preserve original env vars)
 		var expandedEnv []string
 		var envNames []string
@@ -240,6 +271,10 @@ from iteration 1.`,
 			if restartOnComplete != "" {
 				detachedArgs = append(detachedArgs, "--_internal-on-complete", restartOnComplete)
 			}
+			// Pass labels to child (merged labels from original + new)
+			for k, v := range effectiveLabels {
+				detachedArgs = append(detachedArgs, "--_internal-label", fmt.Sprintf("%s=%s", k, v))
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, effectiveWorkingDir)
@@ -251,6 +286,7 @@ from iteration 1.`,
 			agentState := &state.AgentState{
 				ID:          agentID,
 				Name:        effectiveName,
+				Labels:      effectiveLabels,
 				PID:         pid,
 				Prompt:      promptName,
 				Model:       effectiveModel,
@@ -302,6 +338,7 @@ from iteration 1.`,
 		agentState := &state.AgentState{
 			ID:          state.GenerateID(),
 			Name:        effectiveName,
+			Labels:      effectiveLabels,
 			PID:         os.Getpid(),
 			Prompt:      promptName,
 			Model:       effectiveModel,
@@ -352,6 +389,9 @@ func init() {
 	restartCmd.Flags().IntVar(&restartInternalStart, "_internal-start-iter", 0, "Internal flag for passing start iteration to detached child")
 	restartCmd.Flags().MarkHidden("_internal-start-iter")
 	restartCmd.Flags().StringVar(&restartOnComplete, "on-complete", "", "Command to run when agent completes")
+	restartCmd.Flags().StringArrayVarP(&restartLabels, "label", "l", nil, "Label to add or override (key=value format, can be repeated)")
+	restartCmd.Flags().StringArrayVar(&restartInternalLabels, "_internal-label", nil, "Internal flag for passing labels to detached child")
+	restartCmd.Flags().MarkHidden("_internal-label")
 
 	// Add dynamic completion for agent identifier and model flag
 	restartCmd.ValidArgsFunction = completeAgentIdentifier

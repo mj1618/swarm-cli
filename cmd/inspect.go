@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/matt/swarm-cli/internal/label"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -65,6 +66,9 @@ The agent can be specified by its ID, name, or special identifier:
 		fmt.Printf("ID:            %s\n", agent.ID)
 		if agent.Name != "" {
 			fmt.Printf("Name:          %s\n", agent.Name)
+		}
+		if len(agent.Labels) > 0 {
+			fmt.Printf("Labels:        %s\n", label.Format(agent.Labels))
 		}
 		fmt.Printf("PID:           %d\n", agent.PID)
 		fmt.Printf("Prompt:        %s\n", agent.Prompt)
