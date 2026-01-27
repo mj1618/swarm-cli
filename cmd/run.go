@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -19,21 +20,22 @@ import (
 )
 
 var (
-	runModel            string
-	runPrompt           string
-	runPromptFile       string
-	runPromptString     string
-	runIterations       int
-	runName             string
-	runDetach           bool
-	runInternalDetached bool
-	runInternalTaskID   string
-	runEnv              []string
-	runInternalEnv      []string
-	runTimeout          string
-	runIterTimeout      string
-	runInternalTimeout  string
+	runModel               string
+	runPrompt              string
+	runPromptFile          string
+	runPromptString        string
+	runIterations          int
+	runName                string
+	runDetach              bool
+	runInternalDetached    bool
+	runInternalTaskID      string
+	runEnv                 []string
+	runInternalEnv         []string
+	runTimeout             string
+	runIterTimeout         string
+	runInternalTimeout     string
 	runInternalIterTimeout string
+	runWorkingDir          string
 )
 
 var runCmd = &cobra.Command{
@@ -65,18 +67,64 @@ When running multiple iterations, agent failures do not stop the run.`,
   swarm run -p my-prompt -m claude-sonnet-4-20250514
 
   # Run in background (detached)
-  swarm run -p my-prompt -n 20 -d`,
+  swarm run -p my-prompt -n 20 -d
+
+  # Run agent in a specific directory
+  swarm run -p coder -C /path/to/project
+
+  # Run agent in a subdirectory
+  swarm run -p frontend -C ./frontend -d`,
 	RunE: func(cmd *cobra.Command, args []string) error {
-		// Get prompts directory based on scope
-		promptsDir, err := GetPromptsDir()
-		if err != nil {
-			return fmt.Errorf("failed to get prompts directory: %w", err)
+		// Get working directory (from flag or current)
+		var workingDir string
+		var err error
+
+		if runWorkingDir != "" {
+			// Resolve relative to current directory
+			if filepath.IsAbs(runWorkingDir) {
+				workingDir = runWorkingDir
+			} else {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to get current directory: %w", err)
+				}
+				workingDir = filepath.Join(cwd, runWorkingDir)
+			}
+
+			// Verify directory exists
+			info, err := os.Stat(workingDir)
+			if err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("working directory does not exist: %s", workingDir)
+				}
+				return fmt.Errorf("failed to access working directory: %w", err)
+			}
+			if !info.IsDir() {
+				return fmt.Errorf("not a directory: %s", workingDir)
+			}
+
+			// Get absolute path for consistency
+			workingDir, err = filepath.Abs(workingDir)
+			if err != nil {
+				return fmt.Errorf("failed to resolve working directory: %w", err)
+			}
+		} else {
+			workingDir, err = scope.CurrentWorkingDir()
+			if err != nil {
+				return fmt.Errorf("failed to get working directory: %w", err)
+			}
 		}
 
-		// Get current working directory
-		workingDir, err := scope.CurrentWorkingDir()
-		if err != nil {
-			return fmt.Errorf("failed to get working directory: %w", err)
+		// Get prompts directory based on scope
+		// For project scope with custom working dir, use prompts from that directory
+		var promptsDir string
+		if runWorkingDir != "" && GetScope() == scope.ScopeProject {
+			promptsDir = filepath.Join(workingDir, "swarm", "prompts")
+		} else {
+			promptsDir, err = GetPromptsDir()
+			if err != nil {
+				return fmt.Errorf("failed to get prompts directory: %w", err)
+			}
 		}
 
 		// Load or select prompt
@@ -277,6 +325,10 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 			if effectiveIterTimeout != "" {
 				detachedArgs = append(detachedArgs, "--_internal-iter-timeout", effectiveIterTimeout)
+			}
+			// Pass working dir to child if specified (use resolved absolute path)
+			if runWorkingDir != "" {
+				detachedArgs = append(detachedArgs, "--working-dir", workingDir)
 			}
 
 			// Start detached process
@@ -577,4 +629,5 @@ func init() {
 	runCmd.Flags().MarkHidden("_internal-timeout")
 	runCmd.Flags().StringVar(&runInternalIterTimeout, "_internal-iter-timeout", "", "Internal flag for passing iter-timeout to detached child")
 	runCmd.Flags().MarkHidden("_internal-iter-timeout")
+	runCmd.Flags().StringVarP(&runWorkingDir, "working-dir", "C", "", "Run agent in specified directory")
 }
