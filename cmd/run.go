@@ -25,6 +25,7 @@ var (
 	runName             string
 	runDetach           bool
 	runInternalDetached bool
+	runInternalTaskID   string
 )
 
 var runCmd = &cobra.Command{
@@ -121,7 +122,11 @@ When running multiple iterations, agent failures do not stop the run.`,
 		}
 
 		// Generate task ID early so it can be injected into prompt
-		taskID := state.GenerateID()
+		// If running as detached child, use the task ID passed from parent
+		taskID := runInternalTaskID
+		if taskID == "" {
+			taskID = state.GenerateID()
+		}
 
 		// Inject task ID into prompt content
 		promptContent = prompt.InjectTaskID(promptContent, taskID)
@@ -153,7 +158,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 
 			// Build args for the detached process
-			detachedArgs := []string{"run", "--_internal-detached"}
+			detachedArgs := []string{"run", "--_internal-detached", "--_internal-task-id", taskID}
 			if globalFlag {
 				detachedArgs = append(detachedArgs, "--global")
 			}
@@ -233,22 +238,31 @@ When running multiple iterations, agent failures do not stop the run.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		// Register this agent with working directory
-		agentState := &state.AgentState{
-			ID:          taskID,
-			Name:        effectiveName,
-			PID:         os.Getpid(),
-			Prompt:      promptName,
-			Model:       effectiveModel,
-			StartedAt:   time.Now(),
-			Iterations:  effectiveIterations,
-			CurrentIter: 0,
-			Status:      "running",
-			WorkingDir:  workingDir,
-		}
+		var agentState *state.AgentState
+		if runInternalDetached {
+			// Detached child: retrieve existing state registered by parent
+			agentState, err = mgr.Get(taskID)
+			if err != nil {
+				return fmt.Errorf("failed to get agent state: %w", err)
+			}
+		} else {
+			// Register this agent with working directory
+			agentState = &state.AgentState{
+				ID:          taskID,
+				Name:        effectiveName,
+				PID:         os.Getpid(),
+				Prompt:      promptName,
+				Model:       effectiveModel,
+				StartedAt:   time.Now(),
+				Iterations:  effectiveIterations,
+				CurrentIter: 0,
+				Status:      "running",
+				WorkingDir:  workingDir,
+			}
 
-		if err := mgr.Register(agentState); err != nil {
-			return fmt.Errorf("failed to register agent: %w", err)
+			if err := mgr.Register(agentState); err != nil {
+				return fmt.Errorf("failed to register agent: %w", err)
+			}
 		}
 
 		// Multi-iteration mode with state management
@@ -365,4 +379,6 @@ func init() {
 	runCmd.Flags().BoolVarP(&runDetach, "detach", "d", false, "Run in detached mode (background)")
 	runCmd.Flags().BoolVar(&runInternalDetached, "_internal-detached", false, "Internal flag for detached execution")
 	runCmd.Flags().MarkHidden("_internal-detached")
+	runCmd.Flags().StringVar(&runInternalTaskID, "_internal-task-id", "", "Internal flag for passing task ID to detached child")
+	runCmd.Flags().MarkHidden("_internal-task-id")
 }
