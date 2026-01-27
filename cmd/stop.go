@@ -18,7 +18,8 @@ var stopCmd = &cobra.Command{
 	Short: "Pause a running agent",
 	Long: `Pause a running agent after the current iteration completes.
 
-The agent can be specified by its ID or name.
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent
 
 The agent will finish its current iteration and then wait until resumed
 with the 'start' command. Use 'kill' to terminate a paused agent.
@@ -30,6 +31,10 @@ iteration and entered the paused state. Use --no-wait to return immediately.`,
 
   # Stop an agent by name
   swarm stop my-agent
+
+  # Stop the most recent agent
+  swarm stop @last
+  swarm stop _
 
   # Return immediately without waiting
   swarm stop my-agent --no-wait
@@ -46,7 +51,7 @@ iteration and entered the paused state. Use --no-wait to return immediately.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(agentIdentifier)
+		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

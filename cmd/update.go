@@ -22,12 +22,17 @@ var updateCmd = &cobra.Command{
 	Short:   "Update configuration of a running agent",
 	Long: `Update the configuration of a running agent or terminate it.
 
-The agent can be specified by its ID or name.`,
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent`,
 	Example: `  # Terminate immediately (by ID)
   swarm update abc123 --terminate
 
   # Terminate immediately (by name)
   swarm update my-agent --terminate
+
+  # Update the most recent agent
+  swarm update @last --iterations 50
+  swarm update _ -m claude-sonnet-4-20250514
 
   # Terminate after current iteration
   swarm update abc123 --terminate-after
@@ -51,7 +56,7 @@ The agent can be specified by its ID or name.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(agentIdentifier)
+		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

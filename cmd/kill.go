@@ -15,7 +15,8 @@ var killCmd = &cobra.Command{
 	Short: "Terminate a running agent",
 	Long: `Terminate a running agent immediately or gracefully.
 
-The agent can be specified by its ID or name.
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent
 
 By default, the agent is terminated immediately. Use --graceful to allow
 the current iteration to complete before terminating.`,
@@ -24,6 +25,10 @@ the current iteration to complete before terminating.`,
 
   # Terminate immediately (by name)
   swarm kill my-agent
+
+  # Terminate the most recent agent
+  swarm kill @last
+  swarm kill _
 
   # Graceful termination (wait for current iteration)
   swarm kill abc123 --graceful`,
@@ -37,7 +42,7 @@ the current iteration to complete before terminating.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(agentIdentifier)
+		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

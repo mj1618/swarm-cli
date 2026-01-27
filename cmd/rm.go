@@ -22,7 +22,8 @@ running agents (this will also terminate them).
 
 Use --logs to also delete the log files associated with removed agents.
 
-The agents can be specified by their IDs or names.`,
+The agents can be specified by their IDs, names, or special identifiers:
+  - @last or _ : the most recently started agent`,
 	Example: `  # Remove a terminated agent by ID
   swarm rm abc123
 
@@ -31,6 +32,10 @@ The agents can be specified by their IDs or names.`,
 
   # Remove by name
   swarm rm my-agent
+
+  # Remove the most recent agent
+  swarm rm @last
+  swarm rm _
 
   # Force remove a running agent
   swarm rm abc123 --force
@@ -53,7 +58,7 @@ The agents can be specified by their IDs or names.`,
 		logsRemoved := 0
 
 		for _, identifier := range args {
-			agent, err := mgr.GetByNameOrID(identifier)
+			agent, err := ResolveAgentIdentifier(mgr, identifier)
 			if err != nil {
 				errors = append(errors, fmt.Sprintf("%s: not found", identifier))
 				continue

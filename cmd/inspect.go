@@ -18,12 +18,17 @@ var inspectCmd = &cobra.Command{
 	Short:   "Display detailed information about an agent",
 	Long: `Display detailed information about a specific agent including its status, configuration, and logs.
 
-The agent can be specified by its process ID or name.`,
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent`,
 	Example: `  # Inspect by process ID
   swarm inspect abc123
 
   # Inspect by agent name
   swarm inspect my-agent
+
+  # Inspect the most recent agent
+  swarm inspect @last
+  swarm inspect _
 
   # Output as JSON
   swarm inspect abc123 --format json`,
@@ -37,7 +42,7 @@ The agent can be specified by its process ID or name.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(processIdentifier)
+		agent, err := ResolveAgentIdentifier(mgr, processIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

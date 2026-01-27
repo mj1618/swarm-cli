@@ -28,8 +28,11 @@ var logsCmd = &cobra.Command{
 	Short:   "View the output of a running or completed agent",
 	Long: `View the log output of a detached agent.
 
-The agent can be specified by its ID or name. Use -f to follow the output
-in real-time, or --tail to specify the number of lines to show.
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent
+
+Use -f to follow the output in real-time, or --tail to specify the number
+of lines to show.
 
 Use --since and --until to filter logs by timestamp. Supported formats:
 - Relative duration: 30s, 5m, 2h, 1d
@@ -41,6 +44,10 @@ Use --since and --until to filter logs by timestamp. Supported formats:
 
   # Follow output of agent named "myagent"
   swarm logs myagent -f
+
+  # Follow logs of the most recent agent
+  swarm logs @last -f
+  swarm logs _ -f
 
   # Show last 100 lines
   swarm logs abc123 --tail 100
@@ -63,7 +70,7 @@ Use --since and --until to filter logs by timestamp. Supported formats:
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(agentIdentifier)
+		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

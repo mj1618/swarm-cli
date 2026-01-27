@@ -206,6 +206,39 @@ func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
 	return nil, fmt.Errorf("agent not found: %s", identifier)
 }
 
+// GetLast returns the most recently started agent.
+// Respects the manager's scope setting.
+// Returns an error if no agents are found.
+func (m *Manager) GetLast() (*AgentState, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, err := m.load()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, fmt.Errorf("no agents found")
+		}
+		return nil, err
+	}
+
+	var latest *AgentState
+	for _, agent := range state.Agents {
+		// Filter by scope
+		if m.scope == scope.ScopeProject && agent.WorkingDir != m.workingDir {
+			continue
+		}
+		if latest == nil || agent.StartedAt.After(latest.StartedAt) {
+			latest = agent
+		}
+	}
+
+	if latest == nil {
+		return nil, fmt.Errorf("no agents found")
+	}
+
+	return latest, nil
+}
+
 // List returns agents filtered by the manager's scope.
 // For ScopeProject, only returns agents started in the manager's working directory.
 // For ScopeGlobal, returns all agents.

@@ -5,6 +5,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/config"
 	"github.com/matt/swarm-cli/internal/scope"
+	"github.com/matt/swarm-cli/internal/state"
 	"github.com/matt/swarm-cli/internal/version"
 	"github.com/spf13/cobra"
 )
@@ -100,4 +101,22 @@ func GetScope() scope.Scope {
 // GetPromptsDir returns the prompts directory based on current scope.
 func GetPromptsDir() (string, error) {
 	return appScope.PromptsDir()
+}
+
+// IsLastIdentifier returns true if the identifier refers to the most recent agent.
+func IsLastIdentifier(identifier string) bool {
+	return identifier == "@last" || identifier == "_"
+}
+
+// ResolveAgentIdentifier resolves an agent identifier to an AgentState.
+// Handles special identifiers like "@last" and "_" which refer to the most recently started agent.
+func ResolveAgentIdentifier(mgr *state.Manager, identifier string) (*state.AgentState, error) {
+	if IsLastIdentifier(identifier) {
+		agent, err := mgr.GetLast()
+		if err != nil {
+			return nil, fmt.Errorf("no recent agent found: %w", err)
+		}
+		return agent, nil
+	}
+	return mgr.GetByNameOrID(identifier)
 }

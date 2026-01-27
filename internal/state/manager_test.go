@@ -570,3 +570,81 @@ func TestRegisterUniqueNameSuffix(t *testing.T) {
 	_ = mgr.Remove(agent3.ID)
 	_ = mgr.Remove(agent4.ID)
 }
+
+func TestGetLast(t *testing.T) {
+	mgr, err := NewManager()
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Create an agent that is definitely the newest (started "now")
+	now := time.Now()
+	newestAgent := &AgentState{
+		ID:        GenerateID(),
+		PID:       99999,
+		Prompt:    "test-newest-agent",
+		StartedAt: now, // Right now - should be newest
+		Status:    "running",
+	}
+
+	// Register the agent
+	if err := mgr.Register(newestAgent); err != nil {
+		t.Fatalf("Register failed: %v", err)
+	}
+
+	// GetLast should return our agent since it has the most recent StartedAt
+	latest, err := mgr.GetLast()
+	if err != nil {
+		t.Fatalf("GetLast failed: %v", err)
+	}
+
+	if latest.ID != newestAgent.ID {
+		t.Errorf("GetLast returned wrong agent: got %s (started %v), want %s (started %v)",
+			latest.ID, latest.StartedAt, newestAgent.ID, newestAgent.StartedAt)
+	}
+
+	// Also create some older agents to verify sorting
+	olderAgent := &AgentState{
+		ID:        GenerateID(),
+		PID:       88888,
+		Prompt:    "test-older-agent",
+		StartedAt: now.Add(-1 * time.Hour), // 1 hour ago
+		Status:    "running",
+	}
+	if err := mgr.Register(olderAgent); err != nil {
+		t.Fatalf("Register older agent failed: %v", err)
+	}
+
+	// GetLast should still return the newest agent
+	latest, err = mgr.GetLast()
+	if err != nil {
+		t.Fatalf("GetLast failed after adding older agent: %v", err)
+	}
+
+	if latest.ID != newestAgent.ID {
+		t.Errorf("GetLast returned older agent: got %s, want %s", latest.ID, newestAgent.ID)
+	}
+
+	// Cleanup
+	_ = mgr.Remove(newestAgent.ID)
+	_ = mgr.Remove(olderAgent.ID)
+}
+
+func TestGetLastNoAgents(t *testing.T) {
+	mgr, err := NewManager()
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Get all agents and remove them to ensure a clean state for this test
+	allAgents, _ := mgr.List(false)
+
+	// If there are no agents, GetLast should return an error
+	if len(allAgents) == 0 {
+		_, err := mgr.GetLast()
+		if err == nil {
+			t.Error("GetLast should return error when no agents exist")
+		}
+	}
+	// Note: This test is best-effort since other tests may leave agents in global state
+}

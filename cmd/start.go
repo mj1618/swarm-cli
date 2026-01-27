@@ -12,14 +12,19 @@ var startCmd = &cobra.Command{
 	Short: "Resume a paused agent",
 	Long: `Resume a paused agent.
 
-The agent can be specified by its ID or name.
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent
 
 The agent will continue from the next iteration after being resumed.`,
 	Example: `  # Resume an agent by ID
   swarm start abc123
 
   # Resume an agent by name
-  swarm start my-agent`,
+  swarm start my-agent
+
+  # Resume the most recent agent
+  swarm start @last
+  swarm start _`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -30,7 +35,7 @@ The agent will continue from the next iteration after being resumed.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agent, err := mgr.GetByNameOrID(agentIdentifier)
+		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}

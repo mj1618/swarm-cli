@@ -29,7 +29,8 @@ var restartCmd = &cobra.Command{
 	Short: "Restart a terminated agent",
 	Long: `Restart a terminated agent with its original configuration.
 
-The agent can be specified by its ID or name.
+The agent can be specified by its ID, name, or special identifier:
+  - @last or _ : the most recently started agent
 
 If the original name is taken by a running agent, a number suffix (-2, -3, etc.)
 will be appended automatically to make the name unique.
@@ -40,6 +41,10 @@ You can optionally override the model, iterations, or name.`,
 
   # Restart by name
   swarm restart my-agent
+
+  # Restart the most recent agent
+  swarm restart @last
+  swarm restart _
 
   # Restart in detached mode
   swarm restart my-agent -d
@@ -75,7 +80,7 @@ You can optionally override the model, iterations, or name.`,
 		}
 
 		// Find the agent to restart
-		oldAgent, err := mgr.GetByNameOrID(agentIdentifier)
+		oldAgent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
 		}
