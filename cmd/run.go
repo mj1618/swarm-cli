@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"os/signal"
@@ -29,6 +30,10 @@ var (
 	runInternalTaskID   string
 	runEnv              []string
 	runInternalEnv      []string
+	runTimeout          string
+	runIterTimeout      string
+	runInternalTimeout  string
+	runInternalIterTimeout string
 )
 
 var runCmd = &cobra.Command{
@@ -186,6 +191,51 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 		}
 
+		// Parse timeout durations
+		// For detached child, use internal flags; otherwise use CLI flags or config
+		var totalTimeout, iterTimeout time.Duration
+		effectiveTimeout := runTimeout
+		effectiveIterTimeout := runIterTimeout
+
+		if runInternalDetached {
+			// Detached child: use values passed from parent
+			if runInternalTimeout != "" {
+				effectiveTimeout = runInternalTimeout
+			}
+			if runInternalIterTimeout != "" {
+				effectiveIterTimeout = runInternalIterTimeout
+			}
+		} else {
+			// Apply config defaults if CLI flags not specified
+			if effectiveTimeout == "" && appConfig.Timeout != "" {
+				effectiveTimeout = appConfig.Timeout
+			}
+			if effectiveIterTimeout == "" && appConfig.IterTimeout != "" {
+				effectiveIterTimeout = appConfig.IterTimeout
+			}
+		}
+
+		if effectiveTimeout != "" {
+			var err error
+			totalTimeout, err = time.ParseDuration(effectiveTimeout)
+			if err != nil {
+				return fmt.Errorf("invalid timeout format %q: %w", effectiveTimeout, err)
+			}
+			if totalTimeout < 0 {
+				return fmt.Errorf("timeout cannot be negative: %s", effectiveTimeout)
+			}
+		}
+		if effectiveIterTimeout != "" {
+			var err error
+			iterTimeout, err = time.ParseDuration(effectiveIterTimeout)
+			if err != nil {
+				return fmt.Errorf("invalid iter-timeout format %q: %w", effectiveIterTimeout, err)
+			}
+			if iterTimeout < 0 {
+				return fmt.Errorf("iter-timeout cannot be negative: %s", effectiveIterTimeout)
+			}
+		}
+
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
 			// Use pre-generated task ID for log file
@@ -221,6 +271,13 @@ When running multiple iterations, agent failures do not stop the run.`,
 			for _, e := range expandedEnv {
 				detachedArgs = append(detachedArgs, "--_internal-env", e)
 			}
+			// Pass timeout values to child
+			if effectiveTimeout != "" {
+				detachedArgs = append(detachedArgs, "--_internal-timeout", effectiveTimeout)
+			}
+			if effectiveIterTimeout != "" {
+				detachedArgs = append(detachedArgs, "--_internal-iter-timeout", effectiveIterTimeout)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
@@ -234,28 +291,42 @@ When running multiple iterations, agent failures do not stop the run.`,
 				return fmt.Errorf("failed to initialize state manager: %w", err)
 			}
 
-		agentState := &state.AgentState{
-			ID:          taskID,
-			Name:        effectiveName,
-			PID:         pid,
-			Prompt:      promptName,
-			Model:       effectiveModel,
-			StartedAt:   time.Now(),
-			Iterations:  effectiveIterations,
-			CurrentIter: 0,
-			Status:      "running",
-			LogFile:     logFile,
-			WorkingDir:  workingDir,
-			EnvNames:    envNames,
-		}
+			// Calculate timeout_at if total timeout is set
+			var timeoutAt *time.Time
+			if totalTimeout > 0 {
+				t := time.Now().Add(totalTimeout)
+				timeoutAt = &t
+			}
 
-		if err := mgr.Register(agentState); err != nil {
-			return fmt.Errorf("failed to register agent: %w", err)
-		}
+			agentState := &state.AgentState{
+				ID:          taskID,
+				Name:        effectiveName,
+				PID:         pid,
+				Prompt:      promptName,
+				Model:       effectiveModel,
+				StartedAt:   time.Now(),
+				Iterations:  effectiveIterations,
+				CurrentIter: 0,
+				Status:      "running",
+				LogFile:     logFile,
+				WorkingDir:  workingDir,
+				EnvNames:    envNames,
+				TimeoutAt:   timeoutAt,
+			}
 
-		fmt.Printf("Started detached agent: %s (PID: %d)\n", taskID, pid)
-		fmt.Printf("Name: %s\n", agentState.Name)
+			if err := mgr.Register(agentState); err != nil {
+				return fmt.Errorf("failed to register agent: %w", err)
+			}
+
+			fmt.Printf("Started detached agent: %s (PID: %d)\n", taskID, pid)
+			fmt.Printf("Name: %s\n", agentState.Name)
 			fmt.Printf("Iterations: %d\n", effectiveIterations)
+			if totalTimeout > 0 {
+				fmt.Printf("Timeout: %v\n", totalTimeout)
+			}
+			if iterTimeout > 0 {
+				fmt.Printf("Iteration timeout: %v\n", iterTimeout)
+			}
 			fmt.Printf("Log file: %s\n", logFile)
 			return nil
 		}
@@ -264,15 +335,27 @@ When running multiple iterations, agent failures do not stop the run.`,
 		if effectiveIterations == 1 {
 			fmt.Printf("Running agent with prompt: %s, model: %s\n", promptName, effectiveModel)
 
+			// Use iter-timeout for single iteration, or total timeout if only that is set
+			singleIterTimeout := iterTimeout
+			if singleIterTimeout == 0 && totalTimeout > 0 {
+				singleIterTimeout = totalTimeout
+			}
+
 			cfg := agent.Config{
 				Model:   effectiveModel,
 				Prompt:  promptContent,
 				Command: appConfig.Command,
 				Env:     expandedEnv,
+				Timeout: singleIterTimeout,
 			}
 
 			runner := agent.NewRunner(cfg)
-			return runner.Run(os.Stdout)
+			err := runner.Run(os.Stdout)
+			if err != nil && strings.Contains(err.Error(), "timed out") {
+				fmt.Printf("\n[swarm] %v\n", err)
+				os.Exit(124) // Exit code 124 matches GNU timeout convention
+			}
+			return err
 		}
 
 		// Create state manager with scope
@@ -289,6 +372,13 @@ When running multiple iterations, agent failures do not stop the run.`,
 				return fmt.Errorf("failed to get agent state: %w", err)
 			}
 		} else {
+			// Calculate timeout_at if total timeout is set
+			var timeoutAt *time.Time
+			if totalTimeout > 0 {
+				t := time.Now().Add(totalTimeout)
+				timeoutAt = &t
+			}
+
 			// Register this agent with working directory
 			agentState = &state.AgentState{
 				ID:          taskID,
@@ -302,6 +392,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 				Status:      "running",
 				WorkingDir:  workingDir,
 				EnvNames:    envNames,
+				TimeoutAt:   timeoutAt,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -311,11 +402,36 @@ When running multiple iterations, agent failures do not stop the run.`,
 
 		// Multi-iteration mode with state management
 		fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
+		if totalTimeout > 0 {
+			fmt.Printf("Total timeout: %v\n", totalTimeout)
+		}
+		if iterTimeout > 0 {
+			fmt.Printf("Iteration timeout: %v\n", iterTimeout)
+		}
+
+		// Set up total timeout context
+		var timeoutCtx context.Context
+		var timeoutCancel context.CancelFunc
+		if totalTimeout > 0 {
+			timeoutCtx, timeoutCancel = context.WithTimeout(context.Background(), totalTimeout)
+			defer timeoutCancel()
+		} else {
+			timeoutCtx = context.Background()
+		}
+
+		// Track if we timed out for proper exit code
+		timedOut := false
 
 		// Ensure cleanup on exit
 		defer func() {
+			if timedOut {
+				agentState.TimeoutReason = "total"
+			}
 			agentState.Status = "terminated"
 			_ = mgr.Update(agentState)
+			if timedOut {
+				os.Exit(124) // Exit code 124 matches GNU timeout convention
+			}
 		}()
 
 		// Handle signals
@@ -324,6 +440,15 @@ When running multiple iterations, agent failures do not stop the run.`,
 
 		// Run iterations
 		for i := 1; i <= agentState.Iterations; i++ {
+			// Check for total timeout before starting iteration
+			select {
+			case <-timeoutCtx.Done():
+				fmt.Println("\n[swarm] Total timeout reached, stopping")
+				timedOut = true
+				return nil
+			default:
+				// Continue
+			}
 			// Check for control signals from state
 			currentState, err := mgr.Get(agentState.ID)
 			if err == nil && currentState != nil {
@@ -388,24 +513,38 @@ When running multiple iterations, agent failures do not stop the run.`,
 
 			fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
 
-			// Create agent config
+			// Create agent config with per-iteration timeout
 			cfg := agent.Config{
 				Model:   agentState.Model,
 				Prompt:  promptContent,
 				Command: appConfig.Command,
 				Env:     expandedEnv,
+				Timeout: iterTimeout,
 			}
 
-			// Run agent - errors should NOT stop the run
+			// Run agent - errors should NOT stop the run (including iteration timeouts)
 			runner := agent.NewRunner(cfg)
-			if err := runner.Run(os.Stdout); err != nil {
-				fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
+			if err := runner.RunWithContext(timeoutCtx, os.Stdout); err != nil {
+				if strings.Contains(err.Error(), "timed out") {
+					fmt.Printf("\n[swarm] Iteration %d timed out after %v (continuing)\n", i, iterTimeout)
+					// Record that this iteration timed out
+					agentState.TimeoutReason = "iteration"
+					_ = mgr.Update(agentState)
+					// Reset timeout reason after recording (will be set to "total" if total timeout hit)
+					agentState.TimeoutReason = ""
+				} else {
+					fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
+				}
 			}
 
-			// Check for signals
+			// Check for signals and total timeout
 			select {
 			case sig := <-sigChan:
 				fmt.Printf("\n[swarm] Received signal %v, stopping\n", sig)
+				return nil
+			case <-timeoutCtx.Done():
+				fmt.Println("\n[swarm] Total timeout reached, stopping")
+				timedOut = true
 				return nil
 			default:
 				// Continue
@@ -426,10 +565,16 @@ func init() {
 	runCmd.Flags().StringVarP(&runName, "name", "N", "", "Name for the agent (for easier reference)")
 	runCmd.Flags().BoolVarP(&runDetach, "detach", "d", false, "Run in detached mode (background)")
 	runCmd.Flags().StringArrayVarP(&runEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")
+	runCmd.Flags().StringVar(&runTimeout, "timeout", "", "Total timeout for run (e.g., 30m, 2h)")
+	runCmd.Flags().StringVar(&runIterTimeout, "iter-timeout", "", "Timeout per iteration (e.g., 10m)")
 	runCmd.Flags().BoolVar(&runInternalDetached, "_internal-detached", false, "Internal flag for detached execution")
 	runCmd.Flags().MarkHidden("_internal-detached")
 	runCmd.Flags().StringVar(&runInternalTaskID, "_internal-task-id", "", "Internal flag for passing task ID to detached child")
 	runCmd.Flags().MarkHidden("_internal-task-id")
 	runCmd.Flags().StringArrayVar(&runInternalEnv, "_internal-env", nil, "Internal flag for passing env vars to detached child")
 	runCmd.Flags().MarkHidden("_internal-env")
+	runCmd.Flags().StringVar(&runInternalTimeout, "_internal-timeout", "", "Internal flag for passing timeout to detached child")
+	runCmd.Flags().MarkHidden("_internal-timeout")
+	runCmd.Flags().StringVar(&runInternalIterTimeout, "_internal-iter-timeout", "", "Internal flag for passing iter-timeout to detached child")
+	runCmd.Flags().MarkHidden("_internal-iter-timeout")
 }

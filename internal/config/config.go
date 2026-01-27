@@ -26,6 +26,12 @@ type Config struct {
 	// Iterations is the default number of iterations for run command
 	Iterations int `toml:"iterations"`
 
+	// Timeout is the default total timeout for run command (e.g., "30m", "2h")
+	Timeout string `toml:"timeout"`
+
+	// IterTimeout is the default per-iteration timeout (e.g., "10m")
+	IterTimeout string `toml:"iter_timeout"`
+
 	// Command holds the agent command configuration
 	Command CommandConfig `toml:"command"`
 }
@@ -169,10 +175,12 @@ func loadConfigFile(path string, cfg *Config) error {
 		RawOutput  *bool    `toml:"raw_output"` // pointer to detect if set
 	}
 	type rawConfig struct {
-		Backend    string           `toml:"backend"`
-		Model      string           `toml:"model"`
-		Iterations int              `toml:"iterations"`
-		Command    rawCommandConfig `toml:"command"`
+		Backend     string           `toml:"backend"`
+		Model       string           `toml:"model"`
+		Iterations  int              `toml:"iterations"`
+		Timeout     string           `toml:"timeout"`
+		IterTimeout string           `toml:"iter_timeout"`
+		Command     rawCommandConfig `toml:"command"`
 	}
 
 	var fileCfg rawConfig
@@ -193,6 +201,12 @@ func loadConfigFile(path string, cfg *Config) error {
 	}
 	if fileCfg.Iterations != 0 {
 		cfg.Iterations = fileCfg.Iterations
+	}
+	if fileCfg.Timeout != "" {
+		cfg.Timeout = fileCfg.Timeout
+	}
+	if fileCfg.IterTimeout != "" {
+		cfg.IterTimeout = fileCfg.IterTimeout
 	}
 	if fileCfg.Command.Executable != "" {
 		cfg.Command.Executable = fileCfg.Command.Executable
@@ -241,6 +255,18 @@ func (c *Config) ToTOML() string {
 	sb.WriteString("iterations = ")
 	sb.WriteString(itoa(c.Iterations))
 	sb.WriteString("\n\n")
+
+	sb.WriteString("# Default total timeout for run command (e.g., \"30m\", \"2h\")\n")
+	sb.WriteString("# Set to \"\" or omit for no timeout\n")
+	sb.WriteString("# timeout = \"")
+	sb.WriteString(c.Timeout)
+	sb.WriteString("\"\n\n")
+
+	sb.WriteString("# Default per-iteration timeout (e.g., \"10m\")\n")
+	sb.WriteString("# Set to \"\" or omit for no timeout\n")
+	sb.WriteString("# iter_timeout = \"")
+	sb.WriteString(c.IterTimeout)
+	sb.WriteString("\"\n\n")
 
 	sb.WriteString("# Agent command configuration\n")
 	sb.WriteString("[command]\n")

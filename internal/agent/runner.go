@@ -2,6 +2,8 @@ package agent
 
 import (
 	"bufio"
+	"context"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -26,9 +28,23 @@ func NewRunner(cfg Config) *Runner {
 // If RawOutput is false, output is passed through the log parser for pretty printing.
 // If RawOutput is true, output is streamed directly (for Claude Code).
 func (r *Runner) Run(out io.Writer) error {
+	return r.RunWithContext(context.Background(), out)
+}
+
+// RunWithContext executes the agent with the given context for cancellation/timeout.
+// If RawOutput is false, output is passed through the log parser for pretty printing.
+// If RawOutput is true, output is streamed directly (for Claude Code).
+func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
+	// Set up context with timeout if configured
+	if r.config.Timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, r.config.Timeout)
+		defer cancel()
+	}
+
 	// Expand placeholders in command args
 	args := r.config.Command.ExpandArgs(r.config.Model, r.config.Prompt)
-	r.cmd = exec.Command(r.config.Command.Executable, args...)
+	r.cmd = exec.CommandContext(ctx, r.config.Command.Executable, args...)
 
 	// Apply custom environment variables if specified
 	// Inherit parent environment and append custom vars (later values override earlier)
@@ -81,7 +97,17 @@ func (r *Runner) Run(out io.Writer) error {
 	}()
 
 	// Wait for command to complete
-	return r.cmd.Wait()
+	err = r.cmd.Wait()
+
+	// Check if the error was due to context cancellation/timeout
+	if ctx.Err() == context.DeadlineExceeded {
+		return fmt.Errorf("iteration timed out after %v", r.config.Timeout)
+	}
+	if ctx.Err() == context.Canceled {
+		return fmt.Errorf("iteration was cancelled")
+	}
+
+	return err
 }
 
 // PID returns the process ID of the running agent, or 0 if not running.

@@ -32,6 +32,8 @@ type AgentState struct {
 	LogFile       string     `json:"log_file"`
 	WorkingDir    string     `json:"working_dir"` // Directory where agent was started
 	EnvNames      []string   `json:"env_names,omitempty"` // Environment variable names (values not stored for security)
+	TimeoutAt     *time.Time `json:"timeout_at,omitempty"`     // When total timeout will trigger
+	TimeoutReason string     `json:"timeout_reason,omitempty"` // "total" or "iteration" when terminated by timeout
 }
 
 // State holds all agent states.

@@ -103,6 +103,19 @@ The agent can be specified by its ID, name, or special identifier:
 			fmt.Printf("Terminate:     %s\n", agent.TerminateMode)
 		}
 
+		if agent.TimeoutAt != nil {
+			remaining := time.Until(*agent.TimeoutAt)
+			if remaining > 0 {
+				fmt.Printf("Timeout:       %s remaining\n", remaining.Round(time.Second))
+			} else {
+				fmt.Printf("Timeout:       expired\n")
+			}
+		}
+
+		if agent.TimeoutReason != "" {
+			fmt.Printf("Timeout reason: %s\n", agent.TimeoutReason)
+		}
+
 		if len(agent.EnvNames) > 0 {
 			fmt.Println()
 			bold.Println("Environment Variables")

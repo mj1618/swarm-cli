@@ -1,6 +1,10 @@
 package agent
 
-import "github.com/matt/swarm-cli/internal/config"
+import (
+	"time"
+
+	"github.com/matt/swarm-cli/internal/config"
+)
 
 // Config holds the configuration for running an agent.
 type Config struct {
@@ -15,4 +19,7 @@ type Config struct {
 
 	// Env holds environment variables in KEY=VALUE format to pass to the agent process
 	Env []string
+
+	// Timeout is the per-iteration timeout (0 means no timeout)
+	Timeout time.Duration
 }
