@@ -12,25 +12,26 @@ import (
 )
 
 var (
-	tailFollow bool
-	tailLines  int
+	logsFollow bool
+	logsLines  int
 )
 
-var tailCmd = &cobra.Command{
-	Use:   "tail [agent-id-or-name]",
-	Short: "View the output of a running or completed agent",
+var logsCmd = &cobra.Command{
+	Use:     "logs [agent-id-or-name]",
+	Aliases: []string{"tail"},
+	Short:   "View the output of a running or completed agent",
 	Long: `View the log output of a detached agent.
 
 The agent can be specified by its ID or name. Use -f to follow the output
-in real-time (like tail -f), or -n to specify the number of lines to show.`,
+in real-time, or --tail to specify the number of lines to show.`,
 	Example: `  # Show last 50 lines of agent abc123
-  swarm tail abc123
+  swarm logs abc123
 
   # Follow output of agent named "myagent"
-  swarm tail myagent -f
+  swarm logs myagent -f
 
   # Show last 100 lines
-  swarm tail abc123 -n 100`,
+  swarm logs abc123 --tail 100`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -55,22 +56,24 @@ in real-time (like tail -f), or -n to specify the number of lines to show.`,
 			return fmt.Errorf("log file not found: %s", agent.LogFile)
 		}
 
-		if tailFollow {
+		if logsFollow {
 			return followFile(agent.LogFile)
 		}
 
-		return tailFile(agent.LogFile, tailLines)
+		return showLogLines(agent.LogFile, logsLines)
 	},
 }
 
 func init() {
-	tailCmd.Flags().BoolVarP(&tailFollow, "follow", "f", false, "Follow the output (like tail -f)")
-	tailCmd.Flags().IntVarP(&tailLines, "lines", "n", 50, "Number of lines to show")
-	rootCmd.AddCommand(tailCmd)
+	logsCmd.Flags().BoolVarP(&logsFollow, "follow", "f", false, "Follow the output in real-time")
+	logsCmd.Flags().IntVar(&logsLines, "tail", 50, "Number of lines to show from the end of the logs")
+	logsCmd.Flags().IntVarP(&logsLines, "lines", "n", 50, "Number of lines to show (alias for --tail)")
+	logsCmd.Flags().MarkHidden("lines") // Keep -n working but prefer --tail in docs
+	rootCmd.AddCommand(logsCmd)
 }
 
-// tailFile shows the last n lines of a file
-func tailFile(filepath string, n int) error {
+// showLogLines shows the last n lines of a file
+func showLogLines(filepath string, n int) error {
 	file, err := os.Open(filepath)
 	if err != nil {
 		return fmt.Errorf("failed to open log file: %w", err)
@@ -116,7 +119,7 @@ func tailFile(filepath string, n int) error {
 	return nil
 }
 
-// followFile follows a file like tail -f
+// followFile follows a file in real-time
 func followFile(filepath string) error {
 	file, err := os.Open(filepath)
 	if err != nil {
@@ -125,7 +128,7 @@ func followFile(filepath string) error {
 	defer file.Close()
 
 	// First, show last few lines for context
-	if err := tailFile(filepath, tailLines); err != nil {
+	if err := showLogLines(filepath, logsLines); err != nil {
 		return err
 	}
 

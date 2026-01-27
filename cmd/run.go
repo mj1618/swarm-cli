@@ -3,6 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/matt/swarm-cli/internal/agent"
@@ -18,19 +21,30 @@ var (
 	runPrompt           string
 	runPromptFile       string
 	runPromptString     string
+	runIterations       int
+	runName             string
 	runDetach           bool
 	runInternalDetached bool
 )
 
 var runCmd = &cobra.Command{
 	Use:   "run",
-	Short: "Run a single agent",
-	Long:  `Run a single agent with a specified prompt and model.`,
-	Example: `  # Interactive prompt selection
+	Short: "Run an agent",
+	Long: `Run an agent with a specified prompt and model.
+
+By default, runs a single iteration. Use -n to run multiple iterations.
+When running multiple iterations, agent failures do not stop the run.`,
+	Example: `  # Interactive prompt selection (single iteration)
   swarm run
 
   # Use a named prompt from the prompts directory
   swarm run -p my-prompt
+
+  # Run 10 iterations
+  swarm run -p my-prompt -n 10
+
+  # Run with a name for easy reference
+  swarm run -p my-prompt -n 5 -N my-agent
 
   # Use a specific prompt file
   swarm run -f ./prompts/custom.md
@@ -42,7 +56,7 @@ var runCmd = &cobra.Command{
   swarm run -p my-prompt -m claude-sonnet-4-20250514
 
   # Run in background (detached)
-  swarm run -p my-prompt -d`,
+  swarm run -p my-prompt -n 20 -d`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get prompts directory based on scope
 		promptsDir, err := GetPromptsDir()
@@ -112,6 +126,12 @@ var runCmd = &cobra.Command{
 			effectiveModel = runModel
 		}
 
+		// Determine effective iterations (CLI flag overrides config default of 1)
+		effectiveIterations := 1
+		if cmd.Flags().Changed("iterations") {
+			effectiveIterations = runIterations
+		}
+
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
 			// Generate agent ID and log file
@@ -138,6 +158,12 @@ var runCmd = &cobra.Command{
 			if runPromptString != "" {
 				detachedArgs = append(detachedArgs, "--prompt-string", runPromptString)
 			}
+			if cmd.Flags().Changed("iterations") {
+				detachedArgs = append(detachedArgs, "--iterations", strconv.Itoa(runIterations))
+			}
+			if runName != "" {
+				detachedArgs = append(detachedArgs, "--name", runName)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
@@ -152,15 +178,17 @@ var runCmd = &cobra.Command{
 			}
 
 			agentState := &state.AgentState{
-				ID:         agentID,
-				PID:        pid,
-				Prompt:     promptName,
-				Model:      effectiveModel,
-				StartedAt:  time.Now(),
-				Iterations: 1,
-				Status:     "running",
-				LogFile:    logFile,
-				WorkingDir: workingDir,
+				ID:          agentID,
+				Name:        runName,
+				PID:         pid,
+				Prompt:      promptName,
+				Model:       effectiveModel,
+				StartedAt:   time.Now(),
+				Iterations:  effectiveIterations,
+				CurrentIter: 0,
+				Status:      "running",
+				LogFile:     logFile,
+				WorkingDir:  workingDir,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -168,21 +196,157 @@ var runCmd = &cobra.Command{
 			}
 
 			fmt.Printf("Started detached agent: %s (PID: %d)\n", agentID, pid)
+			if runName != "" {
+				fmt.Printf("Name: %s\n", runName)
+			}
+			fmt.Printf("Iterations: %d\n", effectiveIterations)
 			fmt.Printf("Log file: %s\n", logFile)
 			return nil
 		}
 
-		fmt.Printf("Running agent with prompt: %s, model: %s\n", promptName, effectiveModel)
+		// For single iteration, run directly without state management overhead
+		if effectiveIterations == 1 {
+			fmt.Printf("Running agent with prompt: %s, model: %s\n", promptName, effectiveModel)
 
-		// Create and run agent
-		cfg := agent.Config{
-			Model:   effectiveModel,
-			Prompt:  promptContent,
-			Command: appConfig.Command,
+			cfg := agent.Config{
+				Model:   effectiveModel,
+				Prompt:  promptContent,
+				Command: appConfig.Command,
+			}
+
+			runner := agent.NewRunner(cfg)
+			return runner.Run(os.Stdout)
 		}
 
-		runner := agent.NewRunner(cfg)
-		return runner.Run(os.Stdout)
+		// Multi-iteration mode with state management
+		if runName != "" {
+			fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: %d\n", runName, promptName, effectiveModel, effectiveIterations)
+		} else {
+			fmt.Printf("Starting agent with prompt: %s, model: %s, iterations: %d\n", promptName, effectiveModel, effectiveIterations)
+		}
+
+		// Create state manager with scope
+		mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize state manager: %w", err)
+		}
+
+		// Register this agent with working directory
+		agentState := &state.AgentState{
+			ID:          state.GenerateID(),
+			Name:        runName,
+			PID:         os.Getpid(),
+			Prompt:      promptName,
+			Model:       effectiveModel,
+			StartedAt:   time.Now(),
+			Iterations:  effectiveIterations,
+			CurrentIter: 0,
+			Status:      "running",
+			WorkingDir:  workingDir,
+		}
+
+		if err := mgr.Register(agentState); err != nil {
+			return fmt.Errorf("failed to register agent: %w", err)
+		}
+
+		// Ensure cleanup on exit
+		defer func() {
+			agentState.Status = "terminated"
+			_ = mgr.Update(agentState)
+		}()
+
+		// Handle signals
+		sigChan := make(chan os.Signal, 1)
+		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+		// Run iterations
+		for i := 1; i <= agentState.Iterations; i++ {
+			// Check for control signals from state
+			currentState, err := mgr.Get(agentState.ID)
+			if err == nil && currentState != nil {
+				// Update iterations if changed
+				if currentState.Iterations != agentState.Iterations {
+					agentState.Iterations = currentState.Iterations
+					fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
+				}
+
+				// Update model if changed
+				if currentState.Model != agentState.Model {
+					agentState.Model = currentState.Model
+					fmt.Printf("\n[swarm] Model updated to %s\n", agentState.Model)
+				}
+
+				// Check for termination
+				if currentState.TerminateMode == "immediate" {
+					fmt.Println("\n[swarm] Received immediate termination signal")
+					return nil
+				}
+				if currentState.TerminateMode == "after_iteration" && i > 1 {
+					fmt.Println("\n[swarm] Terminating after iteration as requested")
+					return nil
+				}
+
+				// Check for pause state and wait while paused
+				if currentState.Paused {
+					fmt.Println("\n[swarm] Agent paused, waiting for resume...")
+					agentState.Paused = true
+					_ = mgr.Update(agentState)
+
+					for currentState.Paused && currentState.Status == "running" {
+						time.Sleep(1 * time.Second)
+						currentState, err = mgr.Get(agentState.ID)
+						if err != nil {
+							break
+						}
+						// Allow termination while paused
+						if currentState.TerminateMode != "" {
+							if currentState.TerminateMode == "immediate" {
+								fmt.Println("\n[swarm] Received immediate termination signal")
+								return nil
+							}
+							break
+						}
+					}
+
+					if !currentState.Paused {
+						fmt.Println("\n[swarm] Agent resumed")
+						agentState.Paused = false
+						_ = mgr.Update(agentState)
+					}
+				}
+			}
+
+			// Update current iteration
+			agentState.CurrentIter = i
+			_ = mgr.Update(agentState)
+
+			fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
+
+			// Create agent config
+			cfg := agent.Config{
+				Model:   agentState.Model,
+				Prompt:  promptContent,
+				Command: appConfig.Command,
+			}
+
+			// Run agent - errors should NOT stop the run
+			runner := agent.NewRunner(cfg)
+			if err := runner.Run(os.Stdout); err != nil {
+				fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
+			}
+
+			// Check for signals
+			select {
+			case sig := <-sigChan:
+				fmt.Printf("\n[swarm] Received signal %v, stopping\n", sig)
+				return nil
+			default:
+				// Continue
+			}
+		}
+
+		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.Iterations)
+		return nil
 	},
 }
 
@@ -191,6 +355,8 @@ func init() {
 	runCmd.Flags().StringVarP(&runPrompt, "prompt", "p", "", "Prompt name (from prompts directory)")
 	runCmd.Flags().StringVarP(&runPromptFile, "prompt-file", "f", "", "Path to prompt file")
 	runCmd.Flags().StringVarP(&runPromptString, "prompt-string", "s", "", "Prompt string (direct text)")
+	runCmd.Flags().IntVarP(&runIterations, "iterations", "n", 1, "Number of iterations to run (default: 1)")
+	runCmd.Flags().StringVarP(&runName, "name", "N", "", "Name for the agent (for easier reference)")
 	runCmd.Flags().BoolVarP(&runDetach, "detach", "d", false, "Run in detached mode (background)")
 	runCmd.Flags().BoolVar(&runInternalDetached, "_internal-detached", false, "Internal flag for detached execution")
 	runCmd.Flags().MarkHidden("_internal-detached")

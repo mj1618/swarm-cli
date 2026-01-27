@@ -23,8 +23,7 @@ var rootCmd = &cobra.Command{
 	Long: `Swarm CLI is a tool for running and managing AI agents.
 
 It allows you to:
-  - Run single agents with custom prompts
-  - Run agents in a loop for multiple iterations
+  - Run agents with custom prompts (single or multiple iterations)
   - List and manage running agents
   - View agent logs and status
 
@@ -33,14 +32,14 @@ Use --global to operate across all projects.`,
 	Example: `  # Run an agent with a prompt from the prompts directory
   swarm run -p my-prompt
 
-  # Run an agent loop in the background
-  swarm loop -p my-prompt -n 10 -d
+  # Run an agent for 10 iterations in the background
+  swarm run -p my-prompt -n 10 -d
 
   # List all running agents
   swarm list
 
-  # View details of an agent
-  swarm view abc123`,
+  # Inspect details of an agent
+  swarm inspect abc123`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Set scope based on global flag
 		if globalFlag {
@@ -72,10 +71,13 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&globalFlag, "global", "g", false, "Operate globally instead of project-scoped")
 
 	rootCmd.AddCommand(runCmd)
-	rootCmd.AddCommand(loopCmd)
 	rootCmd.AddCommand(listCmd)
-	rootCmd.AddCommand(viewCmd)
-	rootCmd.AddCommand(controlCmd)
+	rootCmd.AddCommand(inspectCmd)
+	rootCmd.AddCommand(updateCmd)
+	rootCmd.AddCommand(killCmd)
+	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(promptsCmd)
 }
 
 // GetScope returns the current scope (project or global).

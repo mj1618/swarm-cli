@@ -23,7 +23,7 @@ type Config struct {
 	// Model is the default model to use (e.g., "opus-4.5-thinking" for cursor, "opus" for claude-code)
 	Model string `toml:"model"`
 
-	// Iterations is the default number of iterations for loop command
+	// Iterations is the default number of iterations for run command
 	Iterations int `toml:"iterations"`
 
 	// Command holds the agent command configuration
@@ -43,9 +43,9 @@ type CommandConfig struct {
 	RawOutput bool `toml:"raw_output"`
 }
 
-// DefaultConfig returns the built-in default configuration (cursor backend).
+// DefaultConfig returns the built-in default configuration (claude-code backend).
 func DefaultConfig() *Config {
-	return CursorConfig()
+	return ClaudeCodeConfig()
 }
 
 // CursorConfig returns the configuration preset for Cursor's agent CLI.
@@ -53,7 +53,7 @@ func CursorConfig() *Config {
 	return &Config{
 		Backend:    BackendCursor,
 		Model:      "opus-4.5-thinking",
-		Iterations: 20,
+		Iterations: 1,
 		Command: CommandConfig{
 			Executable: "agent",
 			Args: []string{
@@ -75,7 +75,7 @@ func ClaudeCodeConfig() *Config {
 	return &Config{
 		Backend:    BackendClaudeCode,
 		Model:      "opus",
-		Iterations: 20,
+		Iterations: 1,
 		Command: CommandConfig{
 			Executable: "claude",
 			Args: []string{
@@ -237,7 +237,7 @@ func (c *Config) ToTOML() string {
 	sb.WriteString(c.Model)
 	sb.WriteString("\"\n\n")
 
-	sb.WriteString("# Default iterations for loop command\n")
+	sb.WriteString("# Default iterations for run command\n")
 	sb.WriteString("iterations = ")
 	sb.WriteString(itoa(c.Iterations))
 	sb.WriteString("\n\n")

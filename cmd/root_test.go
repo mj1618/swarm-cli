@@ -23,7 +23,7 @@ func TestRootCommand(t *testing.T) {
 	}
 
 	// Verify subcommands are registered
-	expectedCommands := []string{"run", "loop", "list", "view", "control"}
+	expectedCommands := []string{"run", "list", "inspect", "update"}
 	for _, name := range expectedCommands {
 		found := false
 		for _, cmd := range rootCmd.Commands() {
@@ -66,7 +66,7 @@ func TestRunCommandFlags(t *testing.T) {
 	}
 
 	// Check flags exist
-	flags := []string{"model", "prompt", "prompt-file", "prompt-string"}
+	flags := []string{"model", "prompt", "prompt-file", "prompt-string", "iterations", "name"}
 	for _, flagName := range flags {
 		if cmd.Flags().Lookup(flagName) == nil {
 			t.Errorf("run command missing flag '%s'", flagName)
@@ -79,6 +79,8 @@ func TestRunCommandFlags(t *testing.T) {
 		"p": "prompt",
 		"f": "prompt-file",
 		"s": "prompt-string",
+		"n": "iterations",
+		"N": "name",
 	}
 	for short, long := range shortFlags {
 		flag := cmd.Flags().ShorthandLookup(short)
@@ -94,78 +96,33 @@ func TestRunCommandFlags(t *testing.T) {
 	if modelFlag.DefValue != "" {
 		t.Errorf("model default value should be '' (loaded from config), got '%s'", modelFlag.DefValue)
 	}
-}
 
-func TestLoopCommandFlags(t *testing.T) {
-	// Find the loop command
-	var cmd *Command
-	for _, c := range rootCmd.Commands() {
-		if c.Use == "loop" {
-			cmd = c
-			break
-		}
-	}
-
-	if cmd == nil {
-		t.Fatal("loop command not found")
-	}
-
-	// Check flags exist
-	flags := []string{"model", "prompt", "prompt-file", "prompt-string", "iterations"}
-	for _, flagName := range flags {
-		if cmd.Flags().Lookup(flagName) == nil {
-			t.Errorf("loop command missing flag '%s'", flagName)
-		}
-	}
-
-	// Check short flags
-	shortFlags := map[string]string{
-		"m": "model",
-		"p": "prompt",
-		"f": "prompt-file",
-		"s": "prompt-string",
-		"n": "iterations",
-	}
-	for short, long := range shortFlags {
-		flag := cmd.Flags().ShorthandLookup(short)
-		if flag == nil {
-			t.Errorf("loop command missing short flag '-%s'", short)
-		} else if flag.Name != long {
-			t.Errorf("short flag '-%s' should map to '%s', got '%s'", short, long, flag.Name)
-		}
-	}
-
-	// Defaults are now empty/0 (loaded from config at runtime)
-	modelFlag := cmd.Flags().Lookup("model")
-	if modelFlag.DefValue != "" {
-		t.Errorf("model default value should be '' (loaded from config), got '%s'", modelFlag.DefValue)
-	}
-
+	// Iterations default should be 1
 	iterFlag := cmd.Flags().Lookup("iterations")
-	if iterFlag.DefValue != "0" {
-		t.Errorf("iterations default value should be '0' (loaded from config), got '%s'", iterFlag.DefValue)
+	if iterFlag.DefValue != "1" {
+		t.Errorf("iterations default value should be '1', got '%s'", iterFlag.DefValue)
 	}
 }
 
-func TestControlCommandFlags(t *testing.T) {
-	// Find the control command
+func TestUpdateCommandFlags(t *testing.T) {
+	// Find the update command (which has "control" as an alias)
 	var cmd *Command
 	for _, c := range rootCmd.Commands() {
-		if strings.HasPrefix(c.Use, "control") {
+		if strings.HasPrefix(c.Use, "update") {
 			cmd = c
 			break
 		}
 	}
 
 	if cmd == nil {
-		t.Fatal("control command not found")
+		t.Fatal("update command not found")
 	}
 
 	// Check flags exist
 	flags := []string{"model", "iterations", "terminate", "terminate-after"}
 	for _, flagName := range flags {
 		if cmd.Flags().Lookup(flagName) == nil {
-			t.Errorf("control command missing flag '%s'", flagName)
+			t.Errorf("update command missing flag '%s'", flagName)
 		}
 	}
 
@@ -177,10 +134,22 @@ func TestControlCommandFlags(t *testing.T) {
 	for short, long := range shortFlags {
 		flag := cmd.Flags().ShorthandLookup(short)
 		if flag == nil {
-			t.Errorf("control command missing short flag '-%s'", short)
+			t.Errorf("update command missing short flag '-%s'", short)
 		} else if flag.Name != long {
 			t.Errorf("short flag '-%s' should map to '%s', got '%s'", short, long, flag.Name)
 		}
+	}
+
+	// Check that "control" is an alias
+	hasControlAlias := false
+	for _, alias := range cmd.Aliases {
+		if alias == "control" {
+			hasControlAlias = true
+			break
+		}
+	}
+	if !hasControlAlias {
+		t.Error("update command should have 'control' as an alias")
 	}
 }
 
@@ -203,28 +172,40 @@ func TestListCommand(t *testing.T) {
 	}
 }
 
-func TestViewCommand(t *testing.T) {
-	// Find the view command
+func TestInspectCommand(t *testing.T) {
+	// Find the inspect command (which has "view" as an alias)
 	var cmd *Command
 	for _, c := range rootCmd.Commands() {
-		if strings.HasPrefix(c.Use, "view") {
+		if strings.HasPrefix(c.Use, "inspect") {
 			cmd = c
 			break
 		}
 	}
 
 	if cmd == nil {
-		t.Fatal("view command not found")
+		t.Fatal("inspect command not found")
 	}
 
-	// View requires exactly 1 argument (agent-id)
-	if cmd.Use != "view [agent-id-or-name]" {
-		t.Errorf("view command Use should be 'view [agent-id-or-name]', got '%s'", cmd.Use)
+	// Inspect requires exactly 1 argument (agent-id)
+	if cmd.Use != "inspect [agent-id-or-name]" {
+		t.Errorf("inspect command Use should be 'inspect [agent-id-or-name]', got '%s'", cmd.Use)
+	}
+
+	// Check that "view" is an alias
+	hasViewAlias := false
+	for _, alias := range cmd.Aliases {
+		if alias == "view" {
+			hasViewAlias = true
+			break
+		}
+	}
+	if !hasViewAlias {
+		t.Error("inspect command should have 'view' as an alias")
 	}
 }
 
 func TestCommandHelp(t *testing.T) {
-	commands := []string{"run", "loop", "list", "control"}
+	commands := []string{"run", "list", "update"}
 
 	for _, cmdName := range commands {
 		var cmd *Command

@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -9,17 +10,23 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var viewCmd = &cobra.Command{
-	Use:   "view [agent-id-or-name]",
-	Short: "View agent details and logs",
-	Long: `View detailed information about a specific agent including its status and logs.
+var inspectFormat string
+
+var inspectCmd = &cobra.Command{
+	Use:     "inspect [agent-id-or-name]",
+	Aliases: []string{"view"},
+	Short:   "Display detailed information about an agent",
+	Long: `Display detailed information about a specific agent including its status, configuration, and logs.
 
 The agent can be specified by its ID or name.`,
-	Example: `  # View by agent ID
-  swarm view abc123
+	Example: `  # Inspect by agent ID
+  swarm inspect abc123
 
-  # View by agent name
-  swarm view my-agent`,
+  # Inspect by agent name
+  swarm inspect my-agent
+
+  # Output as JSON
+  swarm inspect abc123 --format json`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -33,6 +40,16 @@ The agent can be specified by its ID or name.`,
 		agent, err := mgr.GetByNameOrID(agentIdentifier)
 		if err != nil {
 			return fmt.Errorf("agent not found: %w", err)
+		}
+
+		// JSON format output
+		if inspectFormat == "json" {
+			output, err := json.MarshalIndent(agent, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal agent to JSON: %w", err)
+			}
+			fmt.Println(string(output))
+			return nil
 		}
 
 		// Print agent details
@@ -79,4 +96,8 @@ The agent can be specified by its ID or name.`,
 
 		return nil
 	},
+}
+
+func init() {
+	inspectCmd.Flags().StringVar(&inspectFormat, "format", "", "Output format: json or table (default)")
 }

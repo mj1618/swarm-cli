@@ -16,61 +16,11 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage swarm configuration",
 	Long:  `View and manage swarm-cli configuration files.`,
-	Example: `  # Initialize a project config
-  swarm config init
-
-  # Show current configuration
+	Example: `  # Show current configuration
   swarm config show
 
   # Switch to claude-code backend
   swarm config set-backend claude-code`,
-}
-
-var configInitCmd = &cobra.Command{
-	Use:   "init",
-	Short: "Create a config file with default values",
-	Long: `Create a new configuration file with default values.
-
-By default, creates a project config file (.swarm.toml) in the current directory.
-Use --global to create the global config file (~/.config/swarm/config.toml).`,
-	Example: `  # Create project config in current directory
-  swarm config init
-
-  # Create global config
-  swarm config init --global`,
-	RunE: func(cmd *cobra.Command, args []string) error {
-		var configPath string
-		var err error
-
-		if configGlobal {
-			configPath, err = config.GlobalConfigPath()
-			if err != nil {
-				return fmt.Errorf("failed to determine global config path: %w", err)
-			}
-		} else {
-			configPath = config.ProjectConfigPath()
-		}
-
-		// Check if file already exists
-		if _, err := os.Stat(configPath); err == nil {
-			return fmt.Errorf("config file already exists: %s", configPath)
-		}
-
-		// Create parent directory if needed
-		dir := filepath.Dir(configPath)
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
-
-		// Write default config
-		cfg := config.DefaultConfig()
-		if err := os.WriteFile(configPath, []byte(cfg.ToTOML()), 0644); err != nil {
-			return fmt.Errorf("failed to write config file: %w", err)
-		}
-
-		fmt.Printf("Created config file: %s\n", configPath)
-		return nil
-	},
 }
 
 var configShowCmd = &cobra.Command{
@@ -210,12 +160,10 @@ By default, updates the project config (.swarm.toml). Use --global to update the
 }
 
 func init() {
-	configCmd.AddCommand(configInitCmd)
 	configCmd.AddCommand(configShowCmd)
 	configCmd.AddCommand(configPathCmd)
 	configCmd.AddCommand(configSetBackendCmd)
 
-	configInitCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Create global config instead of project config")
 	configSetBackendCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
 
 	rootCmd.AddCommand(configCmd)

@@ -27,6 +27,7 @@ type AgentState struct {
 	CurrentIter   int       `json:"current_iteration"`
 	Status        string    `json:"status"`         // running, terminated
 	TerminateMode string    `json:"terminate_mode"` // "", "immediate", "after_iteration"
+	Paused        bool      `json:"paused"`         // Whether agent loop is paused
 	LogFile       string    `json:"log_file"`
 	WorkingDir    string    `json:"working_dir"` // Directory where agent was started
 }

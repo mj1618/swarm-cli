@@ -9,32 +9,33 @@ import (
 )
 
 var (
-	ctrlIterations     int
-	ctrlModel          string
-	ctrlTerminate      bool
-	ctrlTerminateAfter bool
+	updateIterations     int
+	updateModel          string
+	updateTerminate      bool
+	updateTerminateAfter bool
 )
 
-var controlCmd = &cobra.Command{
-	Use:   "control [agent-id-or-name]",
-	Short: "Control a running agent",
-	Long: `Control a running agent by changing its configuration or terminating it.
+var updateCmd = &cobra.Command{
+	Use:     "update [agent-id-or-name]",
+	Aliases: []string{"control"},
+	Short:   "Update configuration of a running agent",
+	Long: `Update the configuration of a running agent or terminate it.
 
 The agent can be specified by its ID or name.`,
 	Example: `  # Terminate immediately (by ID)
-  swarm control abc123 --terminate
+  swarm update abc123 --terminate
 
   # Terminate immediately (by name)
-  swarm control my-agent --terminate
+  swarm update my-agent --terminate
 
   # Terminate after current iteration
-  swarm control abc123 --terminate-after
+  swarm update abc123 --terminate-after
 
   # Change iteration count
-  swarm control abc123 --iterations 50
+  swarm update abc123 --iterations 50
 
   # Change model for next iteration
-  swarm control my-agent --model claude-sonnet-4-20250514`,
+  swarm update my-agent --model claude-sonnet-4-20250514`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -55,7 +56,7 @@ The agent can be specified by its ID or name.`,
 		}
 
 		// Handle termination
-		if ctrlTerminate {
+		if updateTerminate {
 			agent.TerminateMode = "immediate"
 			if err := mgr.Update(agent); err != nil {
 				return fmt.Errorf("failed to update agent state: %w", err)
@@ -70,7 +71,7 @@ The agent can be specified by its ID or name.`,
 			return nil
 		}
 
-		if ctrlTerminateAfter {
+		if updateTerminateAfter {
 			agent.TerminateMode = "after_iteration"
 			if err := mgr.Update(agent); err != nil {
 				return fmt.Errorf("failed to update agent state: %w", err)
@@ -83,15 +84,15 @@ The agent can be specified by its ID or name.`,
 		updated := false
 
 		if cmd.Flags().Changed("iterations") {
-			agent.Iterations = ctrlIterations
+			agent.Iterations = updateIterations
 			updated = true
-			fmt.Printf("Updated iterations to %d\n", ctrlIterations)
+			fmt.Printf("Updated iterations to %d\n", updateIterations)
 		}
 
 		if cmd.Flags().Changed("model") {
-			agent.Model = ctrlModel
+			agent.Model = updateModel
 			updated = true
-			fmt.Printf("Updated model to %s (will apply on next iteration)\n", ctrlModel)
+			fmt.Printf("Updated model to %s (will apply on next iteration)\n", updateModel)
 		}
 
 		if updated {
@@ -107,8 +108,8 @@ The agent can be specified by its ID or name.`,
 }
 
 func init() {
-	controlCmd.Flags().IntVarP(&ctrlIterations, "iterations", "n", 0, "Set new iteration count")
-	controlCmd.Flags().StringVarP(&ctrlModel, "model", "m", "", "Set model for next iteration")
-	controlCmd.Flags().BoolVar(&ctrlTerminate, "terminate", false, "Terminate agent immediately")
-	controlCmd.Flags().BoolVar(&ctrlTerminateAfter, "terminate-after", false, "Terminate after current iteration")
+	updateCmd.Flags().IntVarP(&updateIterations, "iterations", "n", 0, "Set new iteration count")
+	updateCmd.Flags().StringVarP(&updateModel, "model", "m", "", "Set model for next iteration")
+	updateCmd.Flags().BoolVar(&updateTerminate, "terminate", false, "Terminate agent immediately")
+	updateCmd.Flags().BoolVar(&updateTerminateAfter, "terminate-after", false, "Terminate after current iteration")
 }

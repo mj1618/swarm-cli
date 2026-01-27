@@ -1,11 +1,55 @@
 # Swarm CLI
 
-A command-line tool for running and managing AI agents. Swarm CLI allows you to run single agents or loop them for multiple iterations, with full control over running agents including the ability to modify settings on-the-fly.
+A command-line tool for running and managing AI agents. Swarm CLI allows you to run agents for single or multiple iterations, with full control over running agents including the ability to modify settings on-the-fly.
+
+```bash
+# Run with a named prompt (from ./swarm/prompts/my-task.md)
+swarm run -p my-task
+
+# Run with a direct string
+swarm run -s "Add unit tests for the auth module"
+
+# Run with a file path
+swarm run -f /path/to/prompt.md
+
+# Run for multiple iterations
+swarm run -p my-task -n 10
+
+# Run with a specific model
+swarm run -p my-task -m claude-sonnet-4-20250514
+
+# Run in detached mode (background)
+swarm run -p my-task -n 20 -d
+
+# Run with a custom name for easier reference
+swarm run -p my-task -n 50 --name my-agent
+
+# List running agents
+swarm list
+
+# View details of a specific agent
+swarm inspect abc123
+
+# Update iterations on a running agent
+swarm update abc123 -n 50
+
+# Terminate an agent
+swarm kill abc123
+
+# Set your agent backend (cursor or claude-code)
+swarm config set-backend claude-code
+
+# Set the default model for claude-code backend
+swarm config set-model opus
+
+# Set the default model for cursor backend
+swarm config set-model opus-4.5-thinking
+```
 
 ## Features
 
-- **Run single agents** with custom prompts
-- **Loop agents** for multiple iterations with automatic restart on failure
+- **Run agents** with custom prompts (single or multiple iterations)
+- **Automatic restart on failure** when running multiple iterations
 - **Manage running agents** - list, view details, and control them
 - **Live configuration updates** - change model or iterations while agents are running
 - **Multiple backends** - supports Cursor's agent CLI and Claude Code CLI
@@ -77,11 +121,11 @@ Swarm CLI supports two agent backends. Choose one based on what you have install
 ### Set Your Backend
 
 ```bash
-# Use Cursor's agent CLI (default)
-swarm config set-backend cursor
-
-# Use Claude Code CLI
+# Use Claude Code CLI (default)
 swarm config set-backend claude-code
+
+# Use Cursor's agent CLI
+swarm config set-backend cursor
 ```
 
 To verify your chosen backend is working:
@@ -98,12 +142,7 @@ The backend can also be configured per-project in `.swarm.toml` or globally in `
 
 ## Quick Start
 
-1. **Initialize configuration** (optional):
-   ```bash
-   swarm config init
-   ```
-
-2. **Create a prompt file** at `./swarm/prompts/my-task.md`:
+1. **Create a prompt file** at `./swarm/prompts/my-task.md`:
    ```markdown
    # My Task
    
@@ -113,21 +152,21 @@ The backend can also be configured per-project in `.swarm.toml` or globally in `
    - Step 3
    ```
 
-3. **Run an agent**:
+2. **Run an agent**:
    ```bash
    swarm run -p my-task
    ```
 
-4. **Or run in a loop** (20 iterations by default):
+3. **Or run multiple iterations**:
    ```bash
-   swarm loop -p my-task -n 10
+   swarm run -p my-task -n 10
    ```
 
 ## Commands
 
 ### `swarm run`
 
-Run a single agent with a specified prompt.
+Run an agent with a specified prompt. By default runs a single iteration; use `-n` to run multiple iterations.
 
 ```bash
 swarm run [flags]
@@ -140,14 +179,23 @@ swarm run [flags]
 | `--prompt-file` | `-f` | Path to an arbitrary prompt file |
 | `--prompt-string` | `-s` | Direct prompt text |
 | `--model` | `-m` | Model to use (overrides config) |
+| `--iterations` | `-n` | Number of iterations (default: 1) |
+| `--name` | `-N` | Name for the agent (for easier reference) |
+| `--detach` | `-d` | Run in background (detached mode) |
 
 **Examples:**
 ```bash
 # Interactive prompt selection
 swarm run
 
-# Use a named prompt
+# Use a named prompt (single iteration)
 swarm run -p my-task
+
+# Run 10 iterations
+swarm run -p my-task -n 10
+
+# Run with a name for easier reference
+swarm run -p my-task -n 50 --name my-agent
 
 # Use a specific file
 swarm run -f /path/to/prompt.md
@@ -157,39 +205,9 @@ swarm run -s "Fix all linter errors in the codebase"
 
 # Specify a model
 swarm run -p my-task -m gpt-5.2
-```
 
-### `swarm loop`
-
-Run an agent repeatedly for a specified number of iterations. Agent failures do not stop the loop.
-
-```bash
-swarm loop [flags]
-```
-
-**Flags:**
-| Flag | Short | Description |
-|------|-------|-------------|
-| `--prompt` | `-p` | Prompt name from the prompts directory |
-| `--prompt-file` | `-f` | Path to an arbitrary prompt file |
-| `--prompt-string` | `-s` | Direct prompt text |
-| `--model` | `-m` | Model to use (overrides config) |
-| `--iterations` | `-n` | Number of iterations (default: 20) |
-| `--name` | `-N` | Name for the agent (for easier reference) |
-
-**Examples:**
-```bash
-# Run with default iterations (20)
-swarm loop -p continuous-improvement
-
-# Run with a name for easier reference
-swarm loop -p my-task -n 50 --name my-agent
-
-# Run 50 iterations
-swarm loop -p my-task -n 50
-
-# Run with a different model
-swarm loop -p my-task -m sonnet-4.5-thinking -n 30
+# Run in background
+swarm run -p my-task -n 20 -d
 ```
 
 ### `swarm list`
@@ -220,13 +238,13 @@ swarm list
 swarm list --global
 ```
 
-### `swarm view [agent-id-or-name]`
+### `swarm inspect [agent-id-or-name]`
 
-View detailed information about a specific agent. You can reference the agent by its ID or name.
+View detailed information about a specific agent. You can reference the agent by its ID or name. Alias: `view`
 
 ```bash
-swarm view abc123       # by ID
-swarm view my-agent     # by name
+swarm inspect abc123       # by ID
+swarm inspect my-agent     # by name
 ```
 
 **Output includes:**
@@ -239,12 +257,12 @@ swarm view my-agent     # by name
 - Termination mode (if set)
 - Log file location (if available)
 
-### `swarm control [agent-id-or-name]`
+### `swarm update [agent-id-or-name]`
 
-Control a running agent by changing its configuration or terminating it. You can reference the agent by its ID or name.
+Update the configuration of a running agent or terminate it. You can reference the agent by its ID or name. Alias: `control`
 
 ```bash
-swarm control [agent-id-or-name] [flags]
+swarm update [agent-id-or-name] [flags]
 ```
 
 **Flags:**
@@ -258,36 +276,93 @@ swarm control [agent-id-or-name] [flags]
 **Examples:**
 ```bash
 # Terminate immediately
-swarm control abc123 --terminate
+swarm update abc123 --terminate
 
 # Graceful termination after current iteration
-swarm control abc123 --terminate-after
+swarm update abc123 --terminate-after
 
 # Increase iterations to 100
-swarm control abc123 -n 100
+swarm update abc123 -n 100
 
 # Switch to a faster model
-swarm control abc123 -m sonnet-4.5
+swarm update abc123 -m sonnet-4.5
 
 # Multiple changes at once
-swarm control abc123 -n 50 -m gpt-5.2
+swarm update abc123 -n 50 -m gpt-5.2
+```
+
+### `swarm kill [agent-id-or-name]`
+
+Terminate a running agent. This is a shortcut for `swarm control --terminate`.
+
+```bash
+swarm kill [agent-id-or-name] [flags]
+```
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `--graceful`, `-g` | Terminate after current iteration completes |
+
+**Examples:**
+```bash
+# Terminate immediately
+swarm kill abc123
+
+# Terminate by name
+swarm kill my-agent
+
+# Graceful termination (wait for current iteration)
+swarm kill abc123 --graceful
+```
+
+### `swarm stop [agent-id-or-name]`
+
+Pause a running agent after the current iteration completes.
+
+```bash
+swarm stop abc123
+swarm stop my-agent
+```
+
+### `swarm start [agent-id-or-name]`
+
+Resume a paused agent.
+
+```bash
+swarm start abc123
+swarm start my-agent
+```
+
+### `swarm logs [agent-id-or-name]`
+
+View the log output of a detached agent. Alias: `tail`
+
+```bash
+swarm logs [agent-id-or-name] [flags]
+```
+
+**Flags:**
+| Flag | Description |
+|------|-------------|
+| `--follow`, `-f` | Follow the output in real-time |
+| `--tail` | Number of lines to show from end (default: 50) |
+
+**Examples:**
+```bash
+# Show last 50 lines
+swarm logs abc123
+
+# Follow output in real-time
+swarm logs my-agent -f
+
+# Show last 100 lines
+swarm logs abc123 --tail 100
 ```
 
 ### `swarm config`
 
 Manage swarm-cli configuration.
-
-#### `swarm config init`
-
-Create a configuration file with default values.
-
-```bash
-# Create project config (.swarm.toml)
-swarm config init
-
-# Create global config (~/.config/swarm/config.toml)
-swarm config init --global
-```
 
 #### `swarm config show`
 
@@ -335,27 +410,24 @@ Swarm CLI uses TOML configuration files with the following priority (highest to 
 # swarm-cli configuration
 
 # Backend: "cursor" or "claude-code"
-backend = "cursor"
+backend = "claude-code"
 
 # Default model for agent runs
-model = "opus-4.5-thinking"
+model = "opus"
 
-# Default iterations for loop command
-iterations = 20
+# Default iterations for run command
+iterations = 1
 
 # Agent command configuration
 [command]
-executable = "agent"
+executable = "claude"
 args = [
+  "-p",
   "--model", "{model}",
-  "--output-format", "stream-json",
-  "--stream-partial-output",
-  "--sandbox", "disabled",
-  "--print",
-  "--force",
+  "--dangerously-skip-permissions",
   "{prompt}"
 ]
-raw_output = false
+raw_output = true
 ```
 
 ### Backends
@@ -468,7 +540,7 @@ swarm run -g -p shared-task
 
 ## Workflow Examples
 
-### Continuous Development Loop
+### Continuous Development
 
 Run an agent continuously to work on a task:
 
@@ -484,43 +556,48 @@ Check the current state of the codebase and continue working on:
 After each change, run the test suite to verify.
 EOF
 
-# Start the loop
-swarm loop -p dev-loop -n 50
+# Start the agent for 50 iterations
+swarm run -p dev-loop -n 50
 ```
 
 ### Managing Long-Running Agents
 
 ```bash
-# Start a loop in the background
-swarm loop -p my-task -n 100 &
+# Start an agent in the background
+swarm run -p my-task -n 100 -d
 
 # Check on running agents
 swarm list
 
 # View details of a specific agent
-swarm view abc123
+swarm inspect abc123
 
 # Extend the iterations
-swarm control abc123 -n 200
+swarm update abc123 -n 200
+
+# Pause the agent
+swarm stop abc123
+
+# Resume the agent
+swarm start abc123
 
 # Gracefully stop after current iteration
-swarm control abc123 --terminate-after
+swarm kill abc123 --graceful
 ```
 
 ### Multi-Project Setup
 
 ```bash
 # Set up global config with preferred backend
-swarm config init --global
 swarm config set-backend cursor --global
 
 # Create project-specific overrides
 cd ~/projects/frontend
-swarm config init
+swarm config set-backend cursor
 # Edit .swarm.toml to use faster model for frontend work
 
 cd ~/projects/backend  
-swarm config init
+swarm config set-backend cursor
 # Edit .swarm.toml to use more capable model for backend work
 ```
 

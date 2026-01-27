@@ -13,8 +13,8 @@ func TestDefaultConfig(t *testing.T) {
 		t.Errorf("expected default model 'opus-4.5-thinking', got '%s'", cfg.Model)
 	}
 
-	if cfg.Iterations != 20 {
-		t.Errorf("expected default iterations 20, got %d", cfg.Iterations)
+	if cfg.Iterations != 1 {
+		t.Errorf("expected default iterations 1, got %d", cfg.Iterations)
 	}
 
 	if cfg.Command.Executable != "agent" {
@@ -133,8 +133,8 @@ func TestLoadConfigFileMerge(t *testing.T) {
 	}
 
 	// Other values should remain defaults
-	if cfg.Iterations != 20 {
-		t.Errorf("expected iterations to remain 20, got %d", cfg.Iterations)
+	if cfg.Iterations != 1 {
+		t.Errorf("expected iterations to remain 1, got %d", cfg.Iterations)
 	}
 
 	if cfg.Command.Executable != "agent" {
@@ -193,7 +193,7 @@ func TestToTOML(t *testing.T) {
 		t.Error("TOML output missing model")
 	}
 
-	if !contains(toml, "iterations = 20") {
+	if !contains(toml, "iterations = 1") {
 		t.Error("TOML output missing iterations")
 	}
 

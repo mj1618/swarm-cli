@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -11,10 +12,13 @@ import (
 )
 
 var listAll bool
+var listQuiet bool
+var listFormat string
 
 var listCmd = &cobra.Command{
-	Use:   "list",
-	Short: "List running agents",
+	Use:     "list",
+	Aliases: []string{"ps", "ls"},
+	Short:   "List running agents",
 	Long: `List running agents with their status and configuration.
 
 By default, only shows running agents started in the current directory.
@@ -27,7 +31,16 @@ Use --global to show agents from all directories.`,
   swarm list -a
 
   # List all agents across all projects
-  swarm list -g -a`,
+  swarm list -g -a
+
+  # Output only agent IDs (useful for scripting)
+  swarm list -q
+
+  # Get all agent IDs including terminated
+  swarm list -aq
+
+  # Output as JSON
+  swarm list --format json`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
@@ -43,6 +56,10 @@ Use --global to show agents from all directories.`,
 		}
 
 		if len(agents) == 0 {
+			// In quiet mode, output nothing for empty list
+			if listQuiet {
+				return nil
+			}
 			if GetScope() == scope.ScopeProject {
 				if onlyRunning {
 					fmt.Println("No running agents found in this project. Use --all to show terminated agents, or --global to list all projects.")
@@ -56,6 +73,24 @@ Use --global to show agents from all directories.`,
 					fmt.Println("No agents found.")
 				}
 			}
+			return nil
+		}
+
+		// Quiet mode: output only IDs, one per line
+		if listQuiet {
+			for _, a := range agents {
+				fmt.Println(a.ID)
+			}
+			return nil
+		}
+
+		// JSON format output
+		if listFormat == "json" {
+			output, err := json.MarshalIndent(agents, "", "  ")
+			if err != nil {
+				return fmt.Errorf("failed to marshal agents to JSON: %w", err)
+			}
+			fmt.Println(string(output))
 			return nil
 		}
 
@@ -82,9 +117,15 @@ Use --global to show agents from all directories.`,
 
 		for _, a := range agents {
 			statusColor := color.New(color.FgWhite)
+			statusStr := a.Status
 			switch a.Status {
 			case "running":
-				statusColor = color.New(color.FgGreen)
+				if a.Paused {
+					statusStr = "paused"
+					statusColor = color.New(color.FgYellow)
+				} else {
+					statusColor = color.New(color.FgGreen)
+				}
 			case "terminated":
 				statusColor = color.New(color.FgRed)
 			}
@@ -109,7 +150,7 @@ Use --global to show agents from all directories.`,
 
 			// Print fixed-width columns, with status colored separately
 			fmt.Printf("%-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colPrompt, prompt, colModel, a.Model)
-			statusColor.Printf("%-*s", colStatus, a.Status)
+			statusColor.Printf("%-*s", colStatus, statusStr)
 			if GetScope() == scope.ScopeGlobal {
 				dir := a.WorkingDir
 				if len(dir) > colDir {
@@ -127,4 +168,6 @@ Use --global to show agents from all directories.`,
 
 func init() {
 	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "Show all agents including terminated")
+	listCmd.Flags().BoolVarP(&listQuiet, "quiet", "q", false, "Only display agent IDs")
+	listCmd.Flags().StringVar(&listFormat, "format", "", "Output format: json or table (default)")
 }
