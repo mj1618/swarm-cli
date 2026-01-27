@@ -19,6 +19,9 @@ var listName string
 var listPrompt string
 var listModel string
 var listStatus string
+var listCount bool
+var listLast int
+var listLatest bool
 
 var listCmd = &cobra.Command{
 	Use:     "list",
@@ -35,6 +38,11 @@ Filter options:
   --prompt, -p    Filter by prompt name (substring match, case-insensitive)
   --model, -m     Filter by model name (substring match, case-insensitive)
   --status        Filter by status (running, pausing, paused, or terminated)
+
+Output options:
+  --count         Output only the count of matching agents
+  --last, -n      Show only the N most recently started agents
+  --latest, -l    Show only the most recently started agent (same as --last 1)
 
 Multiple filters are combined with AND logic (all conditions must match).`,
 	Example: `  # List running agents in current project
@@ -55,6 +63,23 @@ Multiple filters are combined with AND logic (all conditions must match).`,
   # Output as JSON
   swarm list --format json
 
+  # Count running agents
+  swarm list --count
+
+  # Count all agents including terminated
+  swarm list -a --count
+
+  # Show 5 most recently started agents
+  swarm list --last 5
+  swarm list -n 5
+
+  # Show the most recent agent
+  swarm list --latest
+  swarm list -l
+
+  # Get ID of most recent agent (useful for scripting)
+  swarm list -lq
+
   # Filter by name
   swarm list --name coder
   swarm list -N frontend
@@ -74,8 +99,22 @@ Multiple filters are combined with AND logic (all conditions must match).`,
   # Combine filters
   swarm list --name coder --status running
   swarm list --prompt coder --model sonnet
-  swarm list -a --status terminated --prompt planner`,
+  swarm list -a --status terminated --prompt planner
+  swarm list --name coder --last 3`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Handle --latest as alias for --last 1
+		if listLatest {
+			listLast = 1
+		}
+
+		// Validate flags
+		if listCount && listQuiet {
+			return fmt.Errorf("--count and --quiet cannot be used together")
+		}
+		if listLast < 0 {
+			return fmt.Errorf("--last must be a positive number")
+		}
+
 		// Validate status filter if provided
 		if listStatus != "" {
 			validStatuses := []string{"running", "pausing", "paused", "terminated"}
@@ -106,6 +145,28 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 
 		// Apply filters
 		agents = filterAgents(agents, listName, listPrompt, listModel, listStatus)
+
+		// Apply --last limit (agents are sorted oldest-first, so we want last N)
+		if listLast > 0 && len(agents) > listLast {
+			agents = agents[len(agents)-listLast:]
+		}
+
+		// Reverse to show newest first when using --last or --latest
+		if listLast > 0 {
+			for i, j := 0, len(agents)-1; i < j; i, j = i+1, j-1 {
+				agents[i], agents[j] = agents[j], agents[i]
+			}
+		}
+
+		// Count mode - just output the number
+		if listCount {
+			if listFormat == "json" {
+				fmt.Printf("{\"count\": %d}\n", len(agents))
+			} else {
+				fmt.Println(len(agents))
+			}
+			return nil
+		}
 
 		// Check for helpful hints when no agents match
 		if len(agents) == 0 && (listName != "" || listPrompt != "" || listModel != "" || listStatus != "") {
@@ -294,4 +355,11 @@ func init() {
 	listCmd.Flags().StringVarP(&listPrompt, "prompt", "p", "", "Filter by prompt name (substring match)")
 	listCmd.Flags().StringVarP(&listModel, "model", "m", "", "Filter by model name (substring match)")
 	listCmd.Flags().StringVar(&listStatus, "status", "", "Filter by status: running, pausing, paused, or terminated")
+
+	// Count flag
+	listCmd.Flags().BoolVar(&listCount, "count", false, "Output only the count of matching agents")
+
+	// Last/Latest flags
+	listCmd.Flags().IntVarP(&listLast, "last", "n", 0, "Show only the N most recently started agents")
+	listCmd.Flags().BoolVarP(&listLatest, "latest", "l", false, "Show only the most recently started agent")
 }
