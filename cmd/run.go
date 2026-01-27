@@ -120,6 +120,12 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 		}
 
+		// Generate task ID early so it can be injected into prompt
+		taskID := state.GenerateID()
+
+		// Inject task ID into prompt content
+		promptContent = prompt.InjectTaskID(promptContent, taskID)
+
 		// Determine effective model (CLI flag overrides config)
 		effectiveModel := appConfig.Model
 		if cmd.Flags().Changed("model") {
@@ -140,9 +146,8 @@ When running multiple iterations, agent failures do not stop the run.`,
 
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
-			// Generate agent ID and log file
-			agentID := state.GenerateID()
-			logFile, err := detach.LogFilePath(agentID)
+			// Use pre-generated task ID for log file
+			logFile, err := detach.LogFilePath(taskID)
 			if err != nil {
 				return fmt.Errorf("failed to create log file path: %w", err)
 			}
@@ -184,7 +189,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 
 		agentState := &state.AgentState{
-			ID:          agentID,
+			ID:          taskID,
 			Name:        effectiveName,
 			PID:         pid,
 			Prompt:      promptName,
@@ -201,7 +206,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			return fmt.Errorf("failed to register agent: %w", err)
 		}
 
-		fmt.Printf("Started detached agent: %s (PID: %d)\n", agentID, pid)
+		fmt.Printf("Started detached agent: %s (PID: %d)\n", taskID, pid)
 		fmt.Printf("Name: %s\n", agentState.Name)
 			fmt.Printf("Iterations: %d\n", effectiveIterations)
 			fmt.Printf("Log file: %s\n", logFile)
@@ -230,7 +235,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 
 		// Register this agent with working directory
 		agentState := &state.AgentState{
-			ID:          state.GenerateID(),
+			ID:          taskID,
 			Name:        effectiveName,
 			PID:         os.Getpid(),
 			Prompt:      promptName,

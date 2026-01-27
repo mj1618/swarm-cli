@@ -11,30 +11,14 @@ func TestWrapPromptString(t *testing.T) {
 	input := "Do something useful"
 	result := WrapPromptString(input)
 
-	// Should contain system tags
-	if !strings.Contains(result, "<system>") {
-		t.Error("wrapped prompt should contain <system> tag")
-	}
-	if !strings.Contains(result, "</system>") {
-		t.Error("wrapped prompt should contain </system> tag")
-	}
-
-	// Should contain user tags
-	if !strings.Contains(result, "<user>") {
-		t.Error("wrapped prompt should contain <user> tag")
-	}
-	if !strings.Contains(result, "</user>") {
-		t.Error("wrapped prompt should contain </user> tag")
-	}
-
 	// Should contain the original content
 	if !strings.Contains(result, input) {
 		t.Error("wrapped prompt should contain original content")
 	}
 
-	// Should contain AGENTS.md instruction
-	if !strings.Contains(result, "AGENTS.md") {
-		t.Error("wrapped prompt should contain AGENTS.md instruction")
+	// Should be the same as input (just trimmed)
+	if result != input {
+		t.Errorf("expected %q, got %q", input, result)
 	}
 }
 
@@ -143,11 +127,8 @@ func TestLoadPrompt(t *testing.T) {
 		t.Fatalf("LoadPrompt failed: %v", err)
 	}
 
-	// Should be wrapped
-	if !strings.Contains(result, "<system>") {
-		t.Error("loaded prompt should be wrapped")
-	}
-	if !strings.Contains(result, content) {
+	// Should contain original content
+	if !strings.Contains(result, strings.TrimSpace(content)) {
 		t.Error("loaded prompt should contain original content")
 	}
 }
@@ -199,10 +180,7 @@ func TestLoadPromptFromFile(t *testing.T) {
 		t.Fatalf("LoadPromptFromFile failed: %v", err)
 	}
 
-	// Should be wrapped
-	if !strings.Contains(result, "<system>") {
-		t.Error("loaded prompt should be wrapped")
-	}
+	// Should contain original content
 	if !strings.Contains(result, content) {
 		t.Error("loaded prompt should contain original content")
 	}
@@ -222,14 +200,8 @@ func TestWrapPromptFormat(t *testing.T) {
 	content := "Test content"
 	result := wrapPrompt(content)
 
-	// Check exact structure
-	expected := `<system>
-Always check the AGENTS.md file for the latest instructions before doing anything.
-</system>
-
-<user>
-Test content
-</user>`
+	// Should just be the trimmed content
+	expected := "Test content"
 
 	if result != expected {
 		t.Errorf("Wrapped prompt format mismatch.\nGot:\n%s\n\nExpected:\n%s", result, expected)

@@ -75,15 +75,15 @@ func WrapPromptString(content string) string {
 	return wrapPrompt(content)
 }
 
-// wrapPrompt wraps the prompt content with system and user tags.
+// wrapPrompt processes the prompt content (trims whitespace).
 func wrapPrompt(content string) string {
-	return fmt.Sprintf(`<system>
-Always check the AGENTS.md file for the latest instructions before doing anything.
-</system>
+	return strings.TrimSpace(content)
+}
 
-<user>
-%s
-</user>`, strings.TrimSpace(content))
+// InjectTaskID injects the task ID at the beginning of the prompt content.
+func InjectTaskID(promptContent, taskID string) string {
+	taskIDLine := fmt.Sprintf("Your Swarm Task ID is %s.", taskID)
+	return taskIDLine + "\n\n" + promptContent
 }
 
 // SelectPrompt presents an interactive prompt selection and returns the selected prompt.

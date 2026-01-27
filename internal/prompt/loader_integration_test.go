@@ -63,11 +63,6 @@ func TestLoadPromptWithSpecialCharacters(t *testing.T) {
 			if !strings.Contains(result, strings.TrimSpace(tt.content)) {
 				t.Errorf("Content not preserved for %s", tt.name)
 			}
-
-			// Should be wrapped
-			if !strings.Contains(result, "<system>") || !strings.Contains(result, "<user>") {
-				t.Errorf("Content not properly wrapped for %s", tt.name)
-			}
 		})
 	}
 }
@@ -96,12 +91,9 @@ func TestLoadPromptLargeFile(t *testing.T) {
 		t.Fatalf("LoadPrompt failed for large file: %v", err)
 	}
 
-	// Should still be wrapped correctly
-	if !strings.HasPrefix(result, "<system>") {
-		t.Error("Large prompt not wrapped correctly")
-	}
-	if !strings.HasSuffix(result, "</user>") {
-		t.Error("Large prompt not wrapped correctly at end")
+	// Should contain the content
+	if !strings.HasPrefix(result, "# Large Prompt Test") {
+		t.Error("Large prompt should start with content")
 	}
 }
 
@@ -119,12 +111,9 @@ func TestLoadPromptEmptyFile(t *testing.T) {
 		t.Fatalf("LoadPrompt should handle empty file: %v", err)
 	}
 
-	// Should still be wrapped
-	if !strings.Contains(result, "<system>") {
-		t.Error("Empty prompt should still have system tags")
-	}
-	if !strings.Contains(result, "<user>") {
-		t.Error("Empty prompt should still have user tags")
+	// Empty file should result in empty string
+	if result != "" {
+		t.Errorf("Empty prompt should be empty string, got %q", result)
 	}
 }
 
@@ -142,9 +131,9 @@ func TestLoadPromptWhitespaceOnlyFile(t *testing.T) {
 		t.Fatalf("LoadPrompt should handle whitespace-only file: %v", err)
 	}
 
-	// Content should be trimmed
-	if !strings.Contains(result, "<system>") {
-		t.Error("Whitespace prompt should still have system tags")
+	// Content should be trimmed to empty string
+	if result != "" {
+		t.Errorf("Whitespace-only prompt should be empty string, got %q", result)
 	}
 }
 
