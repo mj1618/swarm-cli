@@ -309,6 +309,8 @@ When running multiple iterations, agent failures do not stop the run.`,
 				if currentState.Paused {
 					fmt.Println("\n[swarm] Agent paused, waiting for resume...")
 					agentState.Paused = true
+					now := time.Now()
+					agentState.PausedAt = &now
 					_ = mgr.Update(agentState)
 
 					for currentState.Paused && currentState.Status == "running" {
@@ -330,6 +332,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 					if !currentState.Paused {
 						fmt.Println("\n[swarm] Agent resumed")
 						agentState.Paused = false
+						agentState.PausedAt = nil
 						_ = mgr.Update(agentState)
 					}
 				}

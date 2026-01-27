@@ -14,6 +14,6 @@ When you\'re done, `git add .`, `git commit -m "a suitable message` and `git pus
 
 # If nothing to do
 
-If there are no pending tasks found, your job is to test the feature using a browser and report any issues.
+If there are no pending tasks found, your job is to test the feature and report any issues.
 Then write those issues as new pending tasks in the swarm/todo/{feature-name}/ folder.
 When you have done that exit immediately!

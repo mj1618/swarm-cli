@@ -17,19 +17,20 @@ import (
 
 // AgentState represents the state of a running agent.
 type AgentState struct {
-	ID            string    `json:"id"`
-	Name          string    `json:"name,omitempty"`
-	PID           int       `json:"pid"`
-	Prompt        string    `json:"prompt"`
-	Model         string    `json:"model"`
-	StartedAt     time.Time `json:"started_at"`
-	Iterations    int       `json:"iterations"`
-	CurrentIter   int       `json:"current_iteration"`
-	Status        string    `json:"status"`         // running, terminated
-	TerminateMode string    `json:"terminate_mode"` // "", "immediate", "after_iteration"
-	Paused        bool      `json:"paused"`         // Whether agent loop is paused
-	LogFile       string    `json:"log_file"`
-	WorkingDir    string    `json:"working_dir"` // Directory where agent was started
+	ID            string     `json:"id"`
+	Name          string     `json:"name,omitempty"`
+	PID           int        `json:"pid"`
+	Prompt        string     `json:"prompt"`
+	Model         string     `json:"model"`
+	StartedAt     time.Time  `json:"started_at"`
+	Iterations    int        `json:"iterations"`
+	CurrentIter   int        `json:"current_iteration"`
+	Status        string     `json:"status"`         // running, terminated
+	TerminateMode string     `json:"terminate_mode"` // "", "immediate", "after_iteration"
+	Paused        bool       `json:"paused"`         // Whether agent loop is paused
+	PausedAt      *time.Time `json:"paused_at,omitempty"` // When agent entered pause loop
+	LogFile       string     `json:"log_file"`
+	WorkingDir    string     `json:"working_dir"` // Directory where agent was started
 }
 
 // State holds all agent states.

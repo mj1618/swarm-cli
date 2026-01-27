@@ -2,9 +2,15 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
+)
+
+var (
+	stopNoWait  bool
+	stopTimeout int
 )
 
 var stopCmd = &cobra.Command{
@@ -15,12 +21,21 @@ var stopCmd = &cobra.Command{
 The agent can be specified by its ID or name.
 
 The agent will finish its current iteration and then wait until resumed
-with the 'start' command. Use 'kill' to terminate a paused agent.`,
-	Example: `  # Stop an agent by ID
+with the 'start' command. Use 'kill' to terminate a paused agent.
+
+By default, the command waits until the agent has finished its current
+iteration and entered the paused state. Use --no-wait to return immediately.`,
+	Example: `  # Stop an agent by ID (waits for pause)
   swarm stop abc123
 
   # Stop an agent by name
-  swarm stop my-agent`,
+  swarm stop my-agent
+
+  # Return immediately without waiting
+  swarm stop my-agent --no-wait
+
+  # Custom timeout (default 300 seconds)
+  swarm stop my-agent --timeout 60`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]
@@ -45,15 +60,52 @@ with the 'start' command. Use 'kill' to terminate a paused agent.`,
 			return nil
 		}
 
+		agentID := agent.ID
 		agent.Paused = true
 		if err := mgr.Update(agent); err != nil {
 			return fmt.Errorf("failed to update agent state: %w", err)
 		}
 
-		fmt.Printf("Agent %s will pause after current iteration\n", agent.ID)
+		fmt.Printf("Agent %s will pause after current iteration\n", agentID)
 		if agent.Name != "" {
 			fmt.Printf("Name: %s\n", agent.Name)
 		}
+
+		// Wait for agent to actually enter paused state
+		if !stopNoWait {
+			fmt.Println("Waiting for agent to pause...")
+
+			deadline := time.Now().Add(time.Duration(stopTimeout) * time.Second)
+			paused := false
+
+			for time.Now().Before(deadline) {
+				time.Sleep(500 * time.Millisecond)
+
+				agent, err := mgr.Get(agentID)
+				if err != nil || agent.Status != "running" {
+					// Agent terminated or error reading state
+					fmt.Println("Agent terminated")
+					return nil
+				}
+				if agent.PausedAt != nil {
+					// Agent has entered the pause loop
+					paused = true
+					break
+				}
+			}
+
+			if paused {
+				fmt.Println("Agent paused")
+			} else {
+				fmt.Println("Warning: agent did not pause within timeout")
+			}
+		}
+
 		return nil
 	},
+}
+
+func init() {
+	stopCmd.Flags().BoolVar(&stopNoWait, "no-wait", false, "Return immediately without waiting for agent to pause")
+	stopCmd.Flags().IntVar(&stopTimeout, "timeout", 300, "Maximum seconds to wait for agent to pause")
 }

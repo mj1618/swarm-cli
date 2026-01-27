@@ -14,3 +14,9 @@ func Kill(pid int) error {
 	}
 	return proc.Kill()
 }
+
+// ForceKill immediately terminates a process on Windows.
+// On Windows, this is the same as Kill since there's no graceful termination signal.
+func ForceKill(pid int) error {
+	return Kill(pid)
+}

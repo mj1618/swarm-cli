@@ -12,10 +12,10 @@ var killAllGraceful bool
 
 var killAllCmd = &cobra.Command{
 	Use:   "kill-all",
-	Short: "Terminate all running agents",
-	Long: `Terminate all running agents immediately or gracefully.
+	Short: "Terminate all running and paused agents",
+	Long: `Terminate all running and paused agents immediately or gracefully.
 
-By default, agents are terminated immediately. Use --graceful to allow
+By default, agents are terminated immediately using SIGKILL. Use --graceful to allow
 each agent's current iteration to complete before terminating.
 
 The command operates on agents in the current project directory by default.
@@ -36,13 +36,22 @@ Use --global to terminate all agents across all projects.`,
 			return fmt.Errorf("failed to initialize state manager: %w", err)
 		}
 
-		agents, err := mgr.List(true) // only running agents
+		// List all agents (including paused ones)
+		allAgents, err := mgr.List(false)
 		if err != nil {
 			return fmt.Errorf("failed to list agents: %w", err)
 		}
 
+		// Filter for running agents (which includes paused agents since they have status "running")
+		var agents []*state.AgentState
+		for _, agent := range allAgents {
+			if agent.Status == "running" {
+				agents = append(agents, agent)
+			}
+		}
+
 		if len(agents) == 0 {
-			fmt.Println("No running agents found")
+			fmt.Println("No running or paused agents found")
 			return nil
 		}
 
@@ -56,16 +65,17 @@ Use --global to terminate all agents across all projects.`,
 					continue
 				}
 			} else {
-				// Immediate termination
+				// Immediate termination using SIGKILL
 				agent.TerminateMode = "immediate"
+				agent.Status = "terminated"
 				if err := mgr.Update(agent); err != nil {
 					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 					continue
 				}
 
-				// Send termination signal to the process
-				if err := process.Kill(agent.PID); err != nil {
-					fmt.Printf("Warning: could not send signal to process %d: %v\n", agent.PID, err)
+				// Force kill the process immediately (SIGKILL on Unix)
+				if err := process.ForceKill(agent.PID); err != nil {
+					fmt.Printf("Warning: could not kill process %d: %v\n", agent.PID, err)
 				}
 			}
 			count++
@@ -74,7 +84,7 @@ Use --global to terminate all agents across all projects.`,
 		if killAllGraceful {
 			fmt.Printf("%d agent(s) will terminate after current iteration\n", count)
 		} else {
-			fmt.Printf("Sent termination signal to %d agent(s)\n", count)
+			fmt.Printf("Killed %d agent(s)\n", count)
 		}
 		return nil
 	},
