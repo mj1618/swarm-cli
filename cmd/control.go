@@ -2,8 +2,8 @@ package cmd
 
 import (
 	"fmt"
-	"syscall"
 
+	"github.com/matt/swarm-cli/internal/process"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
@@ -61,8 +61,8 @@ The agent can be specified by its ID or name.`,
 				return fmt.Errorf("failed to update agent state: %w", err)
 			}
 
-			// Send SIGTERM to the process
-			if err := syscall.Kill(agent.PID, syscall.SIGTERM); err != nil {
+			// Send termination signal to the process
+			if err := process.Kill(agent.PID); err != nil {
 				fmt.Printf("Warning: could not send signal to process %d: %v\n", agent.PID, err)
 			}
 
