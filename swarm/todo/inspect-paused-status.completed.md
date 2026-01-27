@@ -108,3 +108,26 @@ Status:        paused           <-- accurate, displayed in yellow
 - `swarm inspect <agent>` shows "terminated" (in red) when agent is terminated
 - Behavior is consistent with `swarm list` output
 - JSON output (`--format json`) still includes the raw `status` and `paused` fields (no change needed there)
+
+---
+
+## Completion Notes (Agent 118d3fa6)
+
+**Completed on:** 2026-01-28
+
+**Files modified:**
+- `cmd/inspect.go` - Updated status display logic to check `agent.Paused` field
+
+**Changes made:**
+- Added `statusStr` variable to track display string (matching `list.go` pattern)
+- Added check for `agent.Paused` when status is "running"
+- Display "paused" in yellow when agent is paused, "running" in green otherwise
+- Behavior is now consistent with `swarm list` output
+
+**All acceptance criteria met:**
+- `swarm inspect <agent>` shows "paused" (in yellow) when agent has `Paused: true`
+- `swarm inspect <agent>` shows "running" (in green) when agent is running and not paused  
+- `swarm inspect <agent>` shows "terminated" (in red) when agent is terminated
+- Behavior is consistent with `swarm list` output
+- JSON output unchanged (still includes raw `status` and `paused` fields)
+- All tests pass

@@ -66,14 +66,20 @@ The agent can be specified by its ID or name.`,
 		fmt.Printf("Model:         %s\n", agent.Model)
 
 		statusColor := color.New(color.FgWhite)
+		statusStr := agent.Status
 		switch agent.Status {
 		case "running":
-			statusColor = color.New(color.FgGreen)
+			if agent.Paused {
+				statusStr = "paused"
+				statusColor = color.New(color.FgYellow)
+			} else {
+				statusColor = color.New(color.FgGreen)
+			}
 		case "terminated":
 			statusColor = color.New(color.FgRed)
 		}
 		fmt.Print("Status:        ")
-		statusColor.Println(agent.Status)
+		statusColor.Println(statusStr)
 
 		fmt.Printf("Started:       %s\n", agent.StartedAt.Format(time.RFC3339))
 		fmt.Printf("Running for:   %s\n", time.Since(agent.StartedAt).Round(time.Second))
