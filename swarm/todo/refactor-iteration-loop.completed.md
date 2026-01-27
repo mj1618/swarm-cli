@@ -1,5 +1,43 @@
 # Refactor duplicated iteration loop into shared function
 
+## Completion Notes (2026-01-28)
+
+**Completed by agent cd59a862**
+
+### Changes Made
+
+1. Created `internal/runner/loop.go` with the shared `RunLoop` function
+   - Handles signal handling (SIGINT/SIGTERM)
+   - Handles state polling and updates (iterations, model, termination mode, pause)
+   - Handles timeout support (total timeout and per-iteration timeout)
+   - Handles on-complete hooks
+   - Returns `LoopResult` with `TimedOut` flag for proper exit code handling
+
+2. Created `internal/runner/loop_test.go` with tests for:
+   - LoopConfig structure
+   - LoopResult structure
+   - Immediate termination handling
+   - Total timeout handling
+   - Iteration update handling
+   - Starting iteration handling (including defaults for 0 and negative values)
+
+3. Updated `cmd/run.go`:
+   - Replaced ~175 lines of iteration loop code with a call to `runner.RunLoop`
+   - Preserved timeout exit code handling (exit 124 on timeout)
+   - Removed unused imports (`context`, `os/signal`, `syscall`)
+
+4. Updated `cmd/restart.go`:
+   - Replaced ~130 lines of iteration loop code with a call to `runner.RunLoop`
+   - Removed unused imports (`os/signal`, `syscall`)
+
+### Testing
+
+- All existing tests pass
+- New runner tests pass
+- Binary builds and runs correctly
+
+---
+
 ## Problem
 
 The multi-iteration agent loop is duplicated between `cmd/run.go` (lines 268-354) and `cmd/restart.go` (lines 234-320). This ~80+ line block is nearly identical in both files and handles:

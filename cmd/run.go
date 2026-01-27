@@ -1,19 +1,17 @@
 package cmd
 
 import (
-	"context"
 	"fmt"
 	"os"
-	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/detach"
 	"github.com/matt/swarm-cli/internal/prompt"
+	"github.com/matt/swarm-cli/internal/runner"
 	"github.com/matt/swarm-cli/internal/scope"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
@@ -628,179 +626,29 @@ When running multiple iterations, agent failures do not stop the run.`,
 			fmt.Printf("Iteration timeout: %v\n", iterTimeout)
 		}
 
-		// Set up total timeout context
-		var timeoutCtx context.Context
-		var timeoutCancel context.CancelFunc
-		if totalTimeout > 0 {
-			timeoutCtx, timeoutCancel = context.WithTimeout(context.Background(), totalTimeout)
-			defer timeoutCancel()
-		} else {
-			timeoutCtx = context.Background()
+		// Run the multi-iteration loop
+		loopCfg := runner.LoopConfig{
+			Manager:           mgr,
+			AgentState:        agentState,
+			PromptContent:     promptContent,
+			Command:           appConfig.Command,
+			Env:               expandedEnv,
+			Output:            os.Stdout,
+			StartingIteration: startingIteration,
+			TotalTimeout:      totalTimeout,
+			IterTimeout:       iterTimeout,
 		}
 
-		// Track if we timed out for proper exit code
-		timedOut := false
-
-		// Ensure cleanup on exit
-		defer func() {
-			if timedOut {
-				agentState.TimeoutReason = "total"
-			}
-			agentState.Status = "terminated"
-			now := time.Now()
-			agentState.TerminatedAt = &now
-			if agentState.ExitReason == "" {
-				agentState.ExitReason = "completed"
-			}
-			_ = mgr.Update(agentState)
-
-			// Execute on-complete hook
-			if agentState.OnComplete != "" {
-				if err := agent.ExecuteOnCompleteHook(agentState); err != nil {
-					fmt.Printf("[swarm] Warning: on-complete hook failed: %v\n", err)
-				}
-			}
-
-			if timedOut {
-				os.Exit(124) // Exit code 124 matches GNU timeout convention
-			}
-		}()
-
-		// Handle signals
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-		// Run iterations (0 means unlimited), starting from startingIteration
-		for i := startingIteration; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
-			// Check for total timeout before starting iteration
-			select {
-			case <-timeoutCtx.Done():
-				fmt.Println("\n[swarm] Total timeout reached, stopping")
-				timedOut = true
-				return nil
-			default:
-				// Continue
-			}
-			// Check for control signals from state
-			currentState, err := mgr.Get(agentState.ID)
-			if err == nil && currentState != nil {
-				// Update iterations if changed
-				if currentState.Iterations != agentState.Iterations {
-					agentState.Iterations = currentState.Iterations
-					if agentState.Iterations == 0 {
-						fmt.Println("\n[swarm] Now running indefinitely")
-					} else {
-						fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
-					}
-				}
-
-				// Update model if changed
-				if currentState.Model != agentState.Model {
-					agentState.Model = currentState.Model
-					fmt.Printf("\n[swarm] Model updated to %s\n", agentState.Model)
-				}
-
-				// Check for termination
-				if currentState.TerminateMode == "immediate" {
-					fmt.Println("\n[swarm] Received immediate termination signal")
-					agentState.ExitReason = "killed"
-					return nil
-				}
-				if currentState.TerminateMode == "after_iteration" && i > 1 {
-					fmt.Println("\n[swarm] Terminating after iteration as requested")
-					agentState.ExitReason = "killed"
-					return nil
-				}
-
-				// Check for pause state and wait while paused
-				if currentState.Paused {
-					fmt.Println("\n[swarm] Agent paused, waiting for resume...")
-					agentState.Paused = true
-					now := time.Now()
-					agentState.PausedAt = &now
-					_ = mgr.Update(agentState)
-
-					for currentState.Paused && currentState.Status == "running" {
-						time.Sleep(1 * time.Second)
-						currentState, err = mgr.Get(agentState.ID)
-						if err != nil {
-							break
-						}
-						// Allow termination while paused
-						if currentState.TerminateMode != "" {
-							if currentState.TerminateMode == "immediate" {
-								fmt.Println("\n[swarm] Received immediate termination signal")
-								agentState.ExitReason = "killed"
-								return nil
-							}
-							break
-						}
-					}
-
-					if !currentState.Paused {
-						fmt.Println("\n[swarm] Agent resumed")
-						agentState.Paused = false
-						agentState.PausedAt = nil
-						_ = mgr.Update(agentState)
-					}
-				}
-			}
-
-			// Update current iteration
-			agentState.CurrentIter = i
-			_ = mgr.Update(agentState)
-
-			if agentState.Iterations == 0 {
-				fmt.Printf("\n[swarm] === Iteration %d ===\n", i)
-			} else {
-				fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
-			}
-
-			// Create agent config with per-iteration timeout
-			cfg := agent.Config{
-				Model:   agentState.Model,
-				Prompt:  promptContent,
-				Command: appConfig.Command,
-				Env:     expandedEnv,
-				Timeout: iterTimeout,
-			}
-
-			// Run agent - errors should NOT stop the run (including iteration timeouts)
-			runner := agent.NewRunner(cfg)
-			if err := runner.RunWithContext(timeoutCtx, os.Stdout); err != nil {
-				agentState.FailedIters++
-				agentState.LastError = err.Error()
-				if strings.Contains(err.Error(), "timed out") {
-					fmt.Printf("\n[swarm] Iteration %d timed out after %v (continuing)\n", i, iterTimeout)
-					// Record that this iteration timed out
-					agentState.TimeoutReason = "iteration"
-					_ = mgr.Update(agentState)
-					// Reset timeout reason after recording (will be set to "total" if total timeout hit)
-					agentState.TimeoutReason = ""
-				} else {
-					fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
-				}
-			} else {
-				agentState.SuccessfulIters++
-			}
-			_ = mgr.Update(agentState)
-
-			// Check for signals and total timeout
-			select {
-			case sig := <-sigChan:
-				fmt.Printf("\n[swarm] Received signal %v, stopping\n", sig)
-				agentState.ExitReason = "signal"
-				return nil
-			case <-timeoutCtx.Done():
-				fmt.Println("\n[swarm] Total timeout reached, stopping")
-				timedOut = true
-				return nil
-			default:
-				// Continue
-			}
+		result, err := runner.RunLoop(loopCfg)
+		if err != nil {
+			return err
 		}
 
-		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.CurrentIter)
+		// Exit with timeout code if timed out
+		if result.TimedOut {
+			os.Exit(124) // Exit code 124 matches GNU timeout convention
+		}
+
 		return nil
 	},
 }

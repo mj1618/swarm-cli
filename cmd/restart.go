@@ -3,15 +3,14 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"os/signal"
 	"strconv"
 	"strings"
-	"syscall"
 	"time"
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/detach"
 	"github.com/matt/swarm-cli/internal/prompt"
+	"github.com/matt/swarm-cli/internal/runner"
 	"github.com/matt/swarm-cli/internal/scope"
 	"github.com/matt/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
@@ -326,137 +325,19 @@ from iteration 1.`,
 			fmt.Printf("Restarting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
 		}
 
-		// Ensure cleanup on exit
-		defer func() {
-			agentState.Status = "terminated"
-			now := time.Now()
-			agentState.TerminatedAt = &now
-			if agentState.ExitReason == "" {
-				agentState.ExitReason = "completed"
-			}
-			_ = mgr.Update(agentState)
-
-			// Execute on-complete hook
-			if agentState.OnComplete != "" {
-				if err := agent.ExecuteOnCompleteHook(agentState); err != nil {
-					fmt.Printf("[swarm] Warning: on-complete hook failed: %v\n", err)
-				}
-			}
-		}()
-
-		// Handle signals
-		sigChan := make(chan os.Signal, 1)
-		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-		// Run iterations (0 means unlimited), starting from startingIteration
-		for i := startingIteration; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
-			// Check for control signals from state
-			currentState, err := mgr.Get(agentState.ID)
-			if err == nil && currentState != nil {
-				// Update iterations if changed
-				if currentState.Iterations != agentState.Iterations {
-					agentState.Iterations = currentState.Iterations
-					if agentState.Iterations == 0 {
-						fmt.Println("\n[swarm] Now running indefinitely")
-					} else {
-						fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
-					}
-				}
-
-				// Update model if changed
-				if currentState.Model != agentState.Model {
-					agentState.Model = currentState.Model
-					fmt.Printf("\n[swarm] Model updated to %s\n", agentState.Model)
-				}
-
-				// Check for termination
-				if currentState.TerminateMode == "immediate" {
-					fmt.Println("\n[swarm] Received immediate termination signal")
-					agentState.ExitReason = "killed"
-					return nil
-				}
-				if currentState.TerminateMode == "after_iteration" && i > 1 {
-					fmt.Println("\n[swarm] Terminating after iteration as requested")
-					agentState.ExitReason = "killed"
-					return nil
-				}
-
-				// Check for pause state and wait while paused
-				if currentState.Paused {
-					fmt.Println("\n[swarm] Agent paused, waiting for resume...")
-					agentState.Paused = true
-					now := time.Now()
-					agentState.PausedAt = &now
-					_ = mgr.Update(agentState)
-
-					for currentState.Paused && currentState.Status == "running" {
-						time.Sleep(1 * time.Second)
-						currentState, err = mgr.Get(agentState.ID)
-						if err != nil {
-							break
-						}
-						// Allow termination while paused
-						if currentState.TerminateMode != "" {
-							if currentState.TerminateMode == "immediate" {
-								fmt.Println("\n[swarm] Received immediate termination signal")
-								agentState.ExitReason = "killed"
-								return nil
-							}
-							break
-						}
-					}
-
-					if !currentState.Paused {
-						fmt.Println("\n[swarm] Agent resumed")
-						agentState.Paused = false
-						agentState.PausedAt = nil
-						_ = mgr.Update(agentState)
-					}
-				}
-			}
-
-			// Update current iteration
-			agentState.CurrentIter = i
-			_ = mgr.Update(agentState)
-
-			if agentState.Iterations == 0 {
-				fmt.Printf("\n[swarm] === Iteration %d ===\n", i)
-			} else {
-				fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
-			}
-
-			// Create agent config
-			cfg := agent.Config{
-				Model:   agentState.Model,
-				Prompt:  promptContent,
-				Command: appConfig.Command,
-				Env:     expandedEnv,
-			}
-
-			// Run agent - errors should NOT stop the run
-			runner := agent.NewRunner(cfg)
-			if err := runner.Run(os.Stdout); err != nil {
-				agentState.FailedIters++
-				agentState.LastError = err.Error()
-				fmt.Printf("\n[swarm] Agent error (continuing): %v\n", err)
-			} else {
-				agentState.SuccessfulIters++
-			}
-			_ = mgr.Update(agentState)
-
-			// Check for signals
-			select {
-			case sig := <-sigChan:
-				fmt.Printf("\n[swarm] Received signal %v, stopping\n", sig)
-				agentState.ExitReason = "signal"
-				return nil
-			default:
-				// Continue
-			}
+		// Run the multi-iteration loop
+		loopCfg := runner.LoopConfig{
+			Manager:           mgr,
+			AgentState:        agentState,
+			PromptContent:     promptContent,
+			Command:           appConfig.Command,
+			Env:               expandedEnv,
+			Output:            os.Stdout,
+			StartingIteration: startingIteration,
 		}
 
-		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.CurrentIter)
-		return nil
+		_, err = runner.RunLoop(loopCfg)
+		return err
 	},
 }
 
