@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/matt/swarm-cli/internal/process"
 	"github.com/matt/swarm-cli/internal/state"
@@ -9,6 +10,7 @@ import (
 )
 
 var rmForce bool
+var rmLogs bool
 
 var rmCmd = &cobra.Command{
 	Use:   "rm [agent-id-or-name...]",
@@ -17,6 +19,8 @@ var rmCmd = &cobra.Command{
 
 By default, only terminated agents can be removed. Use --force to remove
 running agents (this will also terminate them).
+
+Use --logs to also delete the log files associated with removed agents.
 
 The agents can be specified by their IDs or names.`,
 	Example: `  # Remove a terminated agent by ID
@@ -29,7 +33,13 @@ The agents can be specified by their IDs or names.`,
   swarm rm my-agent
 
   # Force remove a running agent
-  swarm rm abc123 --force`,
+  swarm rm abc123 --force
+
+  # Remove agent and its log file
+  swarm rm abc123 --logs
+
+  # Force remove and delete logs
+  swarm rm abc123 --force --logs`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
@@ -40,6 +50,7 @@ The agents can be specified by their IDs or names.`,
 
 		var errors []string
 		removed := 0
+		logsRemoved := 0
 
 		for _, identifier := range args {
 			agent, err := mgr.GetByNameOrID(identifier)
@@ -67,6 +78,17 @@ The agents can be specified by their IDs or names.`,
 				continue
 			}
 
+			// Clean up log file if requested
+			if rmLogs && agent.LogFile != "" {
+				if err := os.Remove(agent.LogFile); err != nil {
+					if !os.IsNotExist(err) {
+						fmt.Printf("Warning: failed to remove log file %s: %v\n", agent.LogFile, err)
+					}
+				} else {
+					logsRemoved++
+				}
+			}
+
 			fmt.Println(agent.ID)
 			removed++
 		}
@@ -80,11 +102,17 @@ The agents can be specified by their IDs or names.`,
 			return fmt.Errorf("no agents removed")
 		}
 
+		// Print summary when logs were removed
+		if rmLogs && logsRemoved > 0 {
+			fmt.Printf("Removed %d agent(s) and %d log file(s).\n", removed, logsRemoved)
+		}
+
 		return nil
 	},
 }
 
 func init() {
 	rmCmd.Flags().BoolVarP(&rmForce, "force", "f", false, "Force removal of running agents")
+	rmCmd.Flags().BoolVar(&rmLogs, "logs", false, "Also delete log files for removed agents")
 	rootCmd.AddCommand(rmCmd)
 }
