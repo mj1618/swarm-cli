@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	promptsShowRaw  bool
-	promptsShowPath bool
+	promptsShowRaw    bool
+	promptsShowPath   bool
+	promptsShowExpand bool
 )
 
 var promptsShowCmd = &cobra.Command{
@@ -20,7 +21,10 @@ var promptsShowCmd = &cobra.Command{
 	Long: `Display the content of a prompt file.
 
 By default, shows prompts from the project directory (./swarm/prompts/).
-Use --global to show a prompt from the global directory (~/.swarm/prompts/).`,
+Use --global to show a prompt from the global directory (~/.swarm/prompts/).
+
+The --expand flag expands all {{include: path}} directives, showing the
+fully resolved prompt content.`,
 	Example: `  # Show a project prompt
   swarm prompts show coder
 
@@ -31,7 +35,10 @@ Use --global to show a prompt from the global directory (~/.swarm/prompts/).`,
   swarm prompts show coder --path
 
   # Raw output (no decorations, for piping)
-  swarm prompts show coder --raw`,
+  swarm prompts show coder --raw
+
+  # Show with includes expanded
+  swarm prompts show coder --expand`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		promptName := args[0]
@@ -41,8 +48,13 @@ Use --global to show a prompt from the global directory (~/.swarm/prompts/).`,
 			return fmt.Errorf("failed to get prompts directory: %w", err)
 		}
 
-		// Load the raw prompt content
-		content, err := prompt.LoadPromptRaw(promptsDir, promptName)
+		// Load the prompt content (raw or expanded)
+		var content string
+		if promptsShowExpand {
+			content, err = prompt.LoadPromptRawExpanded(promptsDir, promptName)
+		} else {
+			content, err = prompt.LoadPromptRaw(promptsDir, promptName)
+		}
 		if err != nil {
 			return fmt.Errorf("failed to load prompt '%s': %w", promptName, err)
 		}
@@ -86,5 +98,6 @@ Use --global to show a prompt from the global directory (~/.swarm/prompts/).`,
 func init() {
 	promptsShowCmd.Flags().BoolVar(&promptsShowRaw, "raw", false, "Output raw content without formatting")
 	promptsShowCmd.Flags().BoolVar(&promptsShowPath, "path", false, "Show the file path in the header")
+	promptsShowCmd.Flags().BoolVarP(&promptsShowExpand, "expand", "e", false, "Expand {{include: path}} directives")
 	promptsCmd.AddCommand(promptsShowCmd)
 }

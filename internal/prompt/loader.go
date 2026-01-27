@@ -34,7 +34,7 @@ func ListPrompts(promptsDir string) ([]string, error) {
 	return prompts, nil
 }
 
-// LoadPrompt loads a prompt file and wraps it with system/user tags.
+// LoadPrompt loads a prompt file, processes include directives, and wraps it with system/user tags.
 func LoadPrompt(promptsDir, name string) (string, error) {
 	// Add .md extension if not present
 	filename := name
@@ -51,12 +51,18 @@ func LoadPrompt(promptsDir, name string) (string, error) {
 		return "", err
 	}
 
+	// Process include directives
+	processed, err := ProcessIncludes(string(content), promptsDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to process includes in prompt %q: %w", name, err)
+	}
+
 	// Wrap prompt with system/user tags
-	wrapped := wrapPrompt(string(content))
+	wrapped := wrapPrompt(processed)
 	return wrapped, nil
 }
 
-// LoadPromptFromFile loads a prompt from an arbitrary file path and wraps it with system/user tags.
+// LoadPromptFromFile loads a prompt from an arbitrary file path, processes include directives, and wraps it with system/user tags.
 func LoadPromptFromFile(filePath string) (string, error) {
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -66,8 +72,15 @@ func LoadPromptFromFile(filePath string) (string, error) {
 		return "", err
 	}
 
+	// Process include directives (relative to the file's directory)
+	dir := filepath.Dir(filePath)
+	processed, err := ProcessIncludes(string(content), dir)
+	if err != nil {
+		return "", fmt.Errorf("failed to process includes in prompt file %q: %w", filePath, err)
+	}
+
 	// Wrap prompt with system/user tags
-	wrapped := wrapPrompt(string(content))
+	wrapped := wrapPrompt(processed)
 	return wrapped, nil
 }
 
@@ -100,6 +113,33 @@ func LoadPromptRaw(promptsDir, name string) (string, error) {
 	}
 
 	return string(content), nil
+}
+
+// LoadPromptRawExpanded loads a prompt file and expands all include directives.
+// Returns the content with includes expanded but no other processing.
+func LoadPromptRawExpanded(promptsDir, name string) (string, error) {
+	// Add .md extension if not present
+	filename := name
+	if !strings.HasSuffix(filename, ".md") {
+		filename = filename + ".md"
+	}
+
+	path := filepath.Join(promptsDir, filename)
+	content, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", fmt.Errorf("prompt not found: %s", name)
+		}
+		return "", err
+	}
+
+	// Process include directives
+	processed, err := ProcessIncludes(string(content), promptsDir)
+	if err != nil {
+		return "", fmt.Errorf("failed to process includes in prompt %q: %w", name, err)
+	}
+
+	return processed, nil
 }
 
 // GetPromptPath returns the full path to a prompt file.
