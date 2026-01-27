@@ -1,5 +1,28 @@
 # Add `swarm clone` command to duplicate agent configuration
 
+## Completion Note (cd59a862)
+
+Implemented the `swarm clone` command with all specified functionality:
+
+**Files created:**
+- `cmd/clone.go` - Full implementation of the clone command
+- `cmd/clone_test.go` - Tests for command flags, usage, and args validation
+
+**Features implemented:**
+- Clone agent by ID or name (also supports `@last` and `_` identifiers)
+- Override iterations (`-n`), model (`-m`), name (`-N`)
+- `--dry-run` flag to show equivalent run command
+- `--same-dir` flag to run in source agent's directory
+- `--foreground` flag to override detached mode
+- `--forever` flag for unlimited iterations
+- `--env` flag to set environment variables
+- `--on-complete` hook support
+- Auto-generates name from source (e.g., "my-agent" -> "my-agent-clone")
+- Works for both running and terminated agents
+- Proper state management and cleanup
+
+All tests pass. Command is registered in root.go.
+
 ## Problem
 
 When users want to run another agent with the same or similar configuration as an existing agent, they must manually remember and re-specify all the options:
