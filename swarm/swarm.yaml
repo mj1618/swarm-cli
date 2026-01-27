@@ -2,7 +2,7 @@ version: "1"
 tasks:
   planner:
     prompt: planner
-    iterations: 10
+    iterations: 20
   coder:
     prompt: coder
-    iterations: 20
+    iterations: 30

@@ -155,12 +155,15 @@ func TestLoadWithProjectOverride(t *testing.T) {
 		t.Fatalf("failed to change to temp directory: %v", err)
 	}
 
-	// Write project config
+	// Create swarm directory and write project config
+	if err := os.MkdirAll("swarm", 0755); err != nil {
+		t.Fatalf("failed to create swarm directory: %v", err)
+	}
 	projectConfig := `
 model = "project-model"
 iterations = 100
 `
-	if err := os.WriteFile(".swarm.toml", []byte(projectConfig), 0644); err != nil {
+	if err := os.WriteFile("swarm/.swarm.toml", []byte(projectConfig), 0644); err != nil {
 		t.Fatalf("failed to write project config: %v", err)
 	}
 
@@ -233,8 +236,8 @@ func TestGlobalConfigPath(t *testing.T) {
 
 func TestProjectConfigPath(t *testing.T) {
 	path := ProjectConfigPath()
-	if path != ".swarm.toml" {
-		t.Errorf("expected '.swarm.toml', got '%s'", path)
+	if path != "swarm/.swarm.toml" {
+		t.Errorf("expected 'swarm/.swarm.toml', got '%s'", path)
 	}
 }
 

@@ -87,7 +87,7 @@ Available backends:
   claude-code - Anthropic's Claude Code CLI (uses direct text streaming)
 
 This command updates the config file with the appropriate preset for the chosen backend.
-By default, updates the project config (.swarm.toml). Use --global to update the global config.`,
+By default, updates the project config (swarm/.swarm.toml). Use --global to update the global config.`,
 	Example: `  # Use Cursor backend
   swarm config set-backend cursor
 

@@ -40,7 +40,7 @@ swarm doctor
 
 ✓ Configuration
   Global config: ~/.config/swarm/config.toml (found)
-  Project config: .swarm.toml (not found, using defaults)
+  Project config: swarm/.swarm.toml (not found, using defaults)
   Backend: cursor
   Model: claude-opus-4-20250514
 

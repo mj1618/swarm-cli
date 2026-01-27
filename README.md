@@ -138,7 +138,7 @@ agent --version
 claude --version
 ```
 
-The backend can also be configured per-project in `.swarm.toml` or globally in `~/.config/swarm/config.toml`. See the [Configuration](#configuration) section for details.
+The backend can also be configured per-project in `swarm/.swarm.toml` or globally in `~/.config/swarm/config.toml`. See the [Configuration](#configuration) section for details.
 
 ## Quick Start
 
@@ -431,9 +431,11 @@ swarm config set-backend claude-code --global
 Swarm CLI uses TOML configuration files with the following priority (highest to lowest):
 
 1. CLI flags
-2. Project config (`.swarm.toml` in current directory)
+2. Project config (`swarm/.swarm.toml`)
 3. Global config (`~/.config/swarm/config.toml`)
 4. Built-in defaults
+
+**Note:** Config is always loaded from your **current directory** when running the CLI, not from the directory where an agent was originally started. For example, if you start an agent in `/project-a/` and later run `swarm restart my-agent` from `/project-b/`, the restarted agent will use `/project-b/`'s config (but still run in `/project-a/`'s directory).
 
 ### Configuration File
 
@@ -549,7 +551,7 @@ Swarm CLI supports two scopes for organizing work:
 
 - Prompts: `./swarm/prompts/`
 - Agents: Only shows agents started in the current directory
-- Config: `.swarm.toml` in current directory
+- Config: `swarm/.swarm.toml`
 
 ### Global Scope (`--global` / `-g`)
 
@@ -625,11 +627,11 @@ swarm config set-backend cursor --global
 # Create project-specific overrides
 cd ~/projects/frontend
 swarm config set-backend cursor
-# Edit .swarm.toml to use faster model for frontend work
+# Edit swarm/.swarm.toml to use faster model for frontend work
 
 cd ~/projects/backend  
 swarm config set-backend cursor
-# Edit .swarm.toml to use more capable model for backend work
+# Edit swarm/.swarm.toml to use more capable model for backend work
 ```
 
 ### Running Multiple Tasks (Compose)

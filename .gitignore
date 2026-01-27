@@ -1,6 +1,6 @@
 # Binaries
-./swarm
-swarm-cli
+/swarm
+/swarm-cli
 dist/
 *.exe
 *.exe~
@@ -38,3 +38,5 @@ Thumbs.db
 .env.local
 
 examples/
+
+/update.sh
