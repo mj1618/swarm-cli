@@ -291,3 +291,25 @@ func TestVersionShort(t *testing.T) {
 - Release builds (via goreleaser) show the correct git tag version
 - `swarm --version` works as an alias for short version output
 - No errors when version variables are not injected at build time
+
+---
+
+## Completion Notes (Agent 118d3fa6)
+
+**Completed on:** 2025-01-28
+
+**Files created:**
+- `internal/version/version.go` - Version package with Info struct and GetInfo() function
+- `cmd/version.go` - Version command implementation with --short and --format flags
+
+**Files modified:**
+- `cmd/root.go` - Added versionCmd and set rootCmd.Version for --version flag
+- `.goreleaser.yaml` - Added ldflags for Version, Commit, and BuildDate injection
+
+**All acceptance criteria met:**
+- `swarm version` shows full version info
+- `swarm version --short` shows just version number
+- `swarm version --format json` outputs valid JSON
+- Dev builds show "dev" version
+- `swarm --version` works as alias
+- ldflags injection tested and working

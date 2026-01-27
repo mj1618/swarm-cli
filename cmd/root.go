@@ -5,6 +5,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/config"
 	"github.com/matt/swarm-cli/internal/scope"
+	"github.com/matt/swarm-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -70,6 +71,9 @@ func init() {
 	// Add global flag as persistent (available to all subcommands)
 	rootCmd.PersistentFlags().BoolVarP(&globalFlag, "global", "g", false, "Operate globally instead of project-scoped")
 
+	// Set version for --version flag
+	rootCmd.Version = version.Version
+
 	rootCmd.AddCommand(runCmd)
 	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(listCmd)
@@ -82,6 +86,7 @@ func init() {
 	rootCmd.AddCommand(startCmd)
 	rootCmd.AddCommand(startAllCmd)
 	rootCmd.AddCommand(promptsCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 // GetScope returns the current scope (project or global).

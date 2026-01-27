@@ -14,6 +14,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
+      - -X github.com/matt/swarm-cli/internal/version.Version={{.Version}}
+      - -X github.com/matt/swarm-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/matt/swarm-cli/internal/version.BuildDate={{.Date}}
 
 archives:
   - format: tar.gz
