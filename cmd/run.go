@@ -26,6 +26,23 @@ var runCmd = &cobra.Command{
 	Use:   "run",
 	Short: "Run a single agent",
 	Long:  `Run a single agent with a specified prompt and model.`,
+	Example: `  # Interactive prompt selection
+  swarm run
+
+  # Use a named prompt from the prompts directory
+  swarm run -p my-prompt
+
+  # Use a specific prompt file
+  swarm run -f ./prompts/custom.md
+
+  # Use an inline prompt string
+  swarm run -s "Review the code for bugs"
+
+  # Run with a specific model
+  swarm run -p my-prompt -m claude-sonnet-4-20250514
+
+  # Run in background (detached)
+  swarm run -p my-prompt -d`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get prompts directory based on scope
 		promptsDir, err := GetPromptsDir()

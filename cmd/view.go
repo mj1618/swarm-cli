@@ -15,6 +15,11 @@ var viewCmd = &cobra.Command{
 	Long: `View detailed information about a specific agent including its status and logs.
 
 The agent can be specified by its ID or name.`,
+	Example: `  # View by agent ID
+  swarm view abc123
+
+  # View by agent name
+  swarm view my-agent`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]

@@ -20,14 +20,21 @@ var controlCmd = &cobra.Command{
 	Short: "Control a running agent",
 	Long: `Control a running agent by changing its configuration or terminating it.
 
-The agent can be specified by its ID or name.
+The agent can be specified by its ID or name.`,
+	Example: `  # Terminate immediately (by ID)
+  swarm control abc123 --terminate
 
-Examples:
-  swarm control abc123 --terminate           # Terminate immediately (by ID)
-  swarm control my-agent --terminate         # Terminate immediately (by name)
-  swarm control abc123 --terminate-after     # Terminate after current iteration
-  swarm control abc123 --iterations 50       # Change iteration count
-  swarm control my-agent --model gpt-5.2     # Change model for next iteration`,
+  # Terminate immediately (by name)
+  swarm control my-agent --terminate
+
+  # Terminate after current iteration
+  swarm control abc123 --terminate-after
+
+  # Change iteration count
+  swarm control abc123 --iterations 50
+
+  # Change model for next iteration
+  swarm control my-agent --model claude-sonnet-4-20250514`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]

@@ -22,12 +22,15 @@ var tailCmd = &cobra.Command{
 	Long: `View the log output of a detached agent.
 
 The agent can be specified by its ID or name. Use -f to follow the output
-in real-time (like tail -f), or -n to specify the number of lines to show.
+in real-time (like tail -f), or -n to specify the number of lines to show.`,
+	Example: `  # Show last 50 lines of agent abc123
+  swarm tail abc123
 
-Examples:
-  swarm tail abc123        # Show last 50 lines of agent abc123
-  swarm tail myagent -f    # Follow output of agent named "myagent"
-  swarm tail abc123 -n 100 # Show last 100 lines`,
+  # Follow output of agent named "myagent"
+  swarm tail myagent -f
+
+  # Show last 100 lines
+  swarm tail abc123 -n 100`,
 	Args: cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		agentIdentifier := args[0]

@@ -31,6 +31,17 @@ var loopCmd = &cobra.Command{
 	Use:   "loop",
 	Short: "Run an agent in a loop",
 	Long:  `Run an agent repeatedly for a specified number of iterations.`,
+	Example: `  # Run 10 iterations with a named prompt
+  swarm loop -p my-prompt -n 10
+
+  # Run with a custom name for easy reference
+  swarm loop -p my-prompt -n 5 -N my-agent
+
+  # Run in background
+  swarm loop -p my-prompt -n 20 -d
+
+  # Run with a specific model
+  swarm loop -p my-prompt -n 10 -m claude-sonnet-4-20250514`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get prompts directory based on scope
 		promptsDir, err := GetPromptsDir()

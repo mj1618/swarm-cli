@@ -17,6 +17,11 @@ var listCmd = &cobra.Command{
 
 By default, only shows agents started in the current directory.
 Use --global to show agents from all directories.`,
+	Example: `  # List agents in current project
+  swarm list
+
+  # List all agents across all projects
+  swarm list -g`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")

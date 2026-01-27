@@ -30,6 +30,17 @@ It allows you to:
 
 By default, operations are scoped to the current project directory.
 Use --global to operate across all projects.`,
+	Example: `  # Run an agent with a prompt from the prompts directory
+  swarm run -p my-prompt
+
+  # Run an agent loop in the background
+  swarm loop -p my-prompt -n 10 -d
+
+  # List all running agents
+  swarm list
+
+  # View details of an agent
+  swarm view abc123`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
 		// Set scope based on global flag
 		if globalFlag {

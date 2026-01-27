@@ -16,6 +16,14 @@ var configCmd = &cobra.Command{
 	Use:   "config",
 	Short: "Manage swarm configuration",
 	Long:  `View and manage swarm-cli configuration files.`,
+	Example: `  # Initialize a project config
+  swarm config init
+
+  # Show current configuration
+  swarm config show
+
+  # Switch to claude-code backend
+  swarm config set-backend claude-code`,
 }
 
 var configInitCmd = &cobra.Command{
@@ -25,6 +33,11 @@ var configInitCmd = &cobra.Command{
 
 By default, creates a project config file (.swarm.toml) in the current directory.
 Use --global to create the global config file (~/.config/swarm/config.toml).`,
+	Example: `  # Create project config in current directory
+  swarm config init
+
+  # Create global config
+  swarm config init --global`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		var configPath string
 		var err error
@@ -64,6 +77,8 @@ var configShowCmd = &cobra.Command{
 	Use:   "show",
 	Short: "Display the merged configuration",
 	Long:  `Display the effective configuration after merging global and project configs.`,
+	Example: `  # Show effective configuration
+  swarm config show`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		cfg, err := config.Load()
 		if err != nil {
@@ -81,6 +96,8 @@ var configPathCmd = &cobra.Command{
 	Use:   "path",
 	Short: "Show config file locations",
 	Long:  `Display the paths to global and project configuration files.`,
+	Example: `  # Show config file paths
+  swarm config path`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		globalPath, err := config.GlobalConfigPath()
 		if err != nil {
@@ -120,11 +137,14 @@ Available backends:
   claude-code - Anthropic's Claude Code CLI (uses direct text streaming)
 
 This command updates the config file with the appropriate preset for the chosen backend.
-By default, updates the project config (.swarm.toml). Use --global to update the global config.
-
-Examples:
+By default, updates the project config (.swarm.toml). Use --global to update the global config.`,
+	Example: `  # Use Cursor backend
   swarm config set-backend cursor
+
+  # Use Claude Code backend
   swarm config set-backend claude-code
+
+  # Update global config instead of project
   swarm config set-backend claude-code --global`,
 	Args: cobra.ExactArgs(1),
 	ValidArgs: config.ValidBackends(),
