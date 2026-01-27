@@ -71,12 +71,16 @@ func init() {
 	rootCmd.PersistentFlags().BoolVarP(&globalFlag, "global", "g", false, "Operate globally instead of project-scoped")
 
 	rootCmd.AddCommand(runCmd)
+	rootCmd.AddCommand(restartCmd)
 	rootCmd.AddCommand(listCmd)
 	rootCmd.AddCommand(inspectCmd)
 	rootCmd.AddCommand(updateCmd)
 	rootCmd.AddCommand(killCmd)
+	rootCmd.AddCommand(killAllCmd)
 	rootCmd.AddCommand(stopCmd)
+	rootCmd.AddCommand(stopAllCmd)
 	rootCmd.AddCommand(startCmd)
+	rootCmd.AddCommand(startAllCmd)
 	rootCmd.AddCommand(promptsCmd)
 }
 

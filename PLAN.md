@@ -5,6 +5,8 @@ This is all the user will provide on the filesystem.
 
 # CLI tool
 
+The cli tool should where-applicable follow docker command syntax.
+
 The CLI allows the following functions:
 1. Start a single agent (see swarm/bin/agent.sh for an example) - choosing a prompt from swarm/prompts/ - the user should be able to select a model (one of the models from running the command shown by examples/list-models.txt, default to opus-4.5-thinking)
 2. Start a single agent that runs in a loop for a number of iterations (specified by the user, default 20). Again the user can select a model (default opus-4.5-thinking).

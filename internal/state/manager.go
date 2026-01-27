@@ -96,7 +96,7 @@ func GenerateID() string {
 }
 
 // Register adds a new agent to the state.
-// If the agent has a name, it must be unique among running agents.
+// If the agent has a name that conflicts with a running agent, a number suffix is added.
 func (m *Manager) Register(agent *AgentState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -106,17 +106,39 @@ func (m *Manager) Register(agent *AgentState) error {
 		state = &State{Agents: make(map[string]*AgentState)}
 	}
 
-	// Check for name uniqueness among running agents
+	// Ensure name uniqueness among running agents by appending number if needed
 	if agent.Name != "" {
-		for _, existing := range state.Agents {
-			if existing.Name == agent.Name && existing.Status == "running" {
-				return fmt.Errorf("agent name '%s' is already in use by agent %s", agent.Name, existing.ID)
-			}
-		}
+		agent.Name = m.uniqueName(state, agent.Name)
 	}
 
 	state.Agents[agent.ID] = agent
 	return m.save(state)
+}
+
+// uniqueName returns a unique name by appending a number suffix if needed.
+// Only considers running agents for conflicts.
+func (m *Manager) uniqueName(state *State, baseName string) string {
+	// Check if base name is available
+	nameInUse := func(name string) bool {
+		for _, existing := range state.Agents {
+			if existing.Name == name && existing.Status == "running" {
+				return true
+			}
+		}
+		return false
+	}
+
+	if !nameInUse(baseName) {
+		return baseName
+	}
+
+	// Find the next available number suffix
+	for i := 2; ; i++ {
+		candidate := fmt.Sprintf("%s-%d", baseName, i)
+		if !nameInUse(candidate) {
+			return candidate
+		}
+	}
 }
 
 // Update updates an existing agent's state.

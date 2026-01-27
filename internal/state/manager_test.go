@@ -471,3 +471,102 @@ func TestManagerListSortingAndFiltering(t *testing.T) {
 	_ = mgr.Remove(agent2.ID)
 	_ = mgr.Remove(agent3.ID)
 }
+
+func TestRegisterUniqueNameSuffix(t *testing.T) {
+	mgr, err := NewManager()
+	if err != nil {
+		t.Fatalf("NewManager failed: %v", err)
+	}
+
+	// Create first agent with name "my-task"
+	agent1 := &AgentState{
+		ID:        GenerateID(),
+		Name:      "my-task",
+		PID:       os.Getpid(),
+		Prompt:    "test-prompt",
+		Model:     "test-model",
+		StartedAt: time.Now(),
+		Status:    "running",
+	}
+
+	if err := mgr.Register(agent1); err != nil {
+		t.Fatalf("Register agent1 failed: %v", err)
+	}
+
+	// Name should remain "my-task" (no conflict)
+	if agent1.Name != "my-task" {
+		t.Errorf("Expected name 'my-task', got '%s'", agent1.Name)
+	}
+
+	// Create second agent with same name - should get suffix
+	agent2 := &AgentState{
+		ID:        GenerateID(),
+		Name:      "my-task",
+		PID:       os.Getpid(),
+		Prompt:    "test-prompt-2",
+		Model:     "test-model",
+		StartedAt: time.Now(),
+		Status:    "running",
+	}
+
+	if err := mgr.Register(agent2); err != nil {
+		t.Fatalf("Register agent2 failed: %v", err)
+	}
+
+	// Name should be "my-task-2"
+	if agent2.Name != "my-task-2" {
+		t.Errorf("Expected name 'my-task-2', got '%s'", agent2.Name)
+	}
+
+	// Create third agent with same name - should get next suffix
+	agent3 := &AgentState{
+		ID:        GenerateID(),
+		Name:      "my-task",
+		PID:       os.Getpid(),
+		Prompt:    "test-prompt-3",
+		Model:     "test-model",
+		StartedAt: time.Now(),
+		Status:    "running",
+	}
+
+	if err := mgr.Register(agent3); err != nil {
+		t.Fatalf("Register agent3 failed: %v", err)
+	}
+
+	// Name should be "my-task-3"
+	if agent3.Name != "my-task-3" {
+		t.Errorf("Expected name 'my-task-3', got '%s'", agent3.Name)
+	}
+
+	// Terminate agent1 - its name should become available
+	agent1.Status = "terminated"
+	if err := mgr.Update(agent1); err != nil {
+		t.Fatalf("Update agent1 failed: %v", err)
+	}
+
+	// Create fourth agent with same name - should reuse "my-task" (since terminated)
+	agent4 := &AgentState{
+		ID:        GenerateID(),
+		Name:      "my-task",
+		PID:       os.Getpid(),
+		Prompt:    "test-prompt-4",
+		Model:     "test-model",
+		StartedAt: time.Now(),
+		Status:    "running",
+	}
+
+	if err := mgr.Register(agent4); err != nil {
+		t.Fatalf("Register agent4 failed: %v", err)
+	}
+
+	// Name should be "my-task" (reused from terminated agent)
+	if agent4.Name != "my-task" {
+		t.Errorf("Expected name 'my-task' (reused), got '%s'", agent4.Name)
+	}
+
+	// Cleanup
+	_ = mgr.Remove(agent1.ID)
+	_ = mgr.Remove(agent2.ID)
+	_ = mgr.Remove(agent3.ID)
+	_ = mgr.Remove(agent4.ID)
+}

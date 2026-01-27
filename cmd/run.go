@@ -126,6 +126,12 @@ When running multiple iterations, agent failures do not stop the run.`,
 			effectiveModel = runModel
 		}
 
+		// Default name to prompt name if not specified
+		effectiveName := runName
+		if effectiveName == "" {
+			effectiveName = promptName
+		}
+
 		// Determine effective iterations (CLI flag overrides config default of 1)
 		effectiveIterations := 1
 		if cmd.Flags().Changed("iterations") {
@@ -177,28 +183,26 @@ When running multiple iterations, agent failures do not stop the run.`,
 				return fmt.Errorf("failed to initialize state manager: %w", err)
 			}
 
-			agentState := &state.AgentState{
-				ID:          agentID,
-				Name:        runName,
-				PID:         pid,
-				Prompt:      promptName,
-				Model:       effectiveModel,
-				StartedAt:   time.Now(),
-				Iterations:  effectiveIterations,
-				CurrentIter: 0,
-				Status:      "running",
-				LogFile:     logFile,
-				WorkingDir:  workingDir,
-			}
+		agentState := &state.AgentState{
+			ID:          agentID,
+			Name:        effectiveName,
+			PID:         pid,
+			Prompt:      promptName,
+			Model:       effectiveModel,
+			StartedAt:   time.Now(),
+			Iterations:  effectiveIterations,
+			CurrentIter: 0,
+			Status:      "running",
+			LogFile:     logFile,
+			WorkingDir:  workingDir,
+		}
 
-			if err := mgr.Register(agentState); err != nil {
-				return fmt.Errorf("failed to register agent: %w", err)
-			}
+		if err := mgr.Register(agentState); err != nil {
+			return fmt.Errorf("failed to register agent: %w", err)
+		}
 
-			fmt.Printf("Started detached agent: %s (PID: %d)\n", agentID, pid)
-			if runName != "" {
-				fmt.Printf("Name: %s\n", runName)
-			}
+		fmt.Printf("Started detached agent: %s (PID: %d)\n", agentID, pid)
+		fmt.Printf("Name: %s\n", agentState.Name)
 			fmt.Printf("Iterations: %d\n", effectiveIterations)
 			fmt.Printf("Log file: %s\n", logFile)
 			return nil
@@ -218,13 +222,6 @@ When running multiple iterations, agent failures do not stop the run.`,
 			return runner.Run(os.Stdout)
 		}
 
-		// Multi-iteration mode with state management
-		if runName != "" {
-			fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: %d\n", runName, promptName, effectiveModel, effectiveIterations)
-		} else {
-			fmt.Printf("Starting agent with prompt: %s, model: %s, iterations: %d\n", promptName, effectiveModel, effectiveIterations)
-		}
-
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
 		if err != nil {
@@ -234,7 +231,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 		// Register this agent with working directory
 		agentState := &state.AgentState{
 			ID:          state.GenerateID(),
-			Name:        runName,
+			Name:        effectiveName,
 			PID:         os.Getpid(),
 			Prompt:      promptName,
 			Model:       effectiveModel,
@@ -248,6 +245,9 @@ When running multiple iterations, agent failures do not stop the run.`,
 		if err := mgr.Register(agentState); err != nil {
 			return fmt.Errorf("failed to register agent: %w", err)
 		}
+
+		// Multi-iteration mode with state management
+		fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
 
 		// Ensure cleanup on exit
 		defer func() {
