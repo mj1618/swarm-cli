@@ -7,6 +7,11 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	// Add dynamic completion for agent identifier
+	startCmd.ValidArgsFunction = completeRunningAgentIdentifier
+}
+
 var startCmd = &cobra.Command{
 	Use:   "start [agent-id-or-name]",
 	Short: "Resume a paused agent",

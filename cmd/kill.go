@@ -79,4 +79,7 @@ the current iteration to complete before terminating.`,
 
 func init() {
 	killCmd.Flags().BoolVarP(&killGraceful, "graceful", "G", false, "Terminate after current iteration completes")
+
+	// Add dynamic completion for agent identifier
+	killCmd.ValidArgsFunction = completeRunningAgentIdentifier
 }

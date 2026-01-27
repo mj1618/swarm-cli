@@ -699,4 +699,8 @@ func init() {
 	runCmd.Flags().StringVar(&runInternalIterTimeout, "_internal-iter-timeout", "", "Internal flag for passing iter-timeout to detached child")
 	runCmd.Flags().MarkHidden("_internal-iter-timeout")
 	runCmd.Flags().StringVarP(&runWorkingDir, "working-dir", "C", "", "Run agent in specified directory")
+
+	// Add dynamic completion for prompt and model flags
+	runCmd.RegisterFlagCompletionFunc("prompt", completePromptName)
+	runCmd.RegisterFlagCompletionFunc("model", completeModelName)
 }

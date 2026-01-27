@@ -172,4 +172,7 @@ The agent can be specified by its ID, name, or special identifier:
 
 func init() {
 	inspectCmd.Flags().StringVar(&inspectFormat, "format", "", "Output format: json or table (default)")
+
+	// Add dynamic completion for agent identifier
+	inspectCmd.ValidArgsFunction = completeAgentIdentifier
 }

@@ -113,4 +113,7 @@ iteration and entered the paused state. Use --no-wait to return immediately.`,
 func init() {
 	stopCmd.Flags().BoolVar(&stopNoWait, "no-wait", false, "Return immediately without waiting for agent to pause")
 	stopCmd.Flags().IntVar(&stopTimeout, "timeout", 300, "Maximum seconds to wait for agent to pause")
+
+	// Add dynamic completion for agent identifier
+	stopCmd.ValidArgsFunction = completeRunningAgentIdentifier
 }

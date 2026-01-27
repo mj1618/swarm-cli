@@ -146,4 +146,7 @@ func init() {
 	waitCmd.Flags().BoolVar(&waitAny, "any", false, "Return when any agent terminates")
 	waitCmd.Flags().BoolVarP(&waitVerbose, "verbose", "v", false, "Print status updates")
 	rootCmd.AddCommand(waitCmd)
+
+	// Add dynamic completion for agent identifier
+	waitCmd.ValidArgsFunction = completeRunningAgentIdentifier
 }

@@ -157,4 +157,8 @@ func init() {
 	updateCmd.Flags().StringVarP(&updateName, "name", "N", "", "Set new name for the agent")
 	updateCmd.Flags().BoolVar(&updateTerminate, "terminate", false, "Terminate agent immediately")
 	updateCmd.Flags().BoolVar(&updateTerminateAfter, "terminate-after", false, "Terminate after current iteration")
+
+	// Add dynamic completion for agent identifier and model flag
+	updateCmd.ValidArgsFunction = completeAgentIdentifier
+	updateCmd.RegisterFlagCompletionFunc("model", completeModelName)
 }

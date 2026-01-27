@@ -195,6 +195,9 @@ func init() {
 	logsCmd.Flags().IntVarP(&logsContextBefore, "before", "B", 0, "Show N lines before each match")
 	logsCmd.Flags().IntVarP(&logsContextAfter, "after", "A", 0, "Show N lines after each match")
 	rootCmd.AddCommand(logsCmd)
+
+	// Add dynamic completion for agent identifier
+	logsCmd.ValidArgsFunction = completeAgentIdentifier
 }
 
 // parseTimeFlag parses a time flag value into a time.Time.

@@ -382,4 +382,8 @@ func init() {
 	restartCmd.Flags().StringVarP(&restartName, "name", "N", "", "Name for the agent (overrides original)")
 	restartCmd.Flags().BoolVarP(&restartDetach, "detach", "d", false, "Run in detached mode (background)")
 	restartCmd.Flags().StringArrayVarP(&restartEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")
+
+	// Add dynamic completion for agent identifier and model flag
+	restartCmd.ValidArgsFunction = completeAgentIdentifier
+	restartCmd.RegisterFlagCompletionFunc("model", completeModelName)
 }

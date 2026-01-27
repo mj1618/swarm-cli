@@ -120,4 +120,7 @@ func init() {
 	rmCmd.Flags().BoolVarP(&rmForce, "force", "f", false, "Force removal of running agents")
 	rmCmd.Flags().BoolVar(&rmLogs, "logs", false, "Also delete log files for removed agents")
 	rootCmd.AddCommand(rmCmd)
+
+	// Add dynamic completion for agent identifier
+	rmCmd.ValidArgsFunction = completeAgentIdentifier
 }
