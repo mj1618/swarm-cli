@@ -46,6 +46,46 @@ swarm config set-model opus
 swarm config set-model opus-4.5-thinking
 ```
 
+## Table of Contents
+
+- [Features](#features)
+- [Installation](#installation)
+  - [Prerequisites](#prerequisites)
+  - [Download Binary (Recommended)](#download-binary-recommended)
+  - [Install with Go](#install-with-go)
+  - [Build from Source](#build-from-source)
+- [Choosing Your Agent Backend](#choosing-your-agent-backend)
+  - [Set Your Backend](#set-your-backend)
+- [Quick Start](#quick-start)
+- [Commands](#commands)
+  - [swarm run](#swarm-run)
+  - [swarm up](#swarm-up)
+  - [swarm list](#swarm-list)
+  - [swarm inspect](#swarm-inspect-agent-id-or-name)
+  - [swarm update](#swarm-update-agent-id-or-name)
+  - [swarm kill](#swarm-kill-agent-id-or-name)
+  - [swarm stop](#swarm-stop-agent-id-or-name)
+  - [swarm start](#swarm-start-agent-id-or-name)
+  - [swarm logs](#swarm-logs-agent-id-or-name)
+  - [swarm config](#swarm-config)
+- [Configuration](#configuration)
+  - [Configuration File](#configuration-file)
+  - [Backends](#backends)
+- [Prompts](#prompts)
+  - [Prompt Locations](#prompt-locations)
+  - [Creating Prompts](#creating-prompts)
+  - [Using Prompts](#using-prompts)
+- [Scoping](#scoping)
+  - [Project Scope (default)](#project-scope-default)
+  - [Global Scope](#global-scope---global---g)
+- [Workflow Examples](#workflow-examples)
+  - [Continuous Development](#continuous-development)
+  - [Managing Long-Running Agents](#managing-long-running-agents)
+  - [Multi-Project Setup](#multi-project-setup)
+  - [Running Multiple Tasks (Compose)](#running-multiple-tasks-compose)
+- [Troubleshooting](#troubleshooting)
+- [License](#license)
+
 ## Features
 
 - **Run agents** with custom prompts (single or multiple iterations)
