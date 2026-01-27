@@ -4,8 +4,6 @@ A command-line tool for running and managing AI agents. Swarm CLI allows you to 
 
 ![Swarm CLI - Starting and listing agents](images/screenshot-1.png)
 
-![Swarm CLI - Multiple agents running in parallel](images/screenshot-2.png)
-
 ```bash
 # Run with a named prompt (from ./swarm/prompts/my-task.md)
 swarm run -p my-task
