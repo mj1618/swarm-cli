@@ -3,6 +3,7 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -14,6 +15,9 @@ import (
 var listAll bool
 var listQuiet bool
 var listFormat string
+var listPrompt string
+var listModel string
+var listStatus string
 
 var listCmd = &cobra.Command{
 	Use:     "list",
@@ -23,7 +27,14 @@ var listCmd = &cobra.Command{
 
 By default, only shows running agents started in the current directory.
 Use --all to include terminated agents.
-Use --global to show agents from all directories.`,
+Use --global to show agents from all directories.
+
+Filter options:
+  --prompt, -p    Filter by prompt name (substring match, case-insensitive)
+  --model, -m     Filter by model name (substring match, case-insensitive)
+  --status        Filter by status (running, paused, or terminated)
+
+Multiple filters are combined with AND logic (all conditions must match).`,
 	Example: `  # List running agents in current project
   swarm list
 
@@ -40,8 +51,39 @@ Use --global to show agents from all directories.`,
   swarm list -aq
 
   # Output as JSON
-  swarm list --format json`,
+  swarm list --format json
+
+  # Filter by prompt name
+  swarm list --prompt coder
+  swarm list -p planner
+
+  # Filter by model
+  swarm list --model sonnet
+  swarm list -m opus
+
+  # Filter by status
+  swarm list --status paused
+  swarm list --status terminated -a
+
+  # Combine filters
+  swarm list --prompt coder --model sonnet
+  swarm list -a --status terminated --prompt planner`,
 	RunE: func(cmd *cobra.Command, args []string) error {
+		// Validate status filter if provided
+		if listStatus != "" {
+			validStatuses := []string{"running", "paused", "terminated"}
+			isValid := false
+			for _, s := range validStatuses {
+				if strings.ToLower(listStatus) == s {
+					isValid = true
+					break
+				}
+			}
+			if !isValid {
+				return fmt.Errorf("invalid status filter %q: must be one of 'running', 'paused', or 'terminated'", listStatus)
+			}
+		}
+
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
 		if err != nil {
@@ -53,6 +95,20 @@ Use --global to show agents from all directories.`,
 		agents, err := mgr.List(onlyRunning)
 		if err != nil {
 			return fmt.Errorf("failed to list agents: %w", err)
+		}
+
+		// Apply filters
+		agents = filterAgents(agents, listPrompt, listModel, listStatus)
+
+		// Check for helpful hints when no agents match
+		if len(agents) == 0 && (listPrompt != "" || listModel != "" || listStatus != "") {
+			// Check if filtering for terminated without -a flag
+			if strings.ToLower(listStatus) == "terminated" && !listAll {
+				if !listQuiet {
+					fmt.Println("No agents found matching filters. Use -a to include terminated agents.")
+				}
+				return nil
+			}
 		}
 
 		if len(agents) == 0 {
@@ -166,8 +222,53 @@ Use --global to show agents from all directories.`,
 	},
 }
 
+// filterAgents applies prompt, model, and status filters to the agent list.
+// All non-empty filters must match (AND logic).
+func filterAgents(agents []*state.AgentState, promptFilter, modelFilter, statusFilter string) []*state.AgentState {
+	if promptFilter == "" && modelFilter == "" && statusFilter == "" {
+		return agents
+	}
+
+	promptFilter = strings.ToLower(promptFilter)
+	modelFilter = strings.ToLower(modelFilter)
+	statusFilter = strings.ToLower(statusFilter)
+
+	var filtered []*state.AgentState
+	for _, agent := range agents {
+		// Check prompt filter (substring, case-insensitive)
+		if promptFilter != "" && !strings.Contains(strings.ToLower(agent.Prompt), promptFilter) {
+			continue
+		}
+
+		// Check model filter (substring, case-insensitive)
+		if modelFilter != "" && !strings.Contains(strings.ToLower(agent.Model), modelFilter) {
+			continue
+		}
+
+		// Check status filter (exact match for running/terminated, special handling for paused)
+		if statusFilter != "" {
+			effectiveStatus := agent.Status
+			if agent.Status == "running" && agent.Paused {
+				effectiveStatus = "paused"
+			}
+			if strings.ToLower(effectiveStatus) != statusFilter {
+				continue
+			}
+		}
+
+		filtered = append(filtered, agent)
+	}
+
+	return filtered
+}
+
 func init() {
 	listCmd.Flags().BoolVarP(&listAll, "all", "a", false, "Show all agents including terminated")
 	listCmd.Flags().BoolVarP(&listQuiet, "quiet", "q", false, "Only display agent IDs")
 	listCmd.Flags().StringVar(&listFormat, "format", "", "Output format: json or table (default)")
+
+	// Filter flags
+	listCmd.Flags().StringVarP(&listPrompt, "prompt", "p", "", "Filter by prompt name (substring match)")
+	listCmd.Flags().StringVarP(&listModel, "model", "m", "", "Filter by model name (substring match)")
+	listCmd.Flags().StringVar(&listStatus, "status", "", "Filter by status: running, paused, or terminated")
 }
