@@ -9,16 +9,16 @@ import (
 func TestDefaultConfig(t *testing.T) {
 	cfg := DefaultConfig()
 
-	if cfg.Model != "opus-4.5-thinking" {
-		t.Errorf("expected default model 'opus-4.5-thinking', got '%s'", cfg.Model)
+	if cfg.Model != "opus" {
+		t.Errorf("expected default model 'opus', got '%s'", cfg.Model)
 	}
 
 	if cfg.Iterations != 1 {
 		t.Errorf("expected default iterations 1, got %d", cfg.Iterations)
 	}
 
-	if cfg.Command.Executable != "agent" {
-		t.Errorf("expected default executable 'agent', got '%s'", cfg.Command.Executable)
+	if cfg.Command.Executable != "claude" {
+		t.Errorf("expected default executable 'claude', got '%s'", cfg.Command.Executable)
 	}
 
 	if len(cfg.Command.Args) == 0 {
@@ -137,8 +137,8 @@ func TestLoadConfigFileMerge(t *testing.T) {
 		t.Errorf("expected iterations to remain 1, got %d", cfg.Iterations)
 	}
 
-	if cfg.Command.Executable != "agent" {
-		t.Errorf("expected executable to remain 'agent', got '%s'", cfg.Command.Executable)
+	if cfg.Command.Executable != "claude" {
+		t.Errorf("expected executable to remain 'claude', got '%s'", cfg.Command.Executable)
 	}
 }
 
@@ -179,8 +179,8 @@ iterations = 100
 	}
 
 	// Command should remain default (not specified in project config)
-	if cfg.Command.Executable != "agent" {
-		t.Errorf("expected default executable 'agent', got '%s'", cfg.Command.Executable)
+	if cfg.Command.Executable != "claude" {
+		t.Errorf("expected default executable 'claude', got '%s'", cfg.Command.Executable)
 	}
 }
 
@@ -189,7 +189,7 @@ func TestToTOML(t *testing.T) {
 	toml := cfg.ToTOML()
 
 	// Check that key elements are present
-	if !contains(toml, "model = \"opus-4.5-thinking\"") {
+	if !contains(toml, "model = \"opus\"") {
 		t.Error("TOML output missing model")
 	}
 
@@ -201,7 +201,7 @@ func TestToTOML(t *testing.T) {
 		t.Error("TOML output missing [command] section")
 	}
 
-	if !contains(toml, "executable = \"agent\"") {
+	if !contains(toml, "executable = \"claude\"") {
 		t.Error("TOML output missing executable")
 	}
 
