@@ -260,7 +260,12 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 			}
 
 			duration := time.Since(a.StartedAt).Round(time.Second)
-			iterStr := fmt.Sprintf("%d/%d", a.CurrentIter, a.Iterations)
+			var iterStr string
+			if a.Iterations == 0 {
+				iterStr = fmt.Sprintf("%d/∞", a.CurrentIter)
+			} else {
+				iterStr = fmt.Sprintf("%d/%d", a.CurrentIter, a.Iterations)
+			}
 
 			// Truncate prompt if too long
 			prompt := a.Prompt

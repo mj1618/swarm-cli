@@ -20,6 +20,7 @@ import (
 var (
 	restartModel      string
 	restartIterations int
+	restartForever    bool
 	restartName       string
 	restartDetach     bool
 	restartEnv        []string
@@ -119,8 +120,15 @@ You can optionally override the model, iterations, or name.`,
 		}
 
 		effectiveIterations := oldAgent.Iterations
-		if cmd.Flags().Changed("iterations") {
+		if restartForever {
+			effectiveIterations = 0
+		} else if cmd.Flags().Changed("iterations") {
 			effectiveIterations = restartIterations
+		}
+
+		// Validate that --forever and explicit -n (with value > 0) aren't both specified
+		if restartForever && cmd.Flags().Changed("iterations") && restartIterations > 0 {
+			return fmt.Errorf("cannot use --forever with --iterations (use -n 0 for unlimited)")
 		}
 
 		effectiveName := oldAgent.Name
@@ -178,7 +186,11 @@ You can optionally override the model, iterations, or name.`,
 				detachedArgs = append(detachedArgs, "--prompt", promptName)
 			}
 
-			detachedArgs = append(detachedArgs, "--iterations", strconv.Itoa(effectiveIterations))
+			if effectiveIterations == 0 {
+				detachedArgs = append(detachedArgs, "--forever")
+			} else {
+				detachedArgs = append(detachedArgs, "--iterations", strconv.Itoa(effectiveIterations))
+			}
 			if effectiveName != "" {
 				detachedArgs = append(detachedArgs, "--name", effectiveName)
 			}
@@ -215,7 +227,11 @@ You can optionally override the model, iterations, or name.`,
 
 			fmt.Printf("Restarted agent as detached: %s (PID: %d)\n", agentID, pid)
 			fmt.Printf("Name: %s\n", agentState.Name)
-			fmt.Printf("Iterations: %d\n", effectiveIterations)
+			if effectiveIterations == 0 {
+				fmt.Println("Iterations: unlimited")
+			} else {
+				fmt.Printf("Iterations: %d\n", effectiveIterations)
+			}
 			fmt.Printf("Log file: %s\n", logFile)
 			return nil
 		}
@@ -255,7 +271,11 @@ You can optionally override the model, iterations, or name.`,
 		}
 
 		// Multi-iteration mode with state management
-		fmt.Printf("Restarting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
+		if effectiveIterations == 0 {
+			fmt.Printf("Restarting agent '%s' with prompt: %s, model: %s, iterations: unlimited\n", agentState.Name, promptName, effectiveModel)
+		} else {
+			fmt.Printf("Restarting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
+		}
 
 		// Ensure cleanup on exit
 		defer func() {
@@ -272,15 +292,19 @@ You can optionally override the model, iterations, or name.`,
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-		// Run iterations
-		for i := 1; i <= agentState.Iterations; i++ {
+		// Run iterations (0 means unlimited)
+		for i := 1; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
 			// Check for control signals from state
 			currentState, err := mgr.Get(agentState.ID)
 			if err == nil && currentState != nil {
 				// Update iterations if changed
 				if currentState.Iterations != agentState.Iterations {
 					agentState.Iterations = currentState.Iterations
-					fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
+					if agentState.Iterations == 0 {
+						fmt.Println("\n[swarm] Now running indefinitely")
+					} else {
+						fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
+					}
 				}
 
 				// Update model if changed
@@ -339,7 +363,11 @@ You can optionally override the model, iterations, or name.`,
 			agentState.CurrentIter = i
 			_ = mgr.Update(agentState)
 
-			fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
+			if agentState.Iterations == 0 {
+				fmt.Printf("\n[swarm] === Iteration %d ===\n", i)
+			} else {
+				fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
+			}
 
 			// Create agent config
 			cfg := agent.Config{
@@ -371,14 +399,15 @@ You can optionally override the model, iterations, or name.`,
 			}
 		}
 
-		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.Iterations)
+		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.CurrentIter)
 		return nil
 	},
 }
 
 func init() {
 	restartCmd.Flags().StringVarP(&restartModel, "model", "m", "", "Model to use (overrides original)")
-	restartCmd.Flags().IntVarP(&restartIterations, "iterations", "n", 0, "Number of iterations (overrides original)")
+	restartCmd.Flags().IntVarP(&restartIterations, "iterations", "n", 0, "Number of iterations (0 = unlimited, overrides original)")
+	restartCmd.Flags().BoolVarP(&restartForever, "forever", "F", false, "Run indefinitely until manually stopped")
 	restartCmd.Flags().StringVarP(&restartName, "name", "N", "", "Name for the agent (overrides original)")
 	restartCmd.Flags().BoolVarP(&restartDetach, "detach", "d", false, "Run in detached mode (background)")
 	restartCmd.Flags().StringArrayVarP(&restartEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")

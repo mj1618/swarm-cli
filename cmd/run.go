@@ -26,6 +26,7 @@ var (
 	runPromptString        string
 	runStdin               bool
 	runIterations          int
+	runForever             bool
 	runName                string
 	runDetach              bool
 	runInternalDetached    bool
@@ -248,9 +249,22 @@ When running multiple iterations, agent failures do not stop the run.`,
 		}
 
 		// Determine effective iterations (CLI flag overrides config default of 1)
+		// 0 means unlimited (forever mode)
 		effectiveIterations := 1
-		if cmd.Flags().Changed("iterations") {
+		if runForever {
+			effectiveIterations = 0
+		} else if cmd.Flags().Changed("iterations") {
 			effectiveIterations = runIterations
+		}
+
+		// Validate that --forever and explicit -n (with value > 0) aren't both specified
+		if runForever && cmd.Flags().Changed("iterations") && runIterations > 0 {
+			return fmt.Errorf("cannot use --forever with --iterations (use -n 0 for unlimited)")
+		}
+
+		// Warning if running forever in foreground
+		if effectiveIterations == 0 && !runDetach {
+			fmt.Println("Warning: Running forever in foreground. Press Ctrl+C to stop.")
 		}
 
 		// Parse and expand environment variables
@@ -361,7 +375,9 @@ When running multiple iterations, agent failures do not stop the run.`,
 			if runStdin && stdinContent != "" {
 				detachedArgs = append(detachedArgs, "--stdin", "--_internal-stdin", stdinContent)
 			}
-			if cmd.Flags().Changed("iterations") {
+			if runForever {
+				detachedArgs = append(detachedArgs, "--forever")
+			} else if cmd.Flags().Changed("iterations") {
 				detachedArgs = append(detachedArgs, "--iterations", strconv.Itoa(runIterations))
 			}
 			if runName != "" {
@@ -424,7 +440,11 @@ When running multiple iterations, agent failures do not stop the run.`,
 
 			fmt.Printf("Started detached agent: %s (PID: %d)\n", taskID, pid)
 			fmt.Printf("Name: %s\n", agentState.Name)
-			fmt.Printf("Iterations: %d\n", effectiveIterations)
+			if effectiveIterations == 0 {
+				fmt.Println("Iterations: unlimited")
+			} else {
+				fmt.Printf("Iterations: %d\n", effectiveIterations)
+			}
 			if totalTimeout > 0 {
 				fmt.Printf("Timeout: %v\n", totalTimeout)
 			}
@@ -505,7 +525,11 @@ When running multiple iterations, agent failures do not stop the run.`,
 		}
 
 		// Multi-iteration mode with state management
-		fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
+		if effectiveIterations == 0 {
+			fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: unlimited\n", agentState.Name, promptName, effectiveModel)
+		} else {
+			fmt.Printf("Starting agent '%s' with prompt: %s, model: %s, iterations: %d\n", agentState.Name, promptName, effectiveModel, effectiveIterations)
+		}
 		if totalTimeout > 0 {
 			fmt.Printf("Total timeout: %v\n", totalTimeout)
 		}
@@ -547,8 +571,8 @@ When running multiple iterations, agent failures do not stop the run.`,
 		sigChan := make(chan os.Signal, 1)
 		signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-		// Run iterations
-		for i := 1; i <= agentState.Iterations; i++ {
+		// Run iterations (0 means unlimited)
+		for i := 1; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
 			// Check for total timeout before starting iteration
 			select {
 			case <-timeoutCtx.Done():
@@ -564,7 +588,11 @@ When running multiple iterations, agent failures do not stop the run.`,
 				// Update iterations if changed
 				if currentState.Iterations != agentState.Iterations {
 					agentState.Iterations = currentState.Iterations
-					fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
+					if agentState.Iterations == 0 {
+						fmt.Println("\n[swarm] Now running indefinitely")
+					} else {
+						fmt.Printf("\n[swarm] Iterations updated to %d\n", agentState.Iterations)
+					}
 				}
 
 				// Update model if changed
@@ -623,7 +651,11 @@ When running multiple iterations, agent failures do not stop the run.`,
 			agentState.CurrentIter = i
 			_ = mgr.Update(agentState)
 
-			fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
+			if agentState.Iterations == 0 {
+				fmt.Printf("\n[swarm] === Iteration %d ===\n", i)
+			} else {
+				fmt.Printf("\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
+			}
 
 			// Create agent config with per-iteration timeout
 			cfg := agent.Config{
@@ -669,7 +701,7 @@ When running multiple iterations, agent failures do not stop the run.`,
 			}
 		}
 
-		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.Iterations)
+		fmt.Printf("\n[swarm] Run completed (%d iterations)\n", agentState.CurrentIter)
 		return nil
 	},
 }
@@ -680,7 +712,8 @@ func init() {
 	runCmd.Flags().StringVarP(&runPromptFile, "prompt-file", "f", "", "Path to prompt file")
 	runCmd.Flags().StringVarP(&runPromptString, "prompt-string", "s", "", "Prompt string (direct text)")
 	runCmd.Flags().BoolVarP(&runStdin, "stdin", "i", false, "Read prompt content from stdin")
-	runCmd.Flags().IntVarP(&runIterations, "iterations", "n", 1, "Number of iterations to run (default: 1)")
+	runCmd.Flags().IntVarP(&runIterations, "iterations", "n", 1, "Number of iterations to run (0 = unlimited, default: 1)")
+	runCmd.Flags().BoolVarP(&runForever, "forever", "F", false, "Run indefinitely until manually stopped")
 	runCmd.Flags().StringVarP(&runName, "name", "N", "", "Name for the agent (for easier reference)")
 	runCmd.Flags().BoolVarP(&runDetach, "detach", "d", false, "Run in detached mode (background)")
 	runCmd.Flags().StringArrayVarP(&runEnv, "env", "e", nil, "Set environment variables (KEY=VALUE or KEY to pass from shell)")

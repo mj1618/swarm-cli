@@ -104,7 +104,11 @@ The agent can be specified by its ID, name, or special identifier:
 			fmt.Printf("Exit reason:   %s\n", agent.ExitReason)
 		}
 
-		fmt.Printf("Iteration:     %d/%d\n", agent.CurrentIter, agent.Iterations)
+		if agent.Iterations == 0 {
+			fmt.Printf("Iteration:     %d (unlimited)\n", agent.CurrentIter)
+		} else {
+			fmt.Printf("Iteration:     %d/%d\n", agent.CurrentIter, agent.Iterations)
+		}
 
 		// Show iteration breakdown if there were any iterations
 		if agent.SuccessfulIters > 0 || agent.FailedIters > 0 {
