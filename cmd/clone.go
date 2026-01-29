@@ -30,7 +30,7 @@ var (
 )
 
 var cloneCmd = &cobra.Command{
-	Use:   "clone [agent-id-or-name]",
+	Use:   "clone [process-id-or-name]",
 	Short: "Clone an agent's configuration to start a new agent",
 	Long: `Clone an existing agent's configuration to start a new agent.
 
@@ -358,9 +358,13 @@ to run in the source agent's original directory.`,
 
 			fmt.Printf("Cloning agent %s with prompt: %s, model: %s\n", source.ID, promptName, effectiveModel)
 
+			// Generate a per-iteration agent ID and inject it into the prompt.
+			iterationAgentID := state.GenerateID()
+			iterationPrompt := prompt.InjectAgentID(promptContent, iterationAgentID)
+
 			cfg := agent.Config{
 				Model:   effectiveModel,
-				Prompt:  promptContent,
+				Prompt:  iterationPrompt,
 				Command: appConfig.Command,
 				Env:     expandedEnv,
 			}

@@ -120,7 +120,7 @@ var (
 )
 
 var cloneCmd = &cobra.Command{
-    Use:   "clone [agent-id-or-name]",
+    Use:   "clone [process-id-or-name]",
     Short: "Clone an agent's configuration to start a new agent",
     Long: `Clone an existing agent's configuration to start a new agent.
 

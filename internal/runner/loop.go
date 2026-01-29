@@ -12,6 +12,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/config"
+	"github.com/matt/swarm-cli/internal/prompt"
 	"github.com/matt/swarm-cli/internal/state"
 )
 
@@ -188,10 +189,14 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			fmt.Fprintf(cfg.Output, "\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
 		}
 
+		// Generate a per-iteration agent ID and inject it into the prompt.
+		iterationAgentID := state.GenerateID()
+		iterationPrompt := prompt.InjectAgentID(cfg.PromptContent, iterationAgentID)
+
 		// Create agent config with per-iteration timeout
 		agentCfg := agent.Config{
 			Model:   agentState.Model,
-			Prompt:  cfg.PromptContent,
+			Prompt:  iterationPrompt,
 			Command: cfg.Command,
 			Env:     cfg.Env,
 			Timeout: cfg.IterTimeout,

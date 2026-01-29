@@ -573,9 +573,13 @@ Labels can be attached to agents for categorization and filtering using the
 				singleIterTimeout = totalTimeout
 			}
 
+			// Generate a per-iteration agent ID and inject it into the prompt.
+			iterationAgentID := state.GenerateID()
+			iterationPrompt := prompt.InjectAgentID(promptContent, iterationAgentID)
+
 			cfg := agent.Config{
 				Model:   effectiveModel,
-				Prompt:  promptContent,
+				Prompt:  iterationPrompt,
 				Command: appConfig.Command,
 				Env:     expandedEnv,
 				Timeout: singleIterTimeout,

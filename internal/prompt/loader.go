@@ -178,6 +178,12 @@ func InjectTaskID(promptContent, taskID string) string {
 	return taskIDLine + "\n\n" + promptContent
 }
 
+// InjectAgentID injects a per-iteration agent ID at the beginning of the prompt content.
+func InjectAgentID(promptContent, agentID string) string {
+	agentIDLine := fmt.Sprintf("Your Swarm Agent ID is %s.", agentID)
+	return agentIDLine + "\n\n" + promptContent
+}
+
 // LoadPromptFromStdin reads prompt content from stdin.
 func LoadPromptFromStdin() (string, error) {
 	reader := bufio.NewReader(os.Stdin)

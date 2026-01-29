@@ -48,7 +48,7 @@ The docker CLI has a similar gap, but `docker ps -lq` combined with shell substi
 
 ## Solution
 
-Add a special identifier `@last` (and the shorter alias `_`) that can be used anywhere an agent ID or name is accepted. It resolves to the most recently started agent.
+Add a special identifier `@last` (and the shorter alias `_`) that can be used anywhere a process ID or name is accepted. It resolves to the most recently started agent.
 
 ### Proposed Usage
 

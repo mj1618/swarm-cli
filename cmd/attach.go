@@ -21,7 +21,7 @@ var (
 )
 
 var attachCmd = &cobra.Command{
-	Use:   "attach [agent-id-or-name]",
+	Use:   "attach [process-id-or-name]",
 	Short: "Attach to a running agent for interactive monitoring",
 	Long: `Attach to a running detached agent for interactive monitoring.
 

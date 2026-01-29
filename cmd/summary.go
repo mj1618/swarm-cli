@@ -16,7 +16,7 @@ var (
 )
 
 var summaryCmd = &cobra.Command{
-	Use:   "summary [agent-id-or-name]",
+	Use:   "summary [process-id-or-name]",
 	Short: "Show a summary of an agent's run",
 	Long: `Display a concise summary of what an agent accomplished.
 

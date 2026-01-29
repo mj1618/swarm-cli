@@ -75,7 +75,7 @@ var rmForce bool
 var rmLogs bool  // NEW
 
 var rmCmd = &cobra.Command{
-    Use:   "rm [agent-id-or-name...]",
+    Use:   "rm [process-id-or-name...]",
     Short: "Remove one or more agents",
     Long: `Remove one or more agents from the state.
 

@@ -32,7 +32,7 @@ var (
 )
 
 var restartCmd = &cobra.Command{
-	Use:   "restart [agent-id-or-name]",
+	Use:   "restart [process-id-or-name]",
 	Short: "Restart a terminated agent",
 	Long: `Restart a terminated agent with its original configuration.
 
@@ -323,9 +323,13 @@ labels on the restarted agent.`,
 		if effectiveIterations == 1 {
 			fmt.Printf("Restarting agent with prompt: %s, model: %s\n", promptName, effectiveModel)
 
+			// Generate a per-iteration agent ID and inject it into the prompt.
+			iterationAgentID := state.GenerateID()
+			iterationPrompt := prompt.InjectAgentID(promptContent, iterationAgentID)
+
 			cfg := agent.Config{
 				Model:   effectiveModel,
-				Prompt:  promptContent,
+				Prompt:  iterationPrompt,
 				Command: appConfig.Command,
 				Env:     expandedEnv,
 			}

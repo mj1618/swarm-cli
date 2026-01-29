@@ -17,7 +17,7 @@ var (
 )
 
 var waitCmd = &cobra.Command{
-	Use:   "wait [agent-id-or-name...]",
+	Use:   "wait [process-id-or-name...]",
 	Short: "Wait for agent(s) to terminate",
 	Long: `Wait for one or more agents to terminate.
 

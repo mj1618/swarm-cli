@@ -15,7 +15,7 @@ var (
 )
 
 var killCmd = &cobra.Command{
-	Use:   "kill [agent-id-or-name]",
+	Use:   "kill [process-id-or-name]",
 	Short: "Terminate a running agent",
 	Long: `Terminate a running agent immediately or gracefully.
 
@@ -26,7 +26,7 @@ By default, the agent is terminated immediately. Use --graceful to allow
 the current iteration to complete before terminating.
 
 Use --label to kill all running agents matching the specified labels.
-When using --label, the agent-id-or-name argument is not required.`,
+When using --label, the process-id-or-name argument is not required.`,
 	Example: `  # Terminate immediately (by ID)
   swarm kill abc123
 
@@ -112,7 +112,7 @@ When using --label, the agent-id-or-name argument is not required.`,
 
 		// Single agent mode - require argument
 		if len(args) == 0 {
-			return fmt.Errorf("agent-id-or-name is required (or use --label for batch operations)")
+			return fmt.Errorf("process-id-or-name is required (or use --label for batch operations)")
 		}
 
 		agentIdentifier := args[0]

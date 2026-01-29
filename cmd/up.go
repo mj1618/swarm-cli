@@ -337,9 +337,13 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 
 	// For single iteration, run directly
 	if effectiveIterations == 1 {
+		// Generate a per-iteration agent ID and inject it into the prompt.
+		iterationAgentID := state.GenerateID()
+		iterationPrompt := prompt.InjectAgentID(promptContent, iterationAgentID)
+
 		cfg := agent.Config{
 			Model:   effectiveModel,
-			Prompt:  promptContent,
+			Prompt:  iterationPrompt,
 			Command: appConfig.Command,
 		}
 		runner := agent.NewRunner(cfg)
@@ -404,9 +408,13 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 
 		fmt.Fprintf(out, "=== Iteration %d/%d ===\n", i, agentState.Iterations)
 
+		// Generate a per-iteration agent ID and inject it into the prompt.
+		iterationAgentID := state.GenerateID()
+		iterationPrompt := prompt.InjectAgentID(promptContent, iterationAgentID)
+
 		cfg := agent.Config{
 			Model:   agentState.Model,
-			Prompt:  promptContent,
+			Prompt:  iterationPrompt,
 			Command: appConfig.Command,
 		}
 
