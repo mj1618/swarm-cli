@@ -42,7 +42,7 @@ changelog:
 
 release:
   github:
-    owner: matt
+    owner: mj1618
     name: swarm-cli
   draft: false
   prerelease: auto
