@@ -32,4 +32,17 @@ snapshot:
   version_template: "{{ .ShortCommit }}"
 
 changelog:
-  disable: true
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - "^chore:"
+
+release:
+  github:
+    owner: matt
+    name: swarm-cli
+  draft: false
+  prerelease: auto
