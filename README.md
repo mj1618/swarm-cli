@@ -63,12 +63,12 @@ swarm config set-model opus-4.5-thinking
   - [swarm run](#swarm-run)
   - [swarm up](#swarm-up)
   - [swarm list](#swarm-list)
-  - [swarm inspect](#swarm-inspect-process-id-or-name)
-  - [swarm update](#swarm-update-process-id-or-name)
-  - [swarm kill](#swarm-kill-process-id-or-name)
-  - [swarm stop](#swarm-stop-process-id-or-name)
-  - [swarm start](#swarm-start-process-id-or-name)
-  - [swarm logs](#swarm-logs-process-id-or-name)
+  - [swarm inspect](#swarm-inspect-task-id-or-name)
+  - [swarm update](#swarm-update-task-id-or-name)
+  - [swarm kill](#swarm-kill-task-id-or-name)
+  - [swarm stop](#swarm-stop-task-id-or-name)
+  - [swarm start](#swarm-start-task-id-or-name)
+  - [swarm logs](#swarm-logs-task-id-or-name)
   - [swarm config](#swarm-config)
 - [Configuration](#configuration)
   - [Configuration File](#configuration-file)
@@ -311,7 +311,7 @@ swarm list
 swarm list --global
 ```
 
-### `swarm inspect [process-id-or-name]`
+### `swarm inspect [task-id-or-name]`
 
 View detailed information about a specific agent. You can reference the agent by its ID or name. Alias: `view`
 
@@ -330,12 +330,12 @@ swarm inspect my-agent     # by name
 - Termination mode (if set)
 - Log file location (if available)
 
-### `swarm update [process-id-or-name]`
+### `swarm update [task-id-or-name]`
 
 Update the configuration of a running agent or terminate it. You can reference the agent by its ID or name. Alias: `control`
 
 ```bash
-swarm update [process-id-or-name] [flags]
+swarm update [task-id-or-name] [flags]
 ```
 
 **Flags:**
@@ -364,12 +364,12 @@ swarm update abc123 -m sonnet-4.5
 swarm update abc123 -n 50 -m gpt-5.2
 ```
 
-### `swarm kill [process-id-or-name]`
+### `swarm kill [task-id-or-name]`
 
 Terminate a running agent. This is a shortcut for `swarm control --terminate`.
 
 ```bash
-swarm kill [process-id-or-name] [flags]
+swarm kill [task-id-or-name] [flags]
 ```
 
 **Flags:**
@@ -389,7 +389,7 @@ swarm kill my-agent
 swarm kill abc123 --graceful
 ```
 
-### `swarm stop [process-id-or-name]`
+### `swarm stop [task-id-or-name]`
 
 Pause a running agent after the current iteration completes.
 
@@ -398,7 +398,7 @@ swarm stop abc123
 swarm stop my-agent
 ```
 
-### `swarm start [process-id-or-name]`
+### `swarm start [task-id-or-name]`
 
 Resume a paused agent.
 
@@ -407,12 +407,12 @@ swarm start abc123
 swarm start my-agent
 ```
 
-### `swarm logs [process-id-or-name]`
+### `swarm logs [task-id-or-name]`
 
 View the log output of a detached agent. Alias: `tail`
 
 ```bash
-swarm logs [process-id-or-name] [flags]
+swarm logs [task-id-or-name] [flags]
 ```
 
 **Flags:**

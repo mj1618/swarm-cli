@@ -32,7 +32,7 @@ var (
 )
 
 var restartCmd = &cobra.Command{
-	Use:   "restart [process-id-or-name]",
+	Use:   "restart [task-id-or-name]",
 	Short: "Restart a terminated agent",
 	Long: `Restart a terminated agent with its original configuration.
 

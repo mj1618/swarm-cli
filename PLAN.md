@@ -7,7 +7,7 @@ This is all the user will provide on the filesystem.
 
 The cli tool should where-applicable follow docker command syntax.
 
-Each task gets a Process ID and it should be called "process" ID in all cases.
+Each task gets a Task ID and it should be called "task" ID in all cases (to distinguish from OS process ID/PID).
 
 The CLI allows the following functions:
 1. Start a single agent (see swarm/bin/agent.sh for an example) - choosing a prompt from swarm/prompts/ - the user should be able to select a model (one of the models from running the command shown by examples/list-models.txt, default to opus-4.5-thinking)

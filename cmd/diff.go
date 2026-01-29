@@ -20,7 +20,7 @@ var (
 )
 
 var diffCmd = &cobra.Command{
-	Use:   "diff [process-id-or-name] [-- path...]",
+	Use:   "diff [task-id-or-name] [-- path...]",
 	Short: "Show code changes made during an agent's run",
 	Long: `Show git diff of changes made since an agent started running.
 

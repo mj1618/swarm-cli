@@ -86,8 +86,8 @@ func TestCloneCommandFlags(t *testing.T) {
 
 func TestCloneCommandUsage(t *testing.T) {
 	// Test that command usage is correct
-	if cloneCmd.Use != "clone [process-id-or-name]" {
-		t.Errorf("Expected Use to be 'clone [process-id-or-name]', got '%s'", cloneCmd.Use)
+	if cloneCmd.Use != "clone [task-id-or-name]" {
+		t.Errorf("Expected Use to be 'clone [task-id-or-name]', got '%s'", cloneCmd.Use)
 	}
 
 	// Test that short description is set

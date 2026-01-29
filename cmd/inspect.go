@@ -14,14 +14,14 @@ import (
 var inspectFormat string
 
 var inspectCmd = &cobra.Command{
-	Use:     "inspect [process-id-or-name]",
+	Use:     "inspect [task-id-or-name]",
 	Aliases: []string{"view"},
 	Short:   "Display detailed information about an agent",
 	Long: `Display detailed information about a specific agent including its status, configuration, and logs.
 
 The agent can be specified by its ID, name, or special identifier:
   - @last or _ : the most recently started agent`,
-	Example: `  # Inspect by process ID
+	Example: `  # Inspect by task ID
   swarm inspect abc123
 
   # Inspect by agent name

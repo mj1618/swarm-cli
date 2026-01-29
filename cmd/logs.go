@@ -30,7 +30,7 @@ var (
 )
 
 var logsCmd = &cobra.Command{
-	Use:     "logs [process-id-or-name]",
+	Use:     "logs [task-id-or-name]",
 	Aliases: []string{"tail"},
 	Short:   "View the output of a running or completed agent",
 	Long: `View the log output of a detached agent.

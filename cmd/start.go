@@ -13,7 +13,7 @@ func init() {
 }
 
 var startCmd = &cobra.Command{
-	Use:   "start [process-id-or-name]",
+	Use:   "start [task-id-or-name]",
 	Short: "Resume a paused agent",
 	Long: `Resume a paused agent.
 

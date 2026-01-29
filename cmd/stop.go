@@ -16,7 +16,7 @@ var (
 )
 
 var stopCmd = &cobra.Command{
-	Use:   "stop [process-id-or-name]",
+	Use:   "stop [task-id-or-name]",
 	Short: "Pause a running agent",
 	Long: `Pause a running agent after the current iteration completes.
 
@@ -30,7 +30,7 @@ By default, the command waits until the agent has finished its current
 iteration and entered the paused state. Use --no-wait to return immediately.
 
 Use --label to stop all running agents matching the specified labels.
-When using --label, the process-id-or-name argument is not required.`,
+When using --label, the task-id-or-name argument is not required.`,
 	Example: `  # Stop an agent by ID (waits for pause)
   swarm stop abc123
 
@@ -104,7 +104,7 @@ When using --label, the process-id-or-name argument is not required.`,
 
 		// Single agent mode - require argument
 		if len(args) == 0 {
-			return fmt.Errorf("process-id-or-name is required (or use --label for batch operations)")
+			return fmt.Errorf("task-id-or-name is required (or use --label for batch operations)")
 		}
 
 		agentIdentifier := args[0]

@@ -20,7 +20,7 @@ var (
 )
 
 var updateCmd = &cobra.Command{
-	Use:     "update [process-id-or-name]",
+	Use:     "update [task-id-or-name]",
 	Aliases: []string{"control"},
 	Short:   "Update configuration of a running agent",
 	Long: `Update the configuration of a running agent or terminate it.
@@ -29,7 +29,7 @@ The agent can be specified by its ID, name, or special identifier:
   - @last or _ : the most recently started agent
 
 Use --filter-label to update all agents matching the specified labels.
-When using --filter-label, the process-id-or-name argument is not required.
+When using --filter-label, the task-id-or-name argument is not required.
 
 Use --set-label to add or update labels on an agent.`,
 	Example: `  # Terminate immediately (by ID)
@@ -139,7 +139,7 @@ Use --set-label to add or update labels on an agent.`,
 
 		// Single agent mode - require argument
 		if len(args) == 0 {
-			return fmt.Errorf("process-id-or-name is required (or use --filter-label for batch operations)")
+			return fmt.Errorf("task-id-or-name is required (or use --filter-label for batch operations)")
 		}
 
 		agentIdentifier := args[0]

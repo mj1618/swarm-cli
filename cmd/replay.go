@@ -19,7 +19,7 @@ var (
 )
 
 var replayCmd = &cobra.Command{
-	Use:   "replay [process-id-or-name]",
+	Use:   "replay [task-id-or-name]",
 	Short: "Re-run a previous agent with the same configuration",
 	Long: `Re-run a previous agent using its saved configuration.
 

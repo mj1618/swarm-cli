@@ -174,13 +174,13 @@ Describe when the agent should consider the task complete.
 
 // InjectTaskID injects the task ID at the beginning of the prompt content.
 func InjectTaskID(promptContent, taskID string) string {
-	taskIDLine := fmt.Sprintf("Your Swarm Task ID is %s.", taskID)
+	taskIDLine := fmt.Sprintf("Your SWARM_TASK_ID is %s.", taskID)
 	return taskIDLine + "\n\n" + promptContent
 }
 
 // InjectAgentID injects a per-iteration agent ID at the beginning of the prompt content.
 func InjectAgentID(promptContent, agentID string) string {
-	agentIDLine := fmt.Sprintf("Your Swarm Agent ID is %s.", agentID)
+	agentIDLine := fmt.Sprintf("Your SWARM_AGENT_ID is %s.", agentID)
 	return agentIDLine + "\n\n" + promptContent
 }
 
