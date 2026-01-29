@@ -105,9 +105,9 @@ func TestMatchesGrep(t *testing.T) {
 				patterns = append(patterns, re)
 			}
 
-			result := matchesGrep(tt.line, patterns, tt.invert)
+			result := MatchesGrep(tt.line, patterns, tt.invert)
 			if result != tt.expected {
-				t.Errorf("matchesGrep(%q, %v, %v) = %v, want %v",
+				t.Errorf("MatchesGrep(%q, %v, %v) = %v, want %v",
 					tt.line, tt.patterns, tt.invert, result, tt.expected)
 			}
 		})
@@ -169,12 +169,12 @@ func TestParseTimeFlag(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			_, err := parseTimeFlag(tt.value)
+			_, err := ParseTimeFlag(tt.value)
 			if tt.expectError && err == nil {
-				t.Errorf("parseTimeFlag(%q) expected error, got nil", tt.value)
+				t.Errorf("ParseTimeFlag(%q) expected error, got nil", tt.value)
 			}
 			if !tt.expectError && err != nil {
-				t.Errorf("parseTimeFlag(%q) unexpected error: %v", tt.value, err)
+				t.Errorf("ParseTimeFlag(%q) unexpected error: %v", tt.value, err)
 			}
 		})
 	}
@@ -185,9 +185,9 @@ func TestIsLineInTimeRange(t *testing.T) {
 	lineWithTimestamp := "2024-01-28 10:15:32 | some log content"
 
 	// Parse some test times
-	beforeLine, _ := parseTimeFlag("2024-01-28 10:00:00")
-	afterLine, _ := parseTimeFlag("2024-01-28 10:30:00")
-	wayAfterLine, _ := parseTimeFlag("2024-01-28 11:00:00")
+	beforeLine, _ := ParseTimeFlag("2024-01-28 10:00:00")
+	afterLine, _ := ParseTimeFlag("2024-01-28 10:30:00")
+	wayAfterLine, _ := ParseTimeFlag("2024-01-28 11:00:00")
 
 	tests := []struct {
 		name     string
@@ -251,15 +251,15 @@ func TestIsLineInTimeRange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var since, until = time.Time{}, time.Time{}
 			if tt.since != "" {
-				since, _ = parseTimeFlag(tt.since)
+				since, _ = ParseTimeFlag(tt.since)
 			}
 			if tt.until != "" {
-				until, _ = parseTimeFlag(tt.until)
+				until, _ = ParseTimeFlag(tt.until)
 			}
 
-			result := isLineInTimeRange(tt.line, since, until)
+			result := IsLineInTimeRange(tt.line, since, until)
 			if result != tt.expected {
-				t.Errorf("isLineInTimeRange(%q, %v, %v) = %v, want %v",
+				t.Errorf("IsLineInTimeRange(%q, %v, %v) = %v, want %v",
 					tt.line, tt.since, tt.until, result, tt.expected)
 			}
 		})
@@ -306,12 +306,12 @@ func TestExtractTimestamp(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ts := extractTimestamp(tt.line)
+			ts := ExtractTimestamp(tt.line)
 			if tt.expectValid && ts.IsZero() {
-				t.Errorf("extractTimestamp(%q) expected valid time, got zero", tt.line)
+				t.Errorf("ExtractTimestamp(%q) expected valid time, got zero", tt.line)
 			}
 			if !tt.expectValid && !ts.IsZero() {
-				t.Errorf("extractTimestamp(%q) expected zero time, got %v", tt.line, ts)
+				t.Errorf("ExtractTimestamp(%q) expected zero time, got %v", tt.line, ts)
 			}
 		})
 	}

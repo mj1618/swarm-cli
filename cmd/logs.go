@@ -120,13 +120,13 @@ flags can be specified to match any of the patterns (OR logic).`,
 		// Parse time flags
 		var sinceTime, untilTime time.Time
 		if logsSince != "" {
-			sinceTime, err = parseTimeFlag(logsSince)
+			sinceTime, err = ParseTimeFlag(logsSince)
 			if err != nil {
 				return fmt.Errorf("invalid --since format: %w", err)
 			}
 		}
 		if logsUntil != "" {
-			untilTime, err = parseTimeFlag(logsUntil)
+			untilTime, err = ParseTimeFlag(logsUntil)
 			if err != nil {
 				return fmt.Errorf("invalid --until format: %w", err)
 			}
@@ -200,15 +200,15 @@ func init() {
 	logsCmd.ValidArgsFunction = completeAgentIdentifier
 }
 
-// parseTimeFlag parses a time flag value into a time.Time.
+// ParseTimeFlag parses a time flag value into a time.Time.
 // It supports relative durations (e.g., "30m", "2h", "1d") and absolute timestamps.
-func parseTimeFlag(value string) (time.Time, error) {
+func ParseTimeFlag(value string) (time.Time, error) {
 	if value == "" {
 		return time.Time{}, nil
 	}
 
 	// Try relative duration first (e.g., "30m", "2h", "1d")
-	if dur, err := parseDurationWithDays(value); err == nil {
+	if dur, err := ParseDurationWithDays(value); err == nil {
 		return time.Now().Add(-dur), nil
 	}
 
@@ -232,9 +232,9 @@ func parseTimeFlag(value string) (time.Time, error) {
 	return time.Time{}, fmt.Errorf("unrecognized time format: %s (use 30m, 2h, 1d, or 2024-01-28 10:00:00)", value)
 }
 
-// parseDurationWithDays handles durations with day support (e.g., "1d").
+// ParseDurationWithDays handles durations with day support (e.g., "1d").
 // Standard time.ParseDuration doesn't support 'd' for days.
-func parseDurationWithDays(s string) (time.Duration, error) {
+func ParseDurationWithDays(s string) (time.Duration, error) {
 	// Handle days specially since time.ParseDuration doesn't support 'd'
 	if strings.HasSuffix(s, "d") {
 		days, err := strconv.Atoi(strings.TrimSuffix(s, "d"))
@@ -246,10 +246,10 @@ func parseDurationWithDays(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// extractTimestamp extracts timestamp from a log line.
+// ExtractTimestamp extracts timestamp from a log line.
 // Returns zero time if no timestamp found.
 // Agent logs typically start with: "2024-01-28 10:15:32 | ..."
-func extractTimestamp(line string) time.Time {
+func ExtractTimestamp(line string) time.Time {
 	if len(line) < 19 {
 		return time.Time{}
 	}
@@ -263,10 +263,10 @@ func extractTimestamp(line string) time.Time {
 	return time.Time{}
 }
 
-// isLineInTimeRange checks if a log line falls within the since/until range.
+// IsLineInTimeRange checks if a log line falls within the since/until range.
 // Lines without timestamps are included by default (they're likely continuations).
-func isLineInTimeRange(line string, since, until time.Time) bool {
-	ts := extractTimestamp(line)
+func IsLineInTimeRange(line string, since, until time.Time) bool {
+	ts := ExtractTimestamp(line)
 	if ts.IsZero() {
 		// Lines without timestamps are included if we're in an active range
 		// (This handles continuation lines and non-timestamped output)
@@ -282,10 +282,10 @@ func isLineInTimeRange(line string, since, until time.Time) bool {
 	return true
 }
 
-// matchesGrep returns true if the line matches any of the grep patterns.
+// MatchesGrep returns true if the line matches any of the grep patterns.
 // If invert is true, returns true if the line matches NONE of the patterns.
 // If patterns is empty, returns true (no filter).
-func matchesGrep(line string, patterns []*regexp.Regexp, invert bool) bool {
+func MatchesGrep(line string, patterns []*regexp.Regexp, invert bool) bool {
 	if len(patterns) == 0 {
 		return true // No filter, include all
 	}
@@ -346,12 +346,12 @@ func showLogLines(filepath string, n int, parser *logparser.Parser, since, until
 		line := scanner.Text()
 
 		// Apply time filter if specified
-		if hasTimeFilter && !isLineInTimeRange(line, since, until) {
+		if hasTimeFilter && !IsLineInTimeRange(line, since, until) {
 			continue
 		}
 
 		if hasGrepFilter {
-			matches := matchesGrep(line, grepPatterns, invert)
+			matches := MatchesGrep(line, grepPatterns, invert)
 			allLines = append(allLines, lineWithMatch{text: line, matches: matches})
 		} else {
 			allLines = append(allLines, lineWithMatch{text: line, matches: true})
@@ -491,12 +491,12 @@ func followFile(filepath string, since, until time.Time, grepPatterns []*regexp.
 		}
 
 		// Apply time filter for follow mode (only --since matters, --until is ignored)
-		if !since.IsZero() && !isLineInTimeRange(line, since, time.Time{}) {
+		if !since.IsZero() && !IsLineInTimeRange(line, since, time.Time{}) {
 			continue
 		}
 
 		// Apply grep filter
-		if !matchesGrep(line, grepPatterns, invert) {
+		if !MatchesGrep(line, grepPatterns, invert) {
 			continue
 		}
 
