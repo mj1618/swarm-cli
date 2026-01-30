@@ -184,6 +184,19 @@ func InjectAgentID(promptContent, agentID string) string {
 	return agentIDLine + "\n\n" + promptContent
 }
 
+// ApplyPrefixSuffix wraps prompt content with optional prefix and suffix strings.
+// The prefix is prepended and suffix is appended, each separated by double newlines.
+func ApplyPrefixSuffix(promptContent, prefix, suffix string) string {
+	result := promptContent
+	if prefix != "" {
+		result = prefix + "\n\n" + result
+	}
+	if suffix != "" {
+		result = result + "\n\n" + suffix
+	}
+	return result
+}
+
 // LoadPromptFromStdin reads prompt content from stdin.
 func LoadPromptFromStdin() (string, error) {
 	reader := bufio.NewReader(os.Stdin)

@@ -545,3 +545,107 @@ tasks:
 		t.Errorf("PromptString = %q, want %q", task.PromptString, expected)
 	}
 }
+
+func TestLoadWithPrefixAndSuffix(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  prefixed-task:
+    prompt: my-prompt
+    prefix: "Focus on security best practices."
+    suffix: "Output only the code, no explanations."
+    iterations: 5
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["prefixed-task"]
+	if task.Prompt != "my-prompt" {
+		t.Errorf("Prompt = %q, want %q", task.Prompt, "my-prompt")
+	}
+	if task.Prefix != "Focus on security best practices." {
+		t.Errorf("Prefix = %q, want %q", task.Prefix, "Focus on security best practices.")
+	}
+	if task.Suffix != "Output only the code, no explanations." {
+		t.Errorf("Suffix = %q, want %q", task.Suffix, "Output only the code, no explanations.")
+	}
+	if task.Iterations != 5 {
+		t.Errorf("Iterations = %d, want %d", task.Iterations, 5)
+	}
+}
+
+func TestLoadWithPrefixOnly(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  prefix-only:
+    prompt: coder
+    prefix: "You are analyzing a Go codebase."
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["prefix-only"]
+	if task.Prefix != "You are analyzing a Go codebase." {
+		t.Errorf("Prefix = %q, want %q", task.Prefix, "You are analyzing a Go codebase.")
+	}
+	if task.Suffix != "" {
+		t.Errorf("Suffix should be empty, got %q", task.Suffix)
+	}
+}
+
+func TestLoadWithSuffixOnly(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  suffix-only:
+    prompt: reviewer
+    suffix: "Provide results in JSON format."
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["suffix-only"]
+	if task.Prefix != "" {
+		t.Errorf("Prefix should be empty, got %q", task.Prefix)
+	}
+	if task.Suffix != "Provide results in JSON format." {
+		t.Errorf("Suffix = %q, want %q", task.Suffix, "Provide results in JSON format.")
+	}
+}

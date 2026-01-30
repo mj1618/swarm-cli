@@ -397,3 +397,65 @@ Focus on:
 		t.Error("Combined prompt should preserve footer")
 	}
 }
+
+func TestApplyPrefixSuffix(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+		prefix  string
+		suffix  string
+		want    string
+	}{
+		{
+			name:    "no prefix or suffix",
+			content: "original content",
+			prefix:  "",
+			suffix:  "",
+			want:    "original content",
+		},
+		{
+			name:    "prefix only",
+			content: "original content",
+			prefix:  "This is a prefix.",
+			suffix:  "",
+			want:    "This is a prefix.\n\noriginal content",
+		},
+		{
+			name:    "suffix only",
+			content: "original content",
+			prefix:  "",
+			suffix:  "This is a suffix.",
+			want:    "original content\n\nThis is a suffix.",
+		},
+		{
+			name:    "both prefix and suffix",
+			content: "original content",
+			prefix:  "PREFIX",
+			suffix:  "SUFFIX",
+			want:    "PREFIX\n\noriginal content\n\nSUFFIX",
+		},
+		{
+			name:    "multiline content with prefix and suffix",
+			content: "line 1\nline 2\nline 3",
+			prefix:  "before",
+			suffix:  "after",
+			want:    "before\n\nline 1\nline 2\nline 3\n\nafter",
+		},
+		{
+			name:    "empty content with prefix and suffix",
+			content: "",
+			prefix:  "prefix",
+			suffix:  "suffix",
+			want:    "prefix\n\n\n\nsuffix",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := ApplyPrefixSuffix(tt.content, tt.prefix, tt.suffix)
+			if got != tt.want {
+				t.Errorf("ApplyPrefixSuffix() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

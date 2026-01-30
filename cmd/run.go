@@ -43,6 +43,10 @@ var (
 	runInternalOnComplete  string
 	runLabels              []string
 	runInternalLabels      []string
+	runPrefix              string
+	runSuffix              string
+	runInternalPrefix      string
+	runInternalSuffix      string
 )
 
 var runCmd = &cobra.Command{
@@ -98,7 +102,10 @@ Labels can be attached to agents for categorization and filtering using the
   swarm run -p task -l team=frontend -l priority=high
 
   # Run with multiple labels
-  swarm run -p task -l env=staging -l ticket=PROJ-123 -d`,
+  swarm run -p task -l env=staging -l ticket=PROJ-123 -d
+
+  # Add prefix/suffix to the prompt
+  swarm run -p coder --prefix "Focus on security best practices." --suffix "Output only the code, no explanations."`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Get working directory (from flag or current)
 		var workingDir string
@@ -238,6 +245,20 @@ Labels can be attached to agents for categorization and filtering using the
 				return fmt.Errorf("failed to select prompt: %w", err)
 			}
 		}
+
+		// Apply prefix/suffix to prompt content
+		// For detached child, use values passed from parent
+		effectivePrefix := runPrefix
+		effectiveSuffix := runSuffix
+		if runInternalDetached {
+			if runInternalPrefix != "" {
+				effectivePrefix = runInternalPrefix
+			}
+			if runInternalSuffix != "" {
+				effectiveSuffix = runInternalSuffix
+			}
+		}
+		promptContent = prompt.ApplyPrefixSuffix(promptContent, effectivePrefix, effectiveSuffix)
 
 		// Generate task ID early so it can be injected into prompt
 		// If running as detached child, use the task ID passed from parent
@@ -440,6 +461,13 @@ Labels can be attached to agents for categorization and filtering using the
 			// Pass labels to child
 			for _, l := range runLabels {
 				detachedArgs = append(detachedArgs, "--_internal-label", l)
+			}
+			// Pass prefix/suffix to child
+			if runPrefix != "" {
+				detachedArgs = append(detachedArgs, "--_internal-prefix", runPrefix)
+			}
+			if runSuffix != "" {
+				detachedArgs = append(detachedArgs, "--_internal-suffix", runSuffix)
 			}
 
 			// Start detached process
@@ -725,6 +753,12 @@ func init() {
 	runCmd.Flags().StringArrayVarP(&runLabels, "label", "l", nil, "Label to attach (key=value format, can be repeated)")
 	runCmd.Flags().StringArrayVar(&runInternalLabels, "_internal-label", nil, "Internal flag for passing labels to detached child")
 	runCmd.Flags().MarkHidden("_internal-label")
+	runCmd.Flags().StringVar(&runPrefix, "prefix", "", "Content to prepend to the prompt")
+	runCmd.Flags().StringVar(&runSuffix, "suffix", "", "Content to append to the prompt")
+	runCmd.Flags().StringVar(&runInternalPrefix, "_internal-prefix", "", "Internal flag for passing prefix to detached child")
+	runCmd.Flags().MarkHidden("_internal-prefix")
+	runCmd.Flags().StringVar(&runInternalSuffix, "_internal-suffix", "", "Internal flag for passing suffix to detached child")
+	runCmd.Flags().MarkHidden("_internal-suffix")
 
 	// Add dynamic completion for prompt and model flags
 	runCmd.RegisterFlagCompletionFunc("prompt", completePromptName)

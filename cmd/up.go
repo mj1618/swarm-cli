@@ -38,7 +38,9 @@ Each task can specify:
   - prompt-string: Direct prompt text
   - model: Model to use (optional, overrides config)
   - iterations: Number of iterations (optional, default 1)
-  - name: Custom agent name (optional, defaults to task name)`,
+  - name: Custom agent name (optional, defaults to task name)
+  - prefix: Content to prepend to the prompt at runtime
+  - suffix: Content to append to the prompt at runtime`,
 	Example: `  # Run all tasks from ./swarm/swarm.yaml
   swarm up
 
@@ -184,6 +186,13 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 			detachedArgs = append(detachedArgs, "--name", task.Name)
 		} else {
 			detachedArgs = append(detachedArgs, "--name", taskName)
+		}
+		// Pass prefix/suffix to child
+		if task.Prefix != "" {
+			detachedArgs = append(detachedArgs, "--_internal-prefix", task.Prefix)
+		}
+		if task.Suffix != "" {
+			detachedArgs = append(detachedArgs, "--_internal-suffix", task.Suffix)
 		}
 
 		// Start detached process
@@ -444,5 +453,10 @@ func loadTaskPrompt(task compose.Task, promptsDir string) (content, label string
 	default:
 		err = fmt.Errorf("no prompt source specified")
 	}
+	if err != nil {
+		return
+	}
+	// Apply prefix/suffix if specified
+	content = prompt.ApplyPrefixSuffix(content, task.Prefix, task.Suffix)
 	return
 }

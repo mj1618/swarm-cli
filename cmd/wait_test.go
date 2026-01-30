@@ -26,6 +26,27 @@ func TestWaitCommandFlagsExist(t *testing.T) {
 	if flags.Lookup("verbose") == nil {
 		t.Error("expected --verbose flag to exist")
 	}
+	if flags.Lookup("tail") == nil {
+		t.Error("expected --tail flag to exist")
+	}
+}
+
+func TestWaitTailFlagDefaults(t *testing.T) {
+	flags := waitCmd.Flags()
+
+	// Test --tail flag exists and has correct default
+	tailFlag := flags.Lookup("tail")
+	if tailFlag == nil {
+		t.Fatal("expected --tail flag to exist")
+	}
+	if tailFlag.DefValue != "10" {
+		t.Errorf("expected --tail default value to be '10', got %s", tailFlag.DefValue)
+	}
+
+	// Test -n shorthand exists
+	if tailFlag.Shorthand != "n" {
+		t.Errorf("expected --tail shorthand to be 'n', got %s", tailFlag.Shorthand)
+	}
 }
 
 func TestWaitCommandRequiresArgs(t *testing.T) {

@@ -14,6 +14,7 @@ var (
 	waitInterval time.Duration
 	waitAny      bool
 	waitVerbose  bool
+	waitTail     int
 )
 
 var waitCmd = &cobra.Command{
@@ -46,7 +47,13 @@ The agent can be specified by its ID, name, or special identifier:
   swarm wait --any abc123 def456
 
   # Custom polling interval
-  swarm wait abc123 --interval 2s`,
+  swarm wait abc123 --interval 2s
+
+  # Show more log lines when agent finishes
+  swarm wait abc123 --tail 20
+
+  # Disable log output on completion
+  swarm wait abc123 --tail 0`,
 	Args: cobra.MinimumNArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
@@ -88,10 +95,42 @@ The agent can be specified by its ID, name, or special identifier:
 		}
 
 		startTimes := make(map[string]time.Time)
+		logFiles := make(map[string]string) // ID -> log file path
 		for _, id := range agentIDs {
 			agent, err := mgr.Get(id)
 			if err == nil && agent != nil {
 				startTimes[id] = agent.StartedAt
+				logFiles[id] = agent.LogFile
+			}
+		}
+
+		// Track which agents have had their logs shown
+		logsShown := make(map[string]bool)
+		showMultipleHeaders := len(agentIDs) > 1
+
+		// Helper to show logs for a terminated agent
+		showAgentLogs := func(id string) {
+			if logsShown[id] || waitTail <= 0 {
+				return
+			}
+			logsShown[id] = true
+
+			logFile := logFiles[id]
+			if logFile == "" {
+				return
+			}
+			if _, err := os.Stat(logFile); os.IsNotExist(err) {
+				return
+			}
+
+			// Print header if waiting for multiple agents
+			if showMultipleHeaders {
+				fmt.Printf("\n=== Logs for %s ===\n", agentNames[id])
+			}
+
+			// Use showLogLines from logs.go (no time filter, no grep, no context)
+			if err := showLogLines(logFile, waitTail, nil, time.Time{}, time.Time{}, nil, false, 0, 0); err != nil {
+				fmt.Fprintf(os.Stderr, "Warning: failed to read logs for %s: %v\n", agentNames[id], err)
 			}
 		}
 
@@ -108,6 +147,7 @@ The agent can be specified by its ID, name, or special identifier:
 					if waitVerbose {
 						fmt.Printf("Agent %s terminated (state removed)\n", agentNames[id])
 					}
+					showAgentLogs(id)
 					continue
 				}
 				if agent.Status == "terminated" {
@@ -116,6 +156,7 @@ The agent can be specified by its ID, name, or special identifier:
 						runtime := time.Since(startTimes[id]).Round(time.Second)
 						fmt.Printf("Agent %s terminated (was running for %s)\n", agentNames[id], runtime)
 					}
+					showAgentLogs(id)
 				} else {
 					allTerminated = false
 				}
@@ -145,6 +186,7 @@ func init() {
 	waitCmd.Flags().DurationVar(&waitInterval, "interval", time.Second, "Polling interval")
 	waitCmd.Flags().BoolVar(&waitAny, "any", false, "Return when any agent terminates")
 	waitCmd.Flags().BoolVarP(&waitVerbose, "verbose", "v", false, "Print status updates")
+	waitCmd.Flags().IntVarP(&waitTail, "tail", "n", 10, "Number of log lines to show when agent terminates (0 to disable)")
 	rootCmd.AddCommand(waitCmd)
 
 	// Add dynamic completion for agent identifier

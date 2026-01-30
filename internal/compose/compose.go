@@ -38,6 +38,12 @@ type Task struct {
 
 	// Name is a custom name for the agent (optional, defaults to task name)
 	Name string `yaml:"name"`
+
+	// Prefix is content prepended to the prompt at runtime
+	Prefix string `yaml:"prefix"`
+
+	// Suffix is content appended to the prompt at runtime
+	Suffix string `yaml:"suffix"`
 }
 
 // DefaultPath returns the default compose file path.
