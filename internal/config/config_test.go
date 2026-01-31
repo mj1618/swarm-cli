@@ -151,6 +151,11 @@ func TestLoadWithProjectOverride(t *testing.T) {
 	}
 	defer os.Chdir(originalDir)
 
+	// Set HOME to temp dir to avoid loading user's global config
+	originalHome := os.Getenv("HOME")
+	os.Setenv("HOME", tmpDir)
+	defer os.Setenv("HOME", originalHome)
+
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("failed to change to temp directory: %v", err)
 	}
