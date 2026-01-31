@@ -15,6 +15,44 @@ import (
 	"github.com/matt/swarm-cli/internal/scope"
 )
 
+// fileLock provides cross-process file locking using flock.
+type fileLock struct {
+	path string
+	file *os.File
+}
+
+// newFileLock creates a new file lock.
+func newFileLock(path string) *fileLock {
+	return &fileLock{path: path}
+}
+
+// Lock acquires an exclusive lock on the file.
+func (fl *fileLock) Lock() error {
+	f, err := os.OpenFile(fl.path, os.O_CREATE|os.O_RDWR, 0644)
+	if err != nil {
+		return fmt.Errorf("failed to open lock file: %w", err)
+	}
+	fl.file = f
+
+	if err := syscall.Flock(int(f.Fd()), syscall.LOCK_EX); err != nil {
+		f.Close()
+		return fmt.Errorf("failed to acquire lock: %w", err)
+	}
+	return nil
+}
+
+// Unlock releases the lock and closes the file.
+func (fl *fileLock) Unlock() error {
+	if fl.file == nil {
+		return nil
+	}
+	// Unlock and close
+	syscall.Flock(int(fl.file.Fd()), syscall.LOCK_UN)
+	err := fl.file.Close()
+	fl.file = nil
+	return err
+}
+
 // AgentState represents the state of a running agent.
 type AgentState struct {
 	ID            string            `json:"id"`
@@ -63,6 +101,7 @@ type State struct {
 // Manager handles state persistence for agents.
 type Manager struct {
 	statePath  string
+	lockPath   string // Path to lock file for cross-process synchronization
 	scope      scope.Scope
 	workingDir string // Used for filtering when scope is ScopeProject
 	mu         sync.Mutex
@@ -98,6 +137,7 @@ func NewManagerWithScope(s scope.Scope, workingDir string) (*Manager, error) {
 
 	mgr := &Manager{
 		statePath:  filepath.Join(swarmDir, "state.json"),
+		lockPath:   filepath.Join(swarmDir, "state.lock"),
 		scope:      s,
 		workingDir: workingDir,
 	}
@@ -121,8 +161,11 @@ func GenerateID() string {
 // Register adds a new agent to the state.
 // If the agent has a name that conflicts with a running agent, a number suffix is added.
 func (m *Manager) Register(agent *AgentState) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -164,12 +207,35 @@ func (m *Manager) uniqueName(state *State, baseName string) string {
 	}
 }
 
+// lock acquires both the in-process mutex and the cross-process file lock.
+// Always call unlock() when done, typically via defer.
+func (m *Manager) lock() (*fileLock, error) {
+	m.mu.Lock()
+	fl := newFileLock(m.lockPath)
+	if err := fl.Lock(); err != nil {
+		m.mu.Unlock()
+		return nil, err
+	}
+	return fl, nil
+}
+
+// unlock releases both locks.
+func (m *Manager) unlock(fl *fileLock) {
+	if fl != nil {
+		fl.Unlock()
+	}
+	m.mu.Unlock()
+}
+
 // Update updates an existing agent's state.
 // This replaces the entire agent state. For runner updates that should preserve
 // external control field changes, use MergeUpdate() instead.
 func (m *Manager) Update(agent *AgentState) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -189,8 +255,11 @@ func (m *Manager) Update(agent *AgentState) error {
 // This prevents the runner from overwriting changes made by `swarm top` or other commands.
 // Use this from the runner loop instead of Update().
 func (m *Manager) MergeUpdate(agent *AgentState) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -230,8 +299,11 @@ func mergeControlFields(existing, agent *AgentState) {
 // SetIterations atomically updates the Iterations field for an agent.
 // Use this instead of Update() when explicitly changing the iteration count.
 func (m *Manager) SetIterations(id string, iterations int) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -250,8 +322,11 @@ func (m *Manager) SetIterations(id string, iterations int) error {
 // SetModel atomically updates the Model field for an agent.
 // Use this instead of Update() when explicitly changing the model.
 func (m *Manager) SetModel(id string, model string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -270,8 +345,11 @@ func (m *Manager) SetModel(id string, model string) error {
 // SetTerminateMode atomically updates the TerminateMode field for an agent.
 // Use this instead of Update() when explicitly setting termination mode.
 func (m *Manager) SetTerminateMode(id string, mode string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -290,8 +368,11 @@ func (m *Manager) SetTerminateMode(id string, mode string) error {
 // SetPaused atomically updates the Paused field for an agent.
 // Use this instead of Update() when explicitly pausing/resuming.
 func (m *Manager) SetPaused(id string, paused bool) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -316,8 +397,11 @@ func (m *Manager) SetPaused(id string, paused bool) error {
 // Get retrieves an agent's state by ID.
 // Note: Get does not filter by scope - it retrieves the agent regardless of working directory.
 func (m *Manager) Get(id string) (*AgentState, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -336,8 +420,11 @@ func (m *Manager) Get(id string) (*AgentState, error) {
 // It first tries to find by ID, then falls back to searching by name.
 // Note: GetByNameOrID does not filter by scope - it retrieves the agent regardless of working directory.
 func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -363,8 +450,11 @@ func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
 // Respects the manager's scope setting.
 // Returns an error if no agents are found.
 func (m *Manager) GetLast() (*AgentState, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -398,8 +488,11 @@ func (m *Manager) GetLast() (*AgentState, error) {
 // If onlyRunning is true, only returns agents with status "running".
 // Results are always sorted by StartedAt time (oldest first).
 func (m *Manager) List(onlyRunning bool) ([]*AgentState, error) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -432,8 +525,11 @@ func (m *Manager) List(onlyRunning bool) ([]*AgentState, error) {
 
 // Remove removes an agent from the state.
 func (m *Manager) Remove(id string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
@@ -481,8 +577,11 @@ func (m *Manager) save(state *State) error {
 
 // cleanup removes stale entries (processes that are no longer running).
 func (m *Manager) cleanup() error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
+	fl, err := m.lock()
+	if err != nil {
+		return err
+	}
+	defer m.unlock(fl)
 
 	state, err := m.load()
 	if err != nil {
