@@ -12,6 +12,14 @@ model = "opus"
 # Default iterations for run command
 iterations = 1
 
+# Default total timeout for run command (e.g., "30m", "2h")
+# Set to "" or omit for no timeout
+# timeout = ""
+
+# Default per-iteration timeout (e.g., "10m")
+# Set to "" or omit for no timeout
+# iter_timeout = ""
+
 # Agent command configuration
 [command]
 # The base command to run (e.g., "agent" for cursor, "claude" for claude-code)

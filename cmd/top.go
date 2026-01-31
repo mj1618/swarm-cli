@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"sort"
@@ -10,6 +12,8 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/matt/swarm-cli/internal/config"
+	"github.com/matt/swarm-cli/internal/logparser"
 	"github.com/matt/swarm-cli/internal/process"
 	"github.com/matt/swarm-cli/internal/scope"
 	"github.com/matt/swarm-cli/internal/state"
@@ -26,8 +30,8 @@ var topCmd = &cobra.Command{
 	Short: "Real-time agent monitoring dashboard",
 	Long: `Display a real-time TUI dashboard showing all running agents.
 
-The dashboard updates automatically and allows quick actions on agents
-like pausing, resuming, or killing them.
+The dashboard shows agent status, iterations, token usage, costs, current task,
+and optionally streaming logs for the selected agent.
 
 Use arrow keys or j/k to navigate between agents. Press Enter to attach
 to the selected agent, or use keyboard shortcuts for quick actions.`,
@@ -71,24 +75,45 @@ var (
 	dimStyle = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("245"))
 
-	boxStyle = lipgloss.NewStyle().
+	logPanelStyle = lipgloss.NewStyle().
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("63")).
-			Padding(0, 1)
+			BorderForeground(lipgloss.Color("63"))
+
+	logHeaderStyle = lipgloss.NewStyle().
+			Bold(true).
+			Foreground(lipgloss.Color("99"))
+
+	costStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("220"))
+
+	tokenStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("39"))
+
+	taskStyle = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("147"))
 )
 
 type tickMsg time.Time
+type logLineMsg string
+type logLinesMsg []string
 
 type topModel struct {
-	mgr      *state.Manager
-	agents   []*state.AgentState
-	cursor   int
-	width    int
-	height   int
-	showAll  bool
-	global   bool
-	interval time.Duration
-	err      error
+	mgr           *state.Manager
+	cfg           *config.Config
+	agents        []*state.AgentState
+	cursor        int
+	width         int
+	height        int
+	showAll       bool
+	global        bool
+	interval      time.Duration
+	err           error
+	showLogs      bool
+	logLines      []string
+	maxLogLines   int
+	logWatcherID  string // ID of agent whose logs we're watching
+	logFile       *os.File
+	logFileReader *bufio.Reader
 }
 
 func initialTopModel() topModel {
@@ -96,14 +121,19 @@ func initialTopModel() topModel {
 	global := s == scope.ScopeGlobal
 
 	mgr, err := state.NewManagerWithScope(s, "")
+	cfg, _ := config.Load()
 
 	return topModel{
-		mgr:      mgr,
-		cursor:   0,
-		showAll:  topAll,
-		global:   global,
-		interval: topInterval,
-		err:      err,
+		mgr:         mgr,
+		cfg:         cfg,
+		cursor:      0,
+		showAll:     topAll,
+		global:      global,
+		interval:    topInterval,
+		err:         err,
+		showLogs:    true,
+		logLines:    make([]string, 0),
+		maxLogLines: 15,
 	}
 }
 
@@ -155,19 +185,184 @@ func getStatusOrder(a *state.AgentState) int {
 	return 0
 }
 
+// readNewLogLines reads any new lines from the log file
+func (m *topModel) readNewLogLines() tea.Cmd {
+	return func() tea.Msg {
+		if m.logFile == nil || m.logFileReader == nil {
+			return nil
+		}
+
+		var newLines []string
+		for {
+			line, err := m.logFileReader.ReadString('\n')
+			if err == io.EOF {
+				break
+			}
+			if err != nil {
+				break
+			}
+			// Parse and format the line
+			formatted := formatLogLine(line)
+			if formatted != "" {
+				newLines = append(newLines, formatted)
+			}
+		}
+
+		if len(newLines) > 0 {
+			return logLinesMsg(newLines)
+		}
+		return nil
+	}
+}
+
+// formatLogLine formats a JSON log line for display
+func formatLogLine(line string) string {
+	event := logparser.ParseEvent(line)
+	if event == nil {
+		// Not JSON, return as-is (trimmed)
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			return ""
+		}
+		return trimmed
+	}
+
+	// Format based on event type
+	switch event.Type {
+	case "assistant":
+		if event.Message != nil {
+			var texts []string
+			for _, c := range event.Message.Content {
+				if c.Text != "" {
+					texts = append(texts, c.Text)
+				}
+			}
+			text := strings.Join(texts, " ")
+			if len(text) > 100 {
+				text = text[:97] + "..."
+			}
+			if text != "" {
+				return "[assistant] " + text
+			}
+		}
+		return ""
+	case "thinking":
+		text := event.Text
+		if len(text) > 100 {
+			text = text[:97] + "..."
+		}
+		if text != "" {
+			return "[thinking] " + text
+		}
+		return ""
+	case "tool_call":
+		return "[tool] " + summarizeToolCallShort(event)
+	case "result":
+		result := event.Result
+		if len(result) > 80 {
+			result = result[:77] + "..."
+		}
+		return "[result] " + result
+	case "system":
+		if event.Subtype == "init" {
+			return "[system] Initialized"
+		}
+		return "[system] " + event.Subtype
+	default:
+		if event.Type != "" {
+			return "[" + event.Type + "]"
+		}
+	}
+	return ""
+}
+
+// summarizeToolCallShort creates a short summary of a tool call
+func summarizeToolCallShort(event *logparser.LogEvent) string {
+	if event.ToolCall == nil {
+		return "tool call"
+	}
+
+	var toolName string
+	var inner map[string]interface{}
+	for k, v := range event.ToolCall {
+		toolName = k
+		if m, ok := v.(map[string]interface{}); ok {
+			inner = m
+		}
+		break
+	}
+
+	if toolName == "" {
+		return "tool call"
+	}
+
+	var args map[string]interface{}
+	if inner != nil {
+		if a, ok := inner["args"].(map[string]interface{}); ok {
+			args = a
+		}
+	}
+
+	getArg := func(keys ...string) string {
+		if args == nil {
+			return ""
+		}
+		for _, key := range keys {
+			if v, ok := args[key]; ok {
+				if s, ok := v.(string); ok {
+					return s
+				}
+			}
+		}
+		return ""
+	}
+
+	switch toolName {
+	case "shellToolCall":
+		cmd := getArg("command", "simpleCommand")
+		if len(cmd) > 40 {
+			cmd = cmd[:37] + "..."
+		}
+		return "Shell: " + cmd
+	case "readToolCall":
+		path := getArg("file_path", "path")
+		if len(path) > 40 {
+			parts := strings.Split(path, "/")
+			path = parts[len(parts)-1]
+		}
+		return "Read: " + path
+	case "writeToolCall":
+		path := getArg("file_path", "path")
+		if len(path) > 40 {
+			parts := strings.Split(path, "/")
+			path = parts[len(parts)-1]
+		}
+		return "Write: " + path
+	case "lsToolCall":
+		path := getArg("path")
+		return "List: " + path
+	default:
+		name := strings.TrimSuffix(toolName, "ToolCall")
+		return name
+	}
+}
+
 func (m topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c":
+			m.closeLogFile()
 			return m, tea.Quit
 		case "up", "k":
 			if m.cursor > 0 {
 				m.cursor--
+				m.switchLogFile()
 			}
 		case "down", "j":
 			if m.cursor < len(m.agents)-1 {
 				m.cursor++
+				m.switchLogFile()
 			}
 		case "p":
 			return m, m.pauseSelected()
@@ -179,11 +374,18 @@ func (m topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.decreaseIterations()
 		case "K":
 			return m, m.killSelected()
-		case "l":
+		case "L":
 			return m, m.viewLogs()
-		case "enter":
+		case "l":
+			m.showLogs = !m.showLogs
+			if m.showLogs {
+				m.switchLogFile()
+			} else {
+				m.closeLogFile()
+			}
+		case "enter", "a":
 			return m, m.attachSelected()
-		case "a":
+		case "A":
 			m.showAll = !m.showAll
 			return m, m.refreshAgentsCmd()
 		case "g":
@@ -196,6 +398,7 @@ func (m topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			mgr, _ := state.NewManagerWithScope(s, "")
 			m.mgr = mgr
 			m.cursor = 0
+			m.closeLogFile()
 			return m, m.refreshAgentsCmd()
 		}
 
@@ -204,19 +407,105 @@ func (m topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.cursor >= len(m.agents) && len(m.agents) > 0 {
 			m.cursor = len(m.agents) - 1
 		}
+		// Update log file if selected agent changed
+		if m.showLogs && len(m.agents) > 0 && m.cursor < len(m.agents) {
+			if m.logWatcherID != m.agents[m.cursor].ID {
+				m.switchLogFile()
+			}
+		}
 
 	case tickMsg:
-		return m, tea.Batch(m.refreshAgentsCmd(), m.tickCmd())
+		var cmds []tea.Cmd
+		cmds = append(cmds, m.refreshAgentsCmd(), m.tickCmd())
+		if m.showLogs && m.logFile != nil {
+			cmds = append(cmds, m.readNewLogLines())
+		}
+		return m, tea.Batch(cmds...)
+
+	case logLinesMsg:
+		for _, line := range msg {
+			m.logLines = append(m.logLines, line)
+		}
+		// Trim to max lines
+		if len(m.logLines) > m.maxLogLines*2 {
+			m.logLines = m.logLines[len(m.logLines)-m.maxLogLines:]
+		}
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		// Adjust max log lines based on height
+		if m.height > 30 {
+			m.maxLogLines = (m.height - 20) / 2
+		} else {
+			m.maxLogLines = 8
+		}
 
 	case error:
 		m.err = msg
 	}
 
 	return m, nil
+}
+
+func (m *topModel) closeLogFile() {
+	if m.logFile != nil {
+		m.logFile.Close()
+		m.logFile = nil
+		m.logFileReader = nil
+		m.logWatcherID = ""
+	}
+}
+
+func (m *topModel) switchLogFile() {
+	m.closeLogFile()
+	m.logLines = nil
+
+	if !m.showLogs || len(m.agents) == 0 || m.cursor >= len(m.agents) {
+		return
+	}
+
+	agent := m.agents[m.cursor]
+	if agent.LogFile == "" {
+		return
+	}
+
+	file, err := os.Open(agent.LogFile)
+	if err != nil {
+		return
+	}
+
+	// Seek to near end of file to show recent logs
+	stat, err := file.Stat()
+	if err == nil && stat.Size() > 8192 {
+		file.Seek(-8192, io.SeekEnd)
+		// Skip partial line
+		reader := bufio.NewReader(file)
+		reader.ReadString('\n')
+		m.logFileReader = reader
+	} else {
+		m.logFileReader = bufio.NewReader(file)
+	}
+
+	m.logFile = file
+	m.logWatcherID = agent.ID
+
+	// Read initial lines
+	for i := 0; i < m.maxLogLines*2; i++ {
+		line, err := m.logFileReader.ReadString('\n')
+		if err != nil {
+			break
+		}
+		formatted := formatLogLine(line)
+		if formatted != "" {
+			m.logLines = append(m.logLines, formatted)
+		}
+	}
+
+	// Keep only recent lines
+	if len(m.logLines) > m.maxLogLines {
+		m.logLines = m.logLines[len(m.logLines)-m.maxLogLines:]
+	}
 }
 
 func (m topModel) View() string {
@@ -234,9 +523,9 @@ func (m topModel) View() string {
 	b.WriteString(m.renderTable())
 	b.WriteString("\n")
 
-	// Detail panel for selected agent
-	if len(m.agents) > 0 && m.cursor < len(m.agents) {
-		b.WriteString(m.renderDetail(m.agents[m.cursor]))
+	// Log panel (if enabled)
+	if m.showLogs && len(m.agents) > 0 && m.cursor < len(m.agents) {
+		b.WriteString(m.renderLogPanel())
 		b.WriteString("\n")
 	}
 
@@ -248,6 +537,9 @@ func (m topModel) View() string {
 
 func (m topModel) renderHeader() string {
 	running, paused, terminated := 0, 0, 0
+	var totalTokens int64
+	var totalCost float64
+
 	for _, a := range m.agents {
 		switch {
 		case a.Status == "terminated":
@@ -257,6 +549,8 @@ func (m topModel) renderHeader() string {
 		default:
 			running++
 		}
+		totalTokens += a.InputTokens + a.OutputTokens
+		totalCost += a.TotalCost
 	}
 
 	scopeStr := "project"
@@ -269,18 +563,59 @@ func (m topModel) renderHeader() string {
 		allIndicator = " +all"
 	}
 
-	header := fmt.Sprintf(
-		"╭─ Swarm Top (%s%s) ─────────────────────────────────────────────────────╮\n"+
-			"│  Running: %s   Paused: %s   Terminated: %s   │   Refresh: %s   │   [q]uit  │\n"+
-			"╰────────────────────────────────────────────────────────────────────────────────╯",
-		scopeStr, allIndicator,
+	tokensStr := formatTokenCount(totalTokens)
+	costStr := fmt.Sprintf("$%.2f", totalCost)
+
+	// Build content line without box characters first
+	title := fmt.Sprintf(" Swarm Dashboard (%s%s) ", scopeStr, allIndicator)
+	stats := fmt.Sprintf("  Running: %s   Paused: %s   Terminated: %s   Tokens: %s   Cost: %s  ",
 		runningStyle.Render(fmt.Sprintf("%d", running)),
 		pausedStyle.Render(fmt.Sprintf("%d", paused)),
 		terminatedStyle.Render(fmt.Sprintf("%d", terminated)),
-		m.interval,
+		tokenStyle.Render(tokensStr),
+		costStyle.Render(costStr),
 	)
 
-	return headerStyle.Render(header)
+	// Calculate visual width (accounting for ANSI codes)
+	statsVisualWidth := lipgloss.Width(stats)
+	titleVisualWidth := lipgloss.Width(title)
+
+	// Use the wider of the two, with a minimum
+	boxWidth := statsVisualWidth
+	if titleVisualWidth > boxWidth {
+		boxWidth = titleVisualWidth
+	}
+	if boxWidth < 60 {
+		boxWidth = 60
+	}
+
+	// Build the header with proper alignment
+	var b strings.Builder
+
+	// Top border with title
+	b.WriteString("╭─")
+	b.WriteString(title)
+	remaining := boxWidth - titleVisualWidth
+	if remaining > 0 {
+		b.WriteString(strings.Repeat("─", remaining))
+	}
+	b.WriteString("─╮\n")
+
+	// Stats line
+	b.WriteString("│")
+	b.WriteString(stats)
+	padding := boxWidth - statsVisualWidth + 1
+	if padding > 0 {
+		b.WriteString(strings.Repeat(" ", padding))
+	}
+	b.WriteString("│\n")
+
+	// Bottom border
+	b.WriteString("╰")
+	b.WriteString(strings.Repeat("─", boxWidth+2))
+	b.WriteString("╯")
+
+	return headerStyle.Render(b.String())
 }
 
 func (m topModel) renderTable() string {
@@ -290,9 +625,31 @@ func (m topModel) renderTable() string {
 
 	var b strings.Builder
 
-	// Header
-	b.WriteString(dimStyle.Render("  ID        NAME             PROMPT           MODEL              ITER    STATUS      RUNTIME\n"))
-	b.WriteString(dimStyle.Render("  ─────────────────────────────────────────────────────────────────────────────────────────────\n"))
+	// Column widths
+	const (
+		colID     = 8
+		colName   = 14
+		colStatus = 10
+		colIter   = 7
+		colTokens = 8
+		colCost   = 7
+		colTask   = 30
+	)
+
+	// Header - build with exact spacing
+	header := fmt.Sprintf("  %-*s %-*s %-*s %-*s %-*s %-*s %s",
+		colID, "ID",
+		colName, "NAME",
+		colStatus, "STATUS",
+		colIter, "ITER",
+		colTokens, "TOKENS",
+		colCost, "COST",
+		"TASK",
+	)
+	b.WriteString(dimStyle.Render(header))
+	b.WriteString("\n")
+	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", colID+colName+colStatus+colIter+colTokens+colCost+colTask+10)))
+	b.WriteString("\n")
 
 	for i, a := range m.agents {
 		prefix := "  "
@@ -305,34 +662,69 @@ func (m topModel) renderTable() string {
 			name = "-"
 		}
 
-		statusStr, statusStyle := getStatusDisplay(a)
+		statusStr, statusSty := getStatusDisplay(a)
 
-		runtime := time.Since(a.StartedAt).Round(time.Second)
-
-		iterStr := fmt.Sprintf("%2d/%-3d", a.CurrentIter, a.Iterations)
+		iterStr := fmt.Sprintf("%d/%d", a.CurrentIter, a.Iterations)
 		if a.Iterations == 0 {
-			iterStr = fmt.Sprintf("%2d/∞  ", a.CurrentIter)
+			iterStr = fmt.Sprintf("%d/∞", a.CurrentIter)
 		}
 
-		line := fmt.Sprintf("%s%-8s  %-15s  %-15s  %-17s  %s  %s  %s\n",
-			prefix,
-			truncateTop(a.ID, 8),
-			truncateTop(name, 15),
-			truncateTop(a.Prompt, 15),
-			truncateTop(a.Model, 17),
-			iterStr,
-			statusStyle.Render(fmt.Sprintf("%-10s", statusStr)),
-			formatTopDuration(runtime),
-		)
+		tokens := a.InputTokens + a.OutputTokens
+		tokensStr := formatTokenCount(tokens)
+
+		costStr := fmt.Sprintf("$%.2f", a.TotalCost)
+
+		task := a.CurrentTask
+		if task == "" {
+			task = "-"
+		}
+		if len(task) > colTask {
+			task = task[:colTask-3] + "..."
+		}
+
+		// Build line with proper padding for each column
+		// Apply style to content, then pad to column width
+		var line strings.Builder
+		line.WriteString(prefix)
+		line.WriteString(padRight(truncateTop(a.ID, colID-1), colID))
+		line.WriteString(" ")
+		line.WriteString(padRight(truncateTop(name, colName-1), colName))
+		line.WriteString(" ")
+		line.WriteString(statusSty.Render(padRight(statusStr, colStatus)))
+		line.WriteString(" ")
+		line.WriteString(padRight(iterStr, colIter))
+		line.WriteString(" ")
+		line.WriteString(tokenStyle.Render(padLeft(tokensStr, colTokens)))
+		line.WriteString(" ")
+		line.WriteString(costStyle.Render(padLeft(costStr, colCost)))
+		line.WriteString(" ")
+		line.WriteString(taskStyle.Render(task))
 
 		if i == m.cursor {
-			b.WriteString(selectedStyle.Render(line))
+			b.WriteString(selectedStyle.Render(line.String()))
 		} else {
-			b.WriteString(line)
+			b.WriteString(line.String())
 		}
+		b.WriteString("\n")
 	}
 
 	return b.String()
+}
+
+func padRight(s string, width int) string {
+	visualWidth := lipgloss.Width(s)
+	if visualWidth >= width {
+		return s
+	}
+	return s + strings.Repeat(" ", width-visualWidth)
+}
+
+func padLeft(s string, width int) string {
+	visualWidth := lipgloss.Width(s)
+	if visualWidth >= width {
+		return s
+	}
+	return strings.Repeat(" ", width-visualWidth) + s
 }
 
 func getStatusDisplay(a *state.AgentState) (string, lipgloss.Style) {
@@ -348,41 +740,86 @@ func getStatusDisplay(a *state.AgentState) (string, lipgloss.Style) {
 	}
 }
 
-func (m topModel) renderDetail(a *state.AgentState) string {
-	name := a.Name
+func (m topModel) renderLogPanel() string {
+	agent := m.agents[m.cursor]
+	name := agent.Name
 	if name == "" {
-		name = a.ID
+		name = agent.ID
 	}
 
-	workDir := a.WorkingDir
-	if len(workDir) > 60 {
-		workDir = "..." + workDir[len(workDir)-57:]
+	// Determine panel width
+	width := 90
+	if m.width > 0 && m.width < 100 {
+		width = m.width - 4
+	}
+	if width < 50 {
+		width = 50
+	}
+	innerWidth := width - 4 // Account for "│ " and " │"
+
+	var b strings.Builder
+
+	// Header line with title
+	title := fmt.Sprintf(" Logs: %s (%s) ", truncateTop(name, 20), truncateTop(agent.ID, 8))
+	titleLen := len(title)
+	b.WriteString("╭─")
+	b.WriteString(logHeaderStyle.Render(title))
+	remaining := width - titleLen - 3
+	if remaining > 0 {
+		b.WriteString(strings.Repeat("─", remaining))
+	}
+	b.WriteString("╮\n")
+
+	// Log content
+	if len(m.logLines) == 0 {
+		var msg string
+		if agent.LogFile == "" {
+			msg = "No log file (agent not detached)"
+		} else {
+			msg = "Waiting for log output..."
+		}
+		b.WriteString("│ ")
+		b.WriteString(dimStyle.Render(msg))
+		padding := innerWidth - len(msg)
+		if padding > 0 {
+			b.WriteString(strings.Repeat(" ", padding))
+		}
+		b.WriteString(" │\n")
+	} else {
+		displayLines := m.logLines
+		if len(displayLines) > m.maxLogLines {
+			displayLines = displayLines[len(displayLines)-m.maxLogLines:]
+		}
+		for _, line := range displayLines {
+			// Truncate line to fit inner width
+			displayLine := line
+			if len(displayLine) > innerWidth {
+				displayLine = displayLine[:innerWidth-3] + "..."
+			}
+			b.WriteString("│ ")
+			b.WriteString(displayLine)
+			padding := innerWidth - len(displayLine)
+			if padding > 0 {
+				b.WriteString(strings.Repeat(" ", padding))
+			}
+			b.WriteString(" │\n")
+		}
 	}
 
-	logFile := a.LogFile
-	if logFile == "" {
-		logFile = "-"
-	} else if len(logFile) > 60 {
-		logFile = "..." + logFile[len(logFile)-57:]
-	}
+	// Bottom border
+	b.WriteString("╰")
+	b.WriteString(strings.Repeat("─", width-2))
+	b.WriteString("╯")
 
-	detail := fmt.Sprintf(
-		"╭─ Selected: %s (%s) ─────────────────────────────────────────────────╮\n"+
-			"│  Started: %-62s │\n"+
-			"│  Directory: %-60s │\n"+
-			"│  Log: %-66s │\n"+
-			"╰────────────────────────────────────────────────────────────────────────────────╯",
-		a.ID, name,
-		a.StartedAt.Format("2006-01-02 15:04:05"),
-		workDir,
-		logFile,
-	)
-
-	return dimStyle.Render(detail)
+	return b.String()
 }
 
 func (m topModel) renderHelp() string {
-	return dimStyle.Render("Keys: [↑/↓] select  [p]ause  [r]esume  [+/-] iterations  [K]ill  [l]ogs  [Enter] attach  [a]ll  [g]lobal  [q]uit")
+	logsToggle := "[l] show logs"
+	if m.showLogs {
+		logsToggle = "[l] hide logs"
+	}
+	return dimStyle.Render(fmt.Sprintf("Keys: [↑/↓] select  [p]ause  [r]esume  [+/-] iter  [K]ill  [a]ttach  %s  [A]ll  [g]lobal  [q]uit", logsToggle))
 }
 
 // Action commands
@@ -509,10 +946,33 @@ func (m topModel) attachSelected() tea.Cmd {
 // Helpers
 
 func truncateTop(s string, max int) string {
-	if len(s) <= max {
+	visualWidth := lipgloss.Width(s)
+	if visualWidth <= max {
 		return s
 	}
-	return s[:max-3] + "..."
+	// Truncate rune by rune until we fit
+	runes := []rune(s)
+	for len(runes) > 0 {
+		truncated := string(runes[:len(runes)-1]) + "..."
+		if lipgloss.Width(truncated) <= max {
+			return truncated
+		}
+		runes = runes[:len(runes)-1]
+	}
+	return "..."
+}
+
+func formatTokenCount(tokens int64) string {
+	if tokens == 0 {
+		return "-"
+	}
+	if tokens >= 1000000 {
+		return fmt.Sprintf("%.1fM", float64(tokens)/1000000)
+	}
+	if tokens >= 1000 {
+		return fmt.Sprintf("%.1fK", float64(tokens)/1000)
+	}
+	return fmt.Sprintf("%d", tokens)
 }
 
 func formatTopDuration(d time.Duration) string {

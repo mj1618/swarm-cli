@@ -1,6 +1,7 @@
 package logparser
 
 import (
+	"bufio"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -37,6 +38,28 @@ type LogEvent struct {
 	ToolCall    map[string]interface{} `json:"tool_call"`
 	Result      string                 `json:"result"`
 	DurationMs  int64                  `json:"duration_ms"`
+	// Usage fields (may be present in API response events)
+	Usage       *Usage                 `json:"usage,omitempty"`
+	// Alternative usage locations in different API formats
+	InputTokens  *int64                `json:"input_tokens,omitempty"`
+	OutputTokens *int64                `json:"output_tokens,omitempty"`
+}
+
+// Usage represents token usage from an API response.
+type Usage struct {
+	InputTokens  int64 `json:"input_tokens"`
+	OutputTokens int64 `json:"output_tokens"`
+	TotalTokens  int64 `json:"total_tokens"`
+	// Alternative field names used by some APIs
+	PromptTokens     int64 `json:"prompt_tokens"`
+	CompletionTokens int64 `json:"completion_tokens"`
+}
+
+// UsageStats holds accumulated usage statistics.
+type UsageStats struct {
+	InputTokens  int64
+	OutputTokens int64
+	CurrentTask  string
 }
 
 // Message represents a user or assistant message.
@@ -56,6 +79,206 @@ func NewParser(out io.Writer) *Parser {
 	return &Parser{
 		out: out,
 	}
+}
+
+// UsageCallback is called when usage stats are updated.
+type UsageCallback func(stats UsageStats)
+
+// StreamingParser extends Parser to track usage stats and emit callbacks.
+type StreamingParser struct {
+	*Parser
+	stats         UsageStats
+	onUsageUpdate UsageCallback
+}
+
+// NewStreamingParser creates a parser that tracks usage and calls the callback on updates.
+func NewStreamingParser(out io.Writer, onUsageUpdate UsageCallback) *StreamingParser {
+	return &StreamingParser{
+		Parser:        NewParser(out),
+		onUsageUpdate: onUsageUpdate,
+	}
+}
+
+// ProcessLine processes a line and updates usage stats.
+func (sp *StreamingParser) ProcessLine(line string) {
+	// Try to extract usage before normal processing
+	sp.extractUsage(line)
+	sp.Parser.ProcessLine(line)
+}
+
+// Stats returns the current usage statistics.
+func (sp *StreamingParser) Stats() UsageStats {
+	return sp.stats
+}
+
+// extractUsage extracts token usage and current task from a log line.
+func (sp *StreamingParser) extractUsage(line string) {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return
+	}
+
+	var event LogEvent
+	if err := json.Unmarshal([]byte(trimmed), &event); err != nil {
+		return
+	}
+
+	updated := false
+
+	// Extract usage from various possible locations
+	if event.Usage != nil {
+		inputTokens := event.Usage.InputTokens
+		if inputTokens == 0 {
+			inputTokens = event.Usage.PromptTokens
+		}
+		outputTokens := event.Usage.OutputTokens
+		if outputTokens == 0 {
+			outputTokens = event.Usage.CompletionTokens
+		}
+		if inputTokens > 0 || outputTokens > 0 {
+			sp.stats.InputTokens += inputTokens
+			sp.stats.OutputTokens += outputTokens
+			updated = true
+		}
+	}
+
+	// Check for direct token fields
+	if event.InputTokens != nil && *event.InputTokens > 0 {
+		sp.stats.InputTokens += *event.InputTokens
+		updated = true
+	}
+	if event.OutputTokens != nil && *event.OutputTokens > 0 {
+		sp.stats.OutputTokens += *event.OutputTokens
+		updated = true
+	}
+
+	// Update current task based on event type
+	taskUpdated := sp.updateCurrentTask(&event)
+	if taskUpdated {
+		updated = true
+	}
+
+	// Emit callback if anything changed
+	if updated && sp.onUsageUpdate != nil {
+		sp.onUsageUpdate(sp.stats)
+	}
+}
+
+// updateCurrentTask updates the current task based on the event.
+func (sp *StreamingParser) updateCurrentTask(event *LogEvent) bool {
+	var newTask string
+
+	switch event.Type {
+	case "tool_call":
+		newTask = sp.summarizeToolCallForTask(event)
+	case "assistant":
+		// Only update if we have meaningful content
+		if event.Message != nil {
+			text := sp.pickTextFromContent(event.Message.Content)
+			if len(text) > 50 {
+				text = text[:47] + "..."
+			}
+			if text != "" {
+				newTask = "Thinking: " + text
+			}
+		}
+	case "system":
+		if event.Subtype == "init" {
+			newTask = "Initializing..."
+		}
+	case "result":
+		if event.Subtype != "" {
+			newTask = "Result: " + event.Subtype
+		}
+	}
+
+	if newTask != "" && newTask != sp.stats.CurrentTask {
+		sp.stats.CurrentTask = newTask
+		return true
+	}
+	return false
+}
+
+// summarizeToolCallForTask creates a short summary for the current task display.
+func (sp *StreamingParser) summarizeToolCallForTask(event *LogEvent) string {
+	if event.ToolCall == nil {
+		return "Tool call"
+	}
+
+	var toolName string
+	var inner map[string]interface{}
+	for k, v := range event.ToolCall {
+		toolName = k
+		if m, ok := v.(map[string]interface{}); ok {
+			inner = m
+		}
+		break
+	}
+
+	if toolName == "" {
+		return "Tool call"
+	}
+
+	var args map[string]interface{}
+	if inner != nil {
+		if a, ok := inner["args"].(map[string]interface{}); ok {
+			args = a
+		}
+	}
+
+	switch toolName {
+	case "shellToolCall":
+		if cmd := sp.getStringArg(args, "command", "simpleCommand"); cmd != "" {
+			cmd = sp.asSingleLine(cmd)
+			if len(cmd) > 40 {
+				cmd = cmd[:37] + "..."
+			}
+			return "Shell: " + cmd
+		}
+		return "Shell"
+	case "lsToolCall":
+		if path := sp.getStringArg(args, "path"); path != "" {
+			return "List: " + sp.truncatePath(path)
+		}
+		return "List dir"
+	case "readToolCall":
+		if path := sp.getStringArg(args, "file_path", "path"); path != "" {
+			return "Read: " + sp.truncatePath(path)
+		}
+		return "Read file"
+	case "writeToolCall":
+		if path := sp.getStringArg(args, "file_path", "path"); path != "" {
+			return "Write: " + sp.truncatePath(path)
+		}
+		return "Write file"
+	case "applyPatchToolCall":
+		return "Apply patch"
+	case "searchToolCall", "grepToolCall":
+		return "Search"
+	case "webSearchToolCall":
+		return "Web search"
+	}
+
+	// Clean up tool name
+	name := strings.TrimSuffix(toolName, "ToolCall")
+	name = strings.TrimSuffix(name, "Call")
+	return name
+}
+
+// truncatePath shortens a file path for display.
+func (sp *StreamingParser) truncatePath(path string) string {
+	// Get just the filename if path is too long
+	if len(path) > 30 {
+		parts := strings.Split(path, "/")
+		if len(parts) > 0 {
+			filename := parts[len(parts)-1]
+			if len(filename) <= 30 {
+				return filename
+			}
+			return filename[:27] + "..."
+		}
+	}
+	return path
 }
 
 // ProcessLine processes a single log line.
@@ -364,4 +587,40 @@ func (p *Parser) asSingleLine(s string) string {
 func (p *Parser) sanitizeSingleLine(s string) string {
 	// Keep it single-line but don't trim/collapse spaces
 	return newlineRe.ReplaceAllString(s, " ")
+}
+
+// ParseEvent parses a single log line and returns the event.
+// Returns nil if the line is not valid JSON.
+func ParseEvent(line string) *LogEvent {
+	trimmed := strings.TrimSpace(line)
+	if trimmed == "" {
+		return nil
+	}
+
+	var event LogEvent
+	if err := json.Unmarshal([]byte(trimmed), &event); err != nil {
+		return nil
+	}
+	return &event
+}
+
+// ScanLogFile reads a log file and returns accumulated usage stats.
+// This is useful for getting stats from an existing log file.
+func ScanLogFile(reader io.Reader) UsageStats {
+	sp := NewStreamingParser(io.Discard, nil)
+	
+	scanner := newLineScanner(reader)
+	for scanner.Scan() {
+		sp.extractUsage(scanner.Text())
+	}
+	
+	return sp.stats
+}
+
+// newLineScanner creates a scanner with a larger buffer for long lines.
+func newLineScanner(r io.Reader) *bufio.Scanner {
+	scanner := bufio.NewScanner(r)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 1024*1024)
+	return scanner
 }

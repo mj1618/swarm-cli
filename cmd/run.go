@@ -698,6 +698,7 @@ Labels can be attached to agents for categorization and filtering using the
 			AgentState:        agentState,
 			PromptContent:     promptContent,
 			Command:           appConfig.Command,
+			Config:            appConfig,
 			Env:               expandedEnv,
 			Output:            os.Stdout,
 			StartingIteration: startingIteration,

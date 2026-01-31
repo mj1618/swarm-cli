@@ -11,6 +11,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/compose"
+	"github.com/matt/swarm-cli/internal/dag"
 	"github.com/matt/swarm-cli/internal/detach"
 	"github.com/matt/swarm-cli/internal/output"
 	"github.com/matt/swarm-cli/internal/prompt"
@@ -20,41 +21,49 @@ import (
 )
 
 var (
-	upFile   string
-	upDetach bool
+	upFile     string
+	upDetach   bool
+	upPipeline string
 )
 
 var upCmd = &cobra.Command{
 	Use:   "up [task...]",
 	Short: "Run tasks defined in a compose file",
-	Long: `Run one or more tasks from a compose file (./swarm/swarm.yaml by default).
+	Long: `Run tasks from a compose file (./swarm/swarm.yaml by default).
 
-Similar to docker compose up, this command reads task definitions from a YAML
-file and runs them. By default, all tasks are run in parallel.
+By default, 'swarm up' runs:
+  1. All defined pipelines (in DAG order with iterations)
+  2. All standalone tasks (tasks not in pipelines and without dependencies)
+
+Tasks that are part of a pipeline or have dependencies are only run via their
+pipeline - they won't run as standalone parallel tasks.
 
 Each task can specify:
   - prompt: Name of a prompt from the prompts directory
   - prompt-file: Path to an arbitrary prompt file
   - prompt-string: Direct prompt text
   - model: Model to use (optional, overrides config)
-  - iterations: Number of iterations (optional, default 1)
+  - iterations: Number of iterations (for standalone tasks)
   - name: Custom agent name (optional, defaults to task name)
-  - prefix: Content to prepend to the prompt at runtime
-  - suffix: Content to append to the prompt at runtime`,
-	Example: `  # Run all tasks from ./swarm/swarm.yaml
+  - depends_on: Task dependencies with optional conditions
+
+Pipelines define DAG workflows with iteration cycles:
+  - Each iteration runs the entire DAG to completion before the next
+  - Tasks can have conditional dependencies (success, failure, any, always)`,
+	Example: `  # Run all pipelines and standalone tasks
   swarm up
 
-  # Run specific tasks only
+  # Run specific tasks only (bypass pipeline logic)
   swarm up frontend backend
 
-  # Run in detached mode (background)
+  # Run only a specific pipeline
+  swarm up --pipeline development
+
+  # Run in detached mode (standalone tasks only)
   swarm up -d
 
   # Use a custom compose file
-  swarm up -f custom.yaml
-
-  # Combine options
-  swarm up -d -f deploy.yaml frontend`,
+  swarm up -f custom.yaml`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Load compose file
 		cf, err := compose.Load(upFile)
@@ -65,12 +74,6 @@ Each task can specify:
 		// Validate compose file
 		if err := cf.Validate(); err != nil {
 			return fmt.Errorf("invalid compose file: %w", err)
-		}
-
-		// Get tasks to run (filtered by args if provided)
-		tasks, err := cf.GetTasks(args)
-		if err != nil {
-			return err
 		}
 
 		// Get prompts directory based on scope
@@ -85,25 +88,137 @@ Each task can specify:
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		// Sort task names for consistent output
-		taskNames := make([]string, 0, len(tasks))
-		for name := range tasks {
-			taskNames = append(taskNames, name)
+		// If a specific pipeline is requested, run only that pipeline
+		if upPipeline != "" {
+			if upDetach {
+				return fmt.Errorf("detached mode is not yet supported for pipelines")
+			}
+			return runPipeline(cf, upPipeline, promptsDir, workingDir)
 		}
-		sort.Strings(taskNames)
 
-		fmt.Printf("Starting %d task(s) from %s\n", len(tasks), upFile)
+		// If specific tasks are requested via args, run only those tasks
+		if len(args) > 0 {
+			tasks, err := cf.GetTasks(args)
+			if err != nil {
+				return err
+			}
+			taskNames := make([]string, 0, len(tasks))
+			for name := range tasks {
+				taskNames = append(taskNames, name)
+			}
+			sort.Strings(taskNames)
 
-		if upDetach {
-			return runTasksDetached(taskNames, tasks, promptsDir, workingDir)
+			fmt.Printf("Starting %d task(s) from %s\n", len(tasks), upFile)
+
+			if upDetach {
+				return runTasksDetached(taskNames, tasks, promptsDir, workingDir)
+			}
+			return runTasksForeground(taskNames, tasks, promptsDir, workingDir)
 		}
-		return runTasksForeground(taskNames, tasks, promptsDir, workingDir)
+
+		// Default behavior: run all pipelines + standalone tasks
+		return runAllPipelinesAndStandaloneTasks(cf, promptsDir, workingDir)
 	},
 }
 
 func init() {
 	upCmd.Flags().StringVarP(&upFile, "file", "f", compose.DefaultPath(), "Path to compose file")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Run all tasks in background")
+	upCmd.Flags().StringVarP(&upPipeline, "pipeline", "p", "", "Run a named pipeline (DAG with iterations)")
+}
+
+// runPipeline runs a named pipeline using the DAG executor.
+func runPipeline(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir string) error {
+	// Get the pipeline definition
+	pipeline, err := cf.GetPipeline(pipelineName)
+	if err != nil {
+		// List available pipelines if any exist
+		if cf.HasPipelines() {
+			var names []string
+			for name := range cf.Pipelines {
+				names = append(names, name)
+			}
+			return fmt.Errorf("%w\nAvailable pipelines: %v", err, names)
+		}
+		return fmt.Errorf("%w\nNo pipelines defined in compose file", err)
+	}
+
+	fmt.Printf("Running pipeline %q from %s\n", pipelineName, upFile)
+
+	// Create the executor
+	executor := dag.NewExecutor(dag.ExecutorConfig{
+		AppConfig:  appConfig,
+		PromptsDir: promptsDir,
+		WorkingDir: workingDir,
+		Output:     os.Stdout,
+	})
+
+	// Run the pipeline
+	return executor.RunPipeline(*pipeline, cf.Tasks)
+}
+
+// runAllPipelinesAndStandaloneTasks runs all defined pipelines and standalone tasks.
+// Standalone tasks are tasks that are not part of any pipeline and have no dependencies.
+func runAllPipelinesAndStandaloneTasks(cf *compose.ComposeFile, promptsDir, workingDir string) error {
+	// Get standalone tasks (not in any pipeline, no dependencies, not depended upon)
+	standaloneTasks := cf.GetStandaloneTasks()
+
+	// Sort pipeline names for consistent output
+	var pipelineNames []string
+	for name := range cf.Pipelines {
+		pipelineNames = append(pipelineNames, name)
+	}
+	sort.Strings(pipelineNames)
+
+	// Sort standalone task names for consistent output
+	var standaloneNames []string
+	for name := range standaloneTasks {
+		standaloneNames = append(standaloneNames, name)
+	}
+	sort.Strings(standaloneNames)
+
+	// Report what we're going to run
+	fmt.Printf("From %s:\n", upFile)
+	if len(pipelineNames) > 0 {
+		fmt.Printf("  Pipelines: %v\n", pipelineNames)
+	}
+	if len(standaloneNames) > 0 {
+		fmt.Printf("  Standalone tasks: %v\n", standaloneNames)
+	}
+	if len(pipelineNames) == 0 && len(standaloneNames) == 0 {
+		fmt.Println("  No pipelines or standalone tasks to run")
+		return nil
+	}
+	fmt.Println()
+
+	// Run pipelines sequentially (each pipeline runs its full iteration cycle)
+	for _, pipelineName := range pipelineNames {
+		pipeline := cf.Pipelines[pipelineName]
+
+		fmt.Printf("=== Pipeline: %s ===\n", pipelineName)
+
+		executor := dag.NewExecutor(dag.ExecutorConfig{
+			AppConfig:  appConfig,
+			PromptsDir: promptsDir,
+			WorkingDir: workingDir,
+			Output:     os.Stdout,
+		})
+
+		if err := executor.RunPipeline(pipeline, cf.Tasks); err != nil {
+			return fmt.Errorf("pipeline %q failed: %w", pipelineName, err)
+		}
+	}
+
+	// Run standalone tasks in parallel (they have no dependencies)
+	if len(standaloneNames) > 0 {
+		fmt.Printf("=== Standalone Tasks ===\n")
+		if upDetach {
+			return runTasksDetached(standaloneNames, standaloneTasks, promptsDir, workingDir)
+		}
+		return runTasksForeground(standaloneNames, standaloneTasks, promptsDir, workingDir)
+	}
+
+	return nil
 }
 
 // runTasksDetached spawns all tasks as detached agents and returns immediately.

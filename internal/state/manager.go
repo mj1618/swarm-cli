@@ -45,6 +45,12 @@ type AgentState struct {
 	FailedIters     int    `json:"failed_iterations"`     // Iterations that errored
 	LastError       string `json:"last_error,omitempty"`  // Last error message if any
 
+	// Token and cost tracking
+	InputTokens  int64   `json:"input_tokens"`        // Total input tokens used
+	OutputTokens int64   `json:"output_tokens"`       // Total output tokens used
+	TotalCost    float64 `json:"total_cost_usd"`      // Total cost in USD
+	CurrentTask  string  `json:"current_task,omitempty"` // Last activity summary (e.g., "Read: auth.ts")
+
 	// Hooks
 	OnComplete string `json:"on_complete,omitempty"` // Command to run when agent completes
 }

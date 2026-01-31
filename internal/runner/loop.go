@@ -12,6 +12,7 @@ import (
 
 	"github.com/matt/swarm-cli/internal/agent"
 	"github.com/matt/swarm-cli/internal/config"
+	"github.com/matt/swarm-cli/internal/logparser"
 	"github.com/matt/swarm-cli/internal/prompt"
 	"github.com/matt/swarm-cli/internal/state"
 )
@@ -29,6 +30,9 @@ type LoopConfig struct {
 
 	// Command is the agent command configuration
 	Command config.CommandConfig
+
+	// Config is the full application config (for pricing lookups)
+	Config *config.Config
 
 	// Env is the list of environment variables in KEY=VALUE format
 	Env []string
@@ -202,8 +206,27 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			Timeout: cfg.IterTimeout,
 		}
 
-		// Run agent - errors should NOT stop the run (including iteration timeouts)
+		// Run agent with usage tracking
 		runner := agent.NewRunner(agentCfg)
+		
+		// Set up usage callback to update state
+		runner.SetUsageCallback(func(stats logparser.UsageStats) {
+			// Update token counts (stats are cumulative within iteration)
+			agentState.InputTokens = stats.InputTokens
+			agentState.OutputTokens = stats.OutputTokens
+			agentState.CurrentTask = stats.CurrentTask
+			
+			// Calculate cost if config is available
+			if cfg.Config != nil {
+				pricing := cfg.Config.GetPricing(agentState.Model)
+				agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
+			}
+			
+			// Update state (will be throttled by the parser's update frequency)
+			_ = mgr.Update(agentState)
+		})
+
+		// Run agent - errors should NOT stop the run (including iteration timeouts)
 		if err := runner.RunWithContext(timeoutCtx, cfg.Output); err != nil {
 			agentState.FailedIters++
 			agentState.LastError = err.Error()
@@ -219,6 +242,18 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			}
 		} else {
 			agentState.SuccessfulIters++
+		}
+		
+		// Capture final usage stats from this iteration
+		finalStats := runner.UsageStats()
+		agentState.InputTokens = finalStats.InputTokens
+		agentState.OutputTokens = finalStats.OutputTokens
+		if finalStats.CurrentTask != "" {
+			agentState.CurrentTask = finalStats.CurrentTask
+		}
+		if cfg.Config != nil {
+			pricing := cfg.Config.GetPricing(agentState.Model)
+			agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
 		}
 		_ = mgr.Update(agentState)
 

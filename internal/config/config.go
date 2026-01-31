@@ -34,6 +34,9 @@ type Config struct {
 
 	// Command holds the agent command configuration
 	Command CommandConfig `toml:"command"`
+
+	// Pricing holds model pricing configuration (model name -> pricing)
+	Pricing map[string]*ModelPricing `toml:"pricing"`
 }
 
 // CommandConfig holds the configuration for the agent command.
@@ -47,6 +50,77 @@ type CommandConfig struct {
 	// RawOutput if true, streams output directly without parsing (for claude-code)
 	// If false, output is parsed through the log parser (for cursor)
 	RawOutput bool `toml:"raw_output"`
+}
+
+// ModelPricing holds the pricing for a model in USD per million tokens.
+type ModelPricing struct {
+	InputPerMillion  float64 `toml:"input_per_million"`
+	OutputPerMillion float64 `toml:"output_per_million"`
+}
+
+// CalculateCost calculates the cost in USD for given token counts.
+func (p *ModelPricing) CalculateCost(inputTokens, outputTokens int64) float64 {
+	inputCost := float64(inputTokens) * p.InputPerMillion / 1_000_000
+	outputCost := float64(outputTokens) * p.OutputPerMillion / 1_000_000
+	return inputCost + outputCost
+}
+
+// DefaultPricing returns the default pricing map for common models.
+func DefaultPricing() map[string]*ModelPricing {
+	return map[string]*ModelPricing{
+		// Claude Opus models
+		"opus": {InputPerMillion: 15.0, OutputPerMillion: 75.0},
+		"claude-opus": {InputPerMillion: 15.0, OutputPerMillion: 75.0},
+		"opus-4.5-thinking": {InputPerMillion: 15.0, OutputPerMillion: 75.0},
+		// Claude Sonnet models
+		"sonnet": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
+		"claude-sonnet": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
+		"sonnet-4": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
+		// Claude Haiku models
+		"haiku": {InputPerMillion: 0.25, OutputPerMillion: 1.25},
+		"claude-haiku": {InputPerMillion: 0.25, OutputPerMillion: 1.25},
+		// GPT-4 models
+		"gpt-4": {InputPerMillion: 30.0, OutputPerMillion: 60.0},
+		"gpt-4-turbo": {InputPerMillion: 10.0, OutputPerMillion: 30.0},
+		"gpt-4o": {InputPerMillion: 2.5, OutputPerMillion: 10.0},
+		// Default fallback
+		"default": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
+	}
+}
+
+// GetPricing returns the pricing for a model, falling back to default if not found.
+func (c *Config) GetPricing(model string) *ModelPricing {
+	// Normalize model name (lowercase, remove common prefixes/suffixes)
+	normalizedModel := strings.ToLower(model)
+	
+	// Check user-configured pricing first
+	if c.Pricing != nil {
+		if pricing, ok := c.Pricing[model]; ok {
+			return pricing
+		}
+		if pricing, ok := c.Pricing[normalizedModel]; ok {
+			return pricing
+		}
+	}
+	
+	// Fall back to default pricing
+	defaults := DefaultPricing()
+	if pricing, ok := defaults[model]; ok {
+		return pricing
+	}
+	if pricing, ok := defaults[normalizedModel]; ok {
+		return pricing
+	}
+	
+	// Check for partial matches (e.g., "opus" in "opus-4.5-thinking")
+	for key, pricing := range defaults {
+		if strings.Contains(normalizedModel, key) {
+			return pricing
+		}
+	}
+	
+	// Return default fallback
+	return defaults["default"]
 }
 
 // DefaultConfig returns the built-in default configuration (claude-code backend).
@@ -175,12 +249,13 @@ func loadConfigFile(path string, cfg *Config) error {
 		RawOutput  *bool    `toml:"raw_output"` // pointer to detect if set
 	}
 	type rawConfig struct {
-		Backend     string           `toml:"backend"`
-		Model       string           `toml:"model"`
-		Iterations  int              `toml:"iterations"`
-		Timeout     string           `toml:"timeout"`
-		IterTimeout string           `toml:"iter_timeout"`
-		Command     rawCommandConfig `toml:"command"`
+		Backend     string                    `toml:"backend"`
+		Model       string                    `toml:"model"`
+		Iterations  int                       `toml:"iterations"`
+		Timeout     string                    `toml:"timeout"`
+		IterTimeout string                    `toml:"iter_timeout"`
+		Command     rawCommandConfig          `toml:"command"`
+		Pricing     map[string]*ModelPricing  `toml:"pricing"`
 	}
 
 	var fileCfg rawConfig
@@ -216,6 +291,16 @@ func loadConfigFile(path string, cfg *Config) error {
 	}
 	if fileCfg.Command.RawOutput != nil {
 		cfg.Command.RawOutput = *fileCfg.Command.RawOutput
+	}
+
+	// Merge pricing (add/override individual models)
+	if len(fileCfg.Pricing) > 0 {
+		if cfg.Pricing == nil {
+			cfg.Pricing = make(map[string]*ModelPricing)
+		}
+		for model, pricing := range fileCfg.Pricing {
+			cfg.Pricing[model] = pricing
+		}
 	}
 
 	return nil

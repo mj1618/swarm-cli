@@ -649,3 +649,463 @@ tasks:
 		t.Errorf("Suffix = %q, want %q", task.Suffix, "Provide results in JSON format.")
 	}
 }
+
+// Tests for dependencies
+
+func TestLoadWithDependsOn_SimpleForm(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  coder:
+    prompt: coder
+  tester:
+    prompt: tester
+    depends_on:
+      - coder
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["tester"]
+	if len(task.DependsOn) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(task.DependsOn))
+	}
+	if task.DependsOn[0].Task != "coder" {
+		t.Errorf("dependency task = %q, want %q", task.DependsOn[0].Task, "coder")
+	}
+	if task.DependsOn[0].EffectiveCondition() != ConditionSuccess {
+		t.Errorf("dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionSuccess)
+	}
+}
+
+func TestLoadWithDependsOn_FullForm(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  coder:
+    prompt: coder
+  fixer:
+    prompt: fixer
+    depends_on:
+      - task: coder
+        condition: failure
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["fixer"]
+	if len(task.DependsOn) != 1 {
+		t.Fatalf("expected 1 dependency, got %d", len(task.DependsOn))
+	}
+	if task.DependsOn[0].Task != "coder" {
+		t.Errorf("dependency task = %q, want %q", task.DependsOn[0].Task, "coder")
+	}
+	if task.DependsOn[0].Condition != ConditionFailure {
+		t.Errorf("dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionFailure)
+	}
+}
+
+func TestLoadWithDependsOn_MixedForms(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  a:
+    prompt: a
+  b:
+    prompt: b
+  c:
+    prompt: c
+    depends_on:
+      - a
+      - task: b
+        condition: any
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["c"]
+	if len(task.DependsOn) != 2 {
+		t.Fatalf("expected 2 dependencies, got %d", len(task.DependsOn))
+	}
+
+	// First dependency is simple form
+	if task.DependsOn[0].Task != "a" {
+		t.Errorf("first dependency task = %q, want %q", task.DependsOn[0].Task, "a")
+	}
+	if task.DependsOn[0].EffectiveCondition() != ConditionSuccess {
+		t.Errorf("first dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionSuccess)
+	}
+
+	// Second dependency is full form
+	if task.DependsOn[1].Task != "b" {
+		t.Errorf("second dependency task = %q, want %q", task.DependsOn[1].Task, "b")
+	}
+	if task.DependsOn[1].Condition != ConditionAny {
+		t.Errorf("second dependency condition = %q, want %q", task.DependsOn[1].Condition, ConditionAny)
+	}
+}
+
+func TestValidate_DependsOnUnknownTask(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+			"b": {Prompt: "b", DependsOn: []Dependency{{Task: "nonexistent"}}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for unknown dependency task")
+	}
+}
+
+func TestValidate_DependsOnSelf(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a", DependsOn: []Dependency{{Task: "a"}}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for self-dependency")
+	}
+}
+
+func TestValidate_InvalidCondition(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+			"b": {Prompt: "b", DependsOn: []Dependency{{Task: "a", Condition: "invalid"}}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for invalid condition")
+	}
+}
+
+func TestValidate_EmptyDependencyTask(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a", DependsOn: []Dependency{{Task: ""}}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for empty dependency task name")
+	}
+}
+
+// Tests for pipelines
+
+func TestLoadWithPipelines(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  coder:
+    prompt: coder
+  tester:
+    prompt: tester
+    depends_on: [coder]
+
+pipelines:
+  development:
+    iterations: 10
+    tasks: [coder, tester]
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if !cf.HasPipelines() {
+		t.Error("expected HasPipelines() = true")
+	}
+
+	pipeline, err := cf.GetPipeline("development")
+	if err != nil {
+		t.Fatalf("GetPipeline() error = %v", err)
+	}
+
+	if pipeline.Iterations != 10 {
+		t.Errorf("pipeline iterations = %d, want %d", pipeline.Iterations, 10)
+	}
+	if len(pipeline.Tasks) != 2 {
+		t.Errorf("pipeline tasks count = %d, want %d", len(pipeline.Tasks), 2)
+	}
+}
+
+func TestPipeline_EffectiveIterations(t *testing.T) {
+	tests := []struct {
+		iterations int
+		want       int
+	}{
+		{0, 1},
+		{-1, 1},
+		{1, 1},
+		{10, 10},
+	}
+
+	for _, tt := range tests {
+		p := Pipeline{Iterations: tt.iterations}
+		if got := p.EffectiveIterations(); got != tt.want {
+			t.Errorf("EffectiveIterations() for %d = %d, want %d", tt.iterations, got, tt.want)
+		}
+	}
+}
+
+func TestPipeline_GetPipelineTasks(t *testing.T) {
+	allTasks := map[string]Task{
+		"a": {Prompt: "a"},
+		"b": {Prompt: "b"},
+		"c": {Prompt: "c"},
+	}
+
+	// Pipeline with specific tasks
+	p1 := Pipeline{Tasks: []string{"a", "b"}}
+	tasks1 := p1.GetPipelineTasks(allTasks)
+	if len(tasks1) != 2 {
+		t.Errorf("expected 2 tasks, got %d", len(tasks1))
+	}
+
+	// Pipeline without tasks (should return all)
+	p2 := Pipeline{}
+	tasks2 := p2.GetPipelineTasks(allTasks)
+	if len(tasks2) != 3 {
+		t.Errorf("expected 3 tasks, got %d", len(tasks2))
+	}
+}
+
+func TestValidate_PipelineUnknownTask(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+		},
+		Pipelines: map[string]Pipeline{
+			"test": {Iterations: 1, Tasks: []string{"a", "nonexistent"}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for unknown pipeline task")
+	}
+}
+
+func TestValidate_PipelineNegativeIterations(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+		},
+		Pipelines: map[string]Pipeline{
+			"test": {Iterations: -5, Tasks: []string{"a"}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for negative pipeline iterations")
+	}
+}
+
+func TestGetPipeline_NotFound(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+		},
+	}
+
+	_, err := cf.GetPipeline("nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent pipeline")
+	}
+}
+
+func TestHasDependencies(t *testing.T) {
+	// No dependencies
+	cf1 := &ComposeFile{
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+			"b": {Prompt: "b"},
+		},
+	}
+	if cf1.HasDependencies() {
+		t.Error("expected HasDependencies() = false for tasks without deps")
+	}
+
+	// With dependencies
+	cf2 := &ComposeFile{
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+			"b": {Prompt: "b", DependsOn: []Dependency{{Task: "a"}}},
+		},
+	}
+	if !cf2.HasDependencies() {
+		t.Error("expected HasDependencies() = true for tasks with deps")
+	}
+}
+
+func TestDependency_EffectiveCondition(t *testing.T) {
+	tests := []struct {
+		condition string
+		want      string
+	}{
+		{"", ConditionSuccess},
+		{ConditionSuccess, ConditionSuccess},
+		{ConditionFailure, ConditionFailure},
+		{ConditionAny, ConditionAny},
+		{ConditionAlways, ConditionAlways},
+	}
+
+	for _, tt := range tests {
+		d := Dependency{Task: "test", Condition: tt.condition}
+		if got := d.EffectiveCondition(); got != tt.want {
+			t.Errorf("EffectiveCondition() for %q = %q, want %q", tt.condition, got, tt.want)
+		}
+	}
+}
+
+func TestGetStandaloneTasks(t *testing.T) {
+	tests := []struct {
+		name     string
+		cf       *ComposeFile
+		expected []string
+	}{
+		{
+			name: "no pipelines, no dependencies - all standalone",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b"},
+				},
+			},
+			expected: []string{"a", "b"},
+		},
+		{
+			name: "task in pipeline - not standalone",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b"},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"a"}},
+				},
+			},
+			expected: []string{"b"},
+		},
+		{
+			name: "task with dependency - not standalone",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b", DependsOn: []Dependency{{Task: "a"}}},
+				},
+			},
+			expected: []string{}, // 'a' is depended upon, 'b' has dependencies
+		},
+		{
+			name: "mix of pipeline, dependency, and standalone",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"pipeline-task": {Prompt: "pt"},
+					"dep-parent":    {Prompt: "dp"},
+					"dep-child":     {Prompt: "dc", DependsOn: []Dependency{{Task: "dep-parent"}}},
+					"standalone":    {Prompt: "s"},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"pipeline-task"}},
+				},
+			},
+			expected: []string{"standalone"},
+		},
+		{
+			name: "all tasks in pipeline - none standalone",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b"},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"a", "b"}},
+				},
+			},
+			expected: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.cf.GetStandaloneTasks()
+
+			// Check count
+			if len(result) != len(tt.expected) {
+				t.Errorf("expected %d standalone tasks, got %d", len(tt.expected), len(result))
+				return
+			}
+
+			// Check each expected task is present
+			for _, name := range tt.expected {
+				if _, ok := result[name]; !ok {
+					t.Errorf("expected task %q to be standalone", name)
+				}
+			}
+		})
+	}
+}
