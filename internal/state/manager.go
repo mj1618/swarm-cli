@@ -165,6 +165,8 @@ func (m *Manager) uniqueName(state *State, baseName string) string {
 }
 
 // Update updates an existing agent's state.
+// This replaces the entire agent state. For runner updates that should preserve
+// external control field changes, use MergeUpdate() instead.
 func (m *Manager) Update(agent *AgentState) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -179,6 +181,135 @@ func (m *Manager) Update(agent *AgentState) error {
 	}
 
 	state.Agents[agent.ID] = agent
+	return m.save(state)
+}
+
+// MergeUpdate updates an existing agent's state while preserving "control signal"
+// fields (Iterations, Model, TerminateMode, Paused) from the current disk state.
+// This prevents the runner from overwriting changes made by `swarm top` or other commands.
+// Use this from the runner loop instead of Update().
+func (m *Manager) MergeUpdate(agent *AgentState) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, err := m.load()
+	if err != nil {
+		return err
+	}
+
+	existing, exists := state.Agents[agent.ID]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", agent.ID)
+	}
+
+	// Merge control signal fields from disk to preserve external changes
+	mergeControlFields(existing, agent)
+
+	state.Agents[agent.ID] = agent
+	return m.save(state)
+}
+
+// mergeControlFields copies control signal fields from the existing (disk) state
+// into the agent being saved, preserving external changes made by other processes.
+// Control fields are those that can be modified by external commands like `swarm top`.
+func mergeControlFields(existing, agent *AgentState) {
+	// Iterations: preserve disk value if it differs (externally changed)
+	// The runner reads this at iteration start and syncs it to its local copy
+	agent.Iterations = existing.Iterations
+	
+	// Model: preserve disk value if it differs (externally changed)
+	agent.Model = existing.Model
+	
+	// TerminateMode: preserve disk value - this is set by `swarm stop`
+	agent.TerminateMode = existing.TerminateMode
+	
+	// Paused: preserve disk value - this is set by `swarm pause`
+	agent.Paused = existing.Paused
+}
+
+// SetIterations atomically updates the Iterations field for an agent.
+// Use this instead of Update() when explicitly changing the iteration count.
+func (m *Manager) SetIterations(id string, iterations int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, err := m.load()
+	if err != nil {
+		return err
+	}
+
+	agent, exists := state.Agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	agent.Iterations = iterations
+	return m.save(state)
+}
+
+// SetModel atomically updates the Model field for an agent.
+// Use this instead of Update() when explicitly changing the model.
+func (m *Manager) SetModel(id string, model string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, err := m.load()
+	if err != nil {
+		return err
+	}
+
+	agent, exists := state.Agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	agent.Model = model
+	return m.save(state)
+}
+
+// SetTerminateMode atomically updates the TerminateMode field for an agent.
+// Use this instead of Update() when explicitly setting termination mode.
+func (m *Manager) SetTerminateMode(id string, mode string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, err := m.load()
+	if err != nil {
+		return err
+	}
+
+	agent, exists := state.Agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	agent.TerminateMode = mode
+	return m.save(state)
+}
+
+// SetPaused atomically updates the Paused field for an agent.
+// Use this instead of Update() when explicitly pausing/resuming.
+func (m *Manager) SetPaused(id string, paused bool) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	state, err := m.load()
+	if err != nil {
+		return err
+	}
+
+	agent, exists := state.Agents[id]
+	if !exists {
+		return fmt.Errorf("agent not found: %s", id)
+	}
+
+	agent.Paused = paused
+	if paused {
+		now := time.Now()
+		agent.PausedAt = &now
+	} else {
+		agent.PausedAt = nil
+	}
 	return m.save(state)
 }
 

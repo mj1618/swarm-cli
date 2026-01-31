@@ -54,8 +54,8 @@ The agent will continue from the next iteration after being resumed.`,
 			return nil
 		}
 
-		agent.Paused = false
-		if err := mgr.Update(agent); err != nil {
+		// Use atomic method for control field to avoid race conditions
+		if err := mgr.SetPaused(agent.ID, false); err != nil {
 			return fmt.Errorf("failed to update agent state: %w", err)
 		}
 

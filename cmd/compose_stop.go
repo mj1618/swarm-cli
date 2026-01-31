@@ -106,14 +106,14 @@ started from the specified compose file are affected.`,
 		count := 0
 		alreadyPaused := 0
 
+		// Use atomic method for control field to avoid race conditions
 		for _, agent := range matchingAgents {
 			if agent.Paused {
 				alreadyPaused++
 				continue
 			}
 
-			agent.Paused = true
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetPaused(agent.ID, true); err != nil {
 				fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 				continue
 			}

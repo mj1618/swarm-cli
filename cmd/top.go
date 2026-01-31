@@ -833,10 +833,7 @@ func (m topModel) pauseSelected() tea.Cmd {
 		if agent.Status != "running" || agent.Paused {
 			return nil
 		}
-		agent.Paused = true
-		now := time.Now()
-		agent.PausedAt = &now
-		m.mgr.Update(agent)
+		m.mgr.SetPaused(agent.ID, true)
 		return m.refreshAgentsCmd()()
 	}
 }
@@ -850,9 +847,7 @@ func (m topModel) resumeSelected() tea.Cmd {
 		if !agent.Paused {
 			return nil
 		}
-		agent.Paused = false
-		agent.PausedAt = nil
-		m.mgr.Update(agent)
+		m.mgr.SetPaused(agent.ID, false)
 		return m.refreshAgentsCmd()()
 	}
 }
@@ -866,8 +861,7 @@ func (m topModel) increaseIterations() tea.Cmd {
 		if agent.Status == "terminated" {
 			return nil
 		}
-		agent.Iterations++
-		m.mgr.Update(agent)
+		m.mgr.SetIterations(agent.ID, agent.Iterations+1)
 		return m.refreshAgentsCmd()()
 	}
 }
@@ -882,8 +876,7 @@ func (m topModel) decreaseIterations() tea.Cmd {
 			return nil
 		}
 		if agent.Iterations > agent.CurrentIter && agent.Iterations > 0 {
-			agent.Iterations--
-			m.mgr.Update(agent)
+			m.mgr.SetIterations(agent.ID, agent.Iterations-1)
 		}
 		return m.refreshAgentsCmd()()
 	}
@@ -898,8 +891,7 @@ func (m topModel) killSelected() tea.Cmd {
 		if agent.Status == "terminated" {
 			return nil
 		}
-		agent.TerminateMode = "immediate"
-		m.mgr.Update(agent)
+		m.mgr.SetTerminateMode(agent.ID, "immediate")
 		// Send kill signal
 		process.Kill(agent.PID)
 		return m.refreshAgentsCmd()()

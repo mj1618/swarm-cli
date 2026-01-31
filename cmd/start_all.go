@@ -39,6 +39,7 @@ Use --global to resume all agents across all projects.`,
 			return nil
 		}
 
+		// Use atomic method for control field to avoid race conditions
 		count := 0
 		notPaused := 0
 		for _, agent := range agents {
@@ -47,8 +48,7 @@ Use --global to resume all agents across all projects.`,
 				continue
 			}
 
-			agent.Paused = false
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetPaused(agent.ID, false); err != nil {
 				fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 				continue
 			}

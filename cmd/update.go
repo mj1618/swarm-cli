@@ -115,19 +115,26 @@ Use --set-label to add or update labels on an agent.`,
 			// Update all matching agents
 			updated := 0
 			for _, agent := range matched {
+				// Use atomic methods for control fields to avoid race conditions
 				if cmd.Flags().Changed("iterations") {
-					agent.Iterations = updateIterations
+					if err := mgr.SetIterations(agent.ID, updateIterations); err != nil {
+						fmt.Printf("Warning: failed to update iterations for agent %s: %v\n", agent.ID, err)
+						continue
+					}
 				}
 				if cmd.Flags().Changed("model") {
-					agent.Model = updateModel
+					if err := mgr.SetModel(agent.ID, updateModel); err != nil {
+						fmt.Printf("Warning: failed to update model for agent %s: %v\n", agent.ID, err)
+						continue
+					}
 				}
+				// Labels are not control fields, use regular Update
 				if len(labelsToSet) > 0 {
 					agent.Labels = label.Merge(agent.Labels, labelsToSet)
-				}
-
-				if err := mgr.Update(agent); err != nil {
-					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
-					continue
+					if err := mgr.Update(agent); err != nil {
+						fmt.Printf("Warning: failed to update labels for agent %s: %v\n", agent.ID, err)
+						continue
+					}
 				}
 				fmt.Printf("Updated agent %s\n", agent.ID)
 				updated++
@@ -194,10 +201,9 @@ Use --set-label to add or update labels on an agent.`,
 			return fmt.Errorf("agent is not running (status: %s)", agent.Status)
 		}
 
-		// Handle termination
+		// Handle termination (use atomic method for control field)
 		if updateTerminate {
-			agent.TerminateMode = "immediate"
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetTerminateMode(agent.ID, "immediate"); err != nil {
 				return fmt.Errorf("failed to update agent state: %w", err)
 			}
 
@@ -211,8 +217,7 @@ Use --set-label to add or update labels on an agent.`,
 		}
 
 		if updateTerminateAfter {
-			agent.TerminateMode = "after_iteration"
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetTerminateMode(agent.ID, "after_iteration"); err != nil {
 				return fmt.Errorf("failed to update agent state: %w", err)
 			}
 			fmt.Printf("Agent %s will terminate after current iteration\n", agent.ID)
@@ -220,25 +225,29 @@ Use --set-label to add or update labels on an agent.`,
 		}
 
 		// Handle configuration changes
-		updated := nameUpdated || labelsUpdated
-
+		// Use atomic methods for control fields to avoid race conditions with the runner
 		if cmd.Flags().Changed("iterations") {
-			agent.Iterations = updateIterations
-			updated = true
+			if err := mgr.SetIterations(agent.ID, updateIterations); err != nil {
+				return fmt.Errorf("failed to update iterations: %w", err)
+			}
 			fmt.Printf("Updated iterations to %d\n", updateIterations)
 		}
 
 		if cmd.Flags().Changed("model") {
-			agent.Model = updateModel
-			updated = true
+			if err := mgr.SetModel(agent.ID, updateModel); err != nil {
+				return fmt.Errorf("failed to update model: %w", err)
+			}
 			fmt.Printf("Updated model to %s (will apply on next iteration)\n", updateModel)
 		}
 
-		if updated {
+		// Name and labels are not control fields, use regular Update
+		if nameUpdated || labelsUpdated {
 			if err := mgr.Update(agent); err != nil {
 				return fmt.Errorf("failed to update agent state: %w", err)
 			}
-		} else {
+		}
+		
+		if !nameUpdated && !labelsUpdated && !cmd.Flags().Changed("iterations") && !cmd.Flags().Changed("model") {
 			fmt.Println("No changes specified. Use --help to see available options.")
 		}
 

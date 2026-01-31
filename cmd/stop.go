@@ -86,11 +86,10 @@ When using --label, the task-id-or-name argument is not required.`,
 				return nil
 			}
 
-			// Stop all matching agents
+			// Stop all matching agents (use atomic method for control field)
 			stopped := 0
 			for _, agent := range matched {
-				agent.Paused = true
-				if err := mgr.Update(agent); err != nil {
+				if err := mgr.SetPaused(agent.ID, true); err != nil {
 					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 					continue
 				}
@@ -123,8 +122,8 @@ When using --label, the task-id-or-name argument is not required.`,
 		}
 
 		agentID := agent.ID
-		agent.Paused = true
-		if err := mgr.Update(agent); err != nil {
+		// Use atomic method for control field to avoid race conditions
+		if err := mgr.SetPaused(agentID, true); err != nil {
 			return fmt.Errorf("failed to update agent state: %w", err)
 		}
 

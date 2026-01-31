@@ -204,41 +204,41 @@ func attachInteractive(mgr *state.Manager, agent *state.AgentState) error {
 				return nil
 			}
 
+			// Use atomic methods for control fields to avoid race conditions
 			switch char {
 			case 'p':
 				if !agent.Paused {
-					agent.Paused = true
-					now := time.Now()
-					agent.PausedAt = &now
-					if err := mgr.Update(agent); err != nil {
+					if err := mgr.SetPaused(agent.ID, true); err != nil {
 						fmt.Printf("\n[swarm] Error pausing: %v\n", err)
 					} else {
+						agent.Paused = true // Update local copy for display
 						fmt.Println("\n[swarm] Agent paused (will pause after current iteration)")
 					}
 				}
 			case 'r':
 				if agent.Paused {
-					agent.Paused = false
-					agent.PausedAt = nil
-					if err := mgr.Update(agent); err != nil {
+					if err := mgr.SetPaused(agent.ID, false); err != nil {
 						fmt.Printf("\n[swarm] Error resuming: %v\n", err)
 					} else {
+						agent.Paused = false // Update local copy for display
 						fmt.Println("\n[swarm] Agent resumed")
 					}
 				}
 			case '+':
-				agent.Iterations++
-				if err := mgr.Update(agent); err != nil {
+				newIter := agent.Iterations + 1
+				if err := mgr.SetIterations(agent.ID, newIter); err != nil {
 					fmt.Printf("\n[swarm] Error updating iterations: %v\n", err)
 				} else {
+					agent.Iterations = newIter // Update local copy for display
 					fmt.Printf("\n[swarm] Iterations increased to %d\n", agent.Iterations)
 				}
 			case '-':
 				if agent.Iterations > agent.CurrentIter && agent.Iterations > 0 {
-					agent.Iterations--
-					if err := mgr.Update(agent); err != nil {
+					newIter := agent.Iterations - 1
+					if err := mgr.SetIterations(agent.ID, newIter); err != nil {
 						fmt.Printf("\n[swarm] Error updating iterations: %v\n", err)
 					} else {
+						agent.Iterations = newIter // Update local copy for display
 						fmt.Printf("\n[swarm] Iterations decreased to %d\n", agent.Iterations)
 					}
 				}
@@ -248,8 +248,7 @@ func attachInteractive(mgr *state.Manager, agent *state.AgentState) error {
 				confirmChar := <-charChan
 				<-keyChan
 				if confirmChar == 'y' || confirmChar == 'Y' {
-					agent.TerminateMode = "immediate"
-					if err := mgr.Update(agent); err != nil {
+					if err := mgr.SetTerminateMode(agent.ID, "immediate"); err != nil {
 						fmt.Printf("\n[swarm] Error setting terminate mode: %v\n", err)
 					}
 					if err := process.Kill(agent.PID); err != nil {

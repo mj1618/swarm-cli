@@ -111,20 +111,18 @@ Use --global to terminate all agents across all projects.`,
 			}
 		}
 
+		// Use atomic method for control field to avoid race conditions
 		count := 0
 		for _, agent := range agents {
 			if killAllGraceful {
 				// Graceful termination: wait for current iteration to complete
-				agent.TerminateMode = "after_iteration"
-				if err := mgr.Update(agent); err != nil {
+				if err := mgr.SetTerminateMode(agent.ID, "after_iteration"); err != nil {
 					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 					continue
 				}
 			} else {
 				// Immediate termination using SIGKILL
-				agent.TerminateMode = "immediate"
-				agent.Status = "terminated"
-				if err := mgr.Update(agent); err != nil {
+				if err := mgr.SetTerminateMode(agent.ID, "immediate"); err != nil {
 					fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 					continue
 				}

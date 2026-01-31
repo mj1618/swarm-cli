@@ -82,19 +82,17 @@ When using --label, the task-id-or-name argument is not required.`,
 				return nil
 			}
 
-			// Kill all matching agents
+			// Kill all matching agents (use atomic method for control field)
 			killed := 0
 			for _, agent := range matched {
 				if killGraceful {
-					agent.TerminateMode = "after_iteration"
-					if err := mgr.Update(agent); err != nil {
+					if err := mgr.SetTerminateMode(agent.ID, "after_iteration"); err != nil {
 						fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 						continue
 					}
 					fmt.Printf("Agent %s will terminate after current iteration\n", agent.ID)
 				} else {
-					agent.TerminateMode = "immediate"
-					if err := mgr.Update(agent); err != nil {
+					if err := mgr.SetTerminateMode(agent.ID, "immediate"); err != nil {
 						fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 						continue
 					}
@@ -125,10 +123,10 @@ When using --label, the task-id-or-name argument is not required.`,
 			return fmt.Errorf("agent is not running (status: %s)", agent.Status)
 		}
 
+		// Use atomic method for control field to avoid race conditions
 		if killGraceful {
 			// Graceful termination: wait for current iteration to complete
-			agent.TerminateMode = "after_iteration"
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetTerminateMode(agent.ID, "after_iteration"); err != nil {
 				return fmt.Errorf("failed to update agent state: %w", err)
 			}
 			fmt.Printf("Agent %s will terminate after current iteration\n", agent.ID)
@@ -136,8 +134,7 @@ When using --label, the task-id-or-name argument is not required.`,
 		}
 
 		// Immediate termination
-		agent.TerminateMode = "immediate"
-		if err := mgr.Update(agent); err != nil {
+		if err := mgr.SetTerminateMode(agent.ID, "immediate"); err != nil {
 			return fmt.Errorf("failed to update agent state: %w", err)
 		}
 

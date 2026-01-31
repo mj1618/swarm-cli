@@ -176,12 +176,11 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 			}
 		}
 
-		// Pause agents
+		// Pause agents (use atomic method for control field)
 		fmt.Printf("Pausing %d running agent(s)...\n", len(toPause))
 		var paused int
 		for _, agent := range toPause {
-			agent.Paused = true
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetPaused(agent.ID, true); err != nil {
 				name := agent.Name
 				if name == "" {
 					name = "-"

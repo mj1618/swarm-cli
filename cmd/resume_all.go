@@ -183,13 +183,11 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 			}
 		}
 
-		// Resume agents
+		// Resume agents (use atomic method for control field)
 		fmt.Printf("Resuming %d paused agent(s)...\n", len(toResume))
 		var resumed int
 		for _, agent := range toResume {
-			agent.Paused = false
-			agent.PausedAt = nil
-			if err := mgr.Update(agent); err != nil {
+			if err := mgr.SetPaused(agent.ID, false); err != nil {
 				name := agent.Name
 				if name == "" {
 					name = "-"

@@ -85,7 +85,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		if agentState.ExitReason == "" {
 			agentState.ExitReason = "completed"
 		}
-		_ = mgr.Update(agentState)
+		_ = mgr.MergeUpdate(agentState)
 
 		// Execute on-complete hook
 		if agentState.OnComplete != "" {
@@ -155,7 +155,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 				agentState.Paused = true
 				now := time.Now()
 				agentState.PausedAt = &now
-				_ = mgr.Update(agentState)
+				_ = mgr.MergeUpdate(agentState)
 
 				for currentState.Paused && currentState.Status == "running" {
 					time.Sleep(1 * time.Second)
@@ -178,14 +178,14 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 					fmt.Fprintln(cfg.Output, "\n[swarm] Agent resumed")
 					agentState.Paused = false
 					agentState.PausedAt = nil
-					_ = mgr.Update(agentState)
+					_ = mgr.MergeUpdate(agentState)
 				}
 			}
 		}
 
 		// Update current iteration
 		agentState.CurrentIter = i
-		_ = mgr.Update(agentState)
+		_ = mgr.MergeUpdate(agentState)
 
 		if agentState.Iterations == 0 {
 			fmt.Fprintf(cfg.Output, "\n[swarm] === Iteration %d ===\n", i)
@@ -223,7 +223,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			}
 			
 			// Update state (will be throttled by the parser's update frequency)
-			_ = mgr.Update(agentState)
+			_ = mgr.MergeUpdate(agentState)
 		})
 
 		// Run agent - errors should NOT stop the run (including iteration timeouts)
@@ -234,7 +234,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 				fmt.Fprintf(cfg.Output, "\n[swarm] Iteration %d timed out after %v (continuing)\n", i, cfg.IterTimeout)
 				// Record that this iteration timed out
 				agentState.TimeoutReason = "iteration"
-				_ = mgr.Update(agentState)
+				_ = mgr.MergeUpdate(agentState)
 				// Reset timeout reason after recording (will be set to "total" if total timeout hit)
 				agentState.TimeoutReason = ""
 			} else {
@@ -255,7 +255,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			pricing := cfg.Config.GetPricing(agentState.Model)
 			agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
 		}
-		_ = mgr.Update(agentState)
+		_ = mgr.MergeUpdate(agentState)
 
 		// Check for signals and total timeout
 		select {
