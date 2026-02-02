@@ -43,8 +43,9 @@ func StartDetached(args []string, logFile string, workingDir string) (int, error
 		return 0, fmt.Errorf("failed to start detached process: %w", err)
 	}
 
-	// Don't wait for the process - it's detached
-	// The file handle will be inherited by the child process
+	// Close the file handle in the parent process.
+	// The child process has inherited its own copy of the file descriptor.
+	f.Close()
 
 	return cmd.Process.Pid, nil
 }

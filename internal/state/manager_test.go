@@ -354,8 +354,18 @@ func TestConcurrentAccess(t *testing.T) {
 	done := make(chan bool)
 	for i := 0; i < 10; i++ {
 		go func(iter int) {
-			agent.CurrentIter = iter
-			_ = mgr.Update(agent)
+			// Create a copy of the agent to avoid data race on shared struct
+			agentCopy := &AgentState{
+				ID:          agent.ID,
+				PID:         agent.PID,
+				Prompt:      agent.Prompt,
+				Model:       agent.Model,
+				StartedAt:   agent.StartedAt,
+				Iterations:  agent.Iterations,
+				CurrentIter: iter,
+				Status:      agent.Status,
+			}
+			_ = mgr.Update(agentCopy)
 			done <- true
 		}(i)
 	}
