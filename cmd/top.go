@@ -629,6 +629,7 @@ func (m topModel) renderTable() string {
 	const (
 		colID     = 8
 		colName   = 14
+		colParent = 10
 		colStatus = 10
 		colIter   = 7
 		colTokens = 8
@@ -637,9 +638,10 @@ func (m topModel) renderTable() string {
 	)
 
 	// Header - build with exact spacing
-	header := fmt.Sprintf("  %-*s %-*s %-*s %-*s %-*s %-*s %s",
+	header := fmt.Sprintf("  %-*s %-*s %-*s %-*s %-*s %-*s %-*s %s",
 		colID, "ID",
 		colName, "NAME",
+		colParent, "PARENT",
 		colStatus, "STATUS",
 		colIter, "ITER",
 		colTokens, "TOKENS",
@@ -648,7 +650,7 @@ func (m topModel) renderTable() string {
 	)
 	b.WriteString(dimStyle.Render(header))
 	b.WriteString("\n")
-	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", colID+colName+colStatus+colIter+colTokens+colCost+colTask+10)))
+	b.WriteString(dimStyle.Render("  " + strings.Repeat("─", colID+colName+colParent+colStatus+colIter+colTokens+colCost+colTask+12)))
 	b.WriteString("\n")
 
 	for i, a := range m.agents {
@@ -660,6 +662,11 @@ func (m topModel) renderTable() string {
 		name := a.Name
 		if name == "" {
 			name = "-"
+		}
+
+		parent := a.ParentID
+		if parent == "" {
+			parent = "-"
 		}
 
 		statusStr, statusSty := getStatusDisplay(a)
@@ -689,6 +696,8 @@ func (m topModel) renderTable() string {
 		line.WriteString(padRight(truncateTop(a.ID, colID-1), colID))
 		line.WriteString(" ")
 		line.WriteString(padRight(truncateTop(name, colName-1), colName))
+		line.WriteString(" ")
+		line.WriteString(padRight(truncateTop(parent, colParent-1), colParent))
 		line.WriteString(" ")
 		line.WriteString(statusSty.Render(padRight(statusStr, colStatus)))
 		line.WriteString(" ")

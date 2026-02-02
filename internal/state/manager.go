@@ -18,6 +18,7 @@ import (
 type AgentState struct {
 	ID            string            `json:"id"`
 	Name          string            `json:"name,omitempty"`
+	ParentID      string            `json:"parent_id,omitempty"` // Parent agent ID for sub-agents
 	Labels        map[string]string `json:"labels,omitempty"`
 	PID           int               `json:"pid"`
 	Prompt        string     `json:"prompt"`
@@ -441,6 +442,85 @@ func (m *Manager) GetLast() (*AgentState, error) {
 	}
 
 	return latest, nil
+}
+
+// GetChildren returns all agents that have the given parentID as their parent.
+// Note: GetChildren does not filter by scope - it returns all children regardless of working directory.
+func (m *Manager) GetChildren(parentID string) ([]*AgentState, error) {
+	fl, err := m.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer m.unlock(fl)
+
+	state, err := m.load()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	var children []*AgentState
+	for _, agent := range state.Agents {
+		if agent.ParentID == parentID {
+			children = append(children, agent)
+		}
+	}
+
+	// Sort by StartedAt time (oldest first)
+	sort.Slice(children, func(i, j int) bool {
+		return children[i].StartedAt.Before(children[j].StartedAt)
+	})
+
+	return children, nil
+}
+
+// GetDescendants returns all agents in the subtree rooted at parentID (children, grandchildren, etc.).
+// Note: GetDescendants does not filter by scope - it returns all descendants regardless of working directory.
+func (m *Manager) GetDescendants(parentID string) ([]*AgentState, error) {
+	fl, err := m.lock()
+	if err != nil {
+		return nil, err
+	}
+	defer m.unlock(fl)
+
+	state, err := m.load()
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	// Build a map of parent -> children for efficient traversal
+	childrenMap := make(map[string][]*AgentState)
+	for _, agent := range state.Agents {
+		if agent.ParentID != "" {
+			childrenMap[agent.ParentID] = append(childrenMap[agent.ParentID], agent)
+		}
+	}
+
+	// BFS to find all descendants
+	var descendants []*AgentState
+	queue := []string{parentID}
+
+	for len(queue) > 0 {
+		currentID := queue[0]
+		queue = queue[1:]
+
+		for _, child := range childrenMap[currentID] {
+			descendants = append(descendants, child)
+			queue = append(queue, child.ID)
+		}
+	}
+
+	// Sort by StartedAt time (oldest first)
+	sort.Slice(descendants, func(i, j int) bool {
+		return descendants[i].StartedAt.Before(descendants[j].StartedAt)
+	})
+
+	return descendants, nil
 }
 
 // List returns agents filtered by the manager's scope.

@@ -47,6 +47,8 @@ var (
 	runSuffix              string
 	runInternalPrefix      string
 	runInternalSuffix      string
+	runParent              string
+	runInternalParent      string
 )
 
 var runCmd = &cobra.Command{
@@ -402,6 +404,18 @@ Labels can be attached to agents for categorization and filtering using the
 			}
 		}
 
+		// Determine effective parent ID
+		// For detached child, use value passed from parent process
+		effectiveParentID := runParent
+		if runInternalDetached && runInternalParent != "" {
+			effectiveParentID = runInternalParent
+		}
+
+		// If this is a sub-agent, inject restriction to prevent spawning more sub-agents
+		if effectiveParentID != "" {
+			promptContent = prompt.InjectSubAgentRestriction(promptContent, effectiveParentID)
+		}
+
 		// Handle detached mode
 		if runDetach && !runInternalDetached {
 			// Use pre-generated task ID for log file
@@ -469,6 +483,10 @@ Labels can be attached to agents for categorization and filtering using the
 			if runSuffix != "" {
 				detachedArgs = append(detachedArgs, "--_internal-suffix", runSuffix)
 			}
+			// Pass parent ID to child
+			if effectiveParentID != "" {
+				detachedArgs = append(detachedArgs, "--_internal-parent", effectiveParentID)
+			}
 
 			// Start detached process
 			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
@@ -492,6 +510,7 @@ Labels can be attached to agents for categorization and filtering using the
 			agentState := &state.AgentState{
 				ID:          taskID,
 				Name:        effectiveName,
+				ParentID:    effectiveParentID,
 				Labels:      labels,
 				PID:         pid,
 				Prompt:      promptName,
@@ -547,6 +566,7 @@ Labels can be attached to agents for categorization and filtering using the
 			agentState := &state.AgentState{
 				ID:          taskID,
 				Name:        effectiveName,
+				ParentID:    effectiveParentID,
 				Labels:      labels,
 				PID:         os.Getpid(),
 				Prompt:      promptName,
@@ -660,6 +680,7 @@ Labels can be attached to agents for categorization and filtering using the
 			agentState = &state.AgentState{
 				ID:          taskID,
 				Name:        effectiveName,
+				ParentID:    effectiveParentID,
 				Labels:      labels,
 				PID:         os.Getpid(),
 				Prompt:      promptName,
@@ -760,6 +781,9 @@ func init() {
 	runCmd.Flags().MarkHidden("_internal-prefix")
 	runCmd.Flags().StringVar(&runInternalSuffix, "_internal-suffix", "", "Internal flag for passing suffix to detached child")
 	runCmd.Flags().MarkHidden("_internal-suffix")
+	runCmd.Flags().StringVarP(&runParent, "parent", "P", "", "Parent task ID (for creating sub-agents)")
+	runCmd.Flags().StringVar(&runInternalParent, "_internal-parent", "", "Internal flag for passing parent ID to detached child")
+	runCmd.Flags().MarkHidden("_internal-parent")
 
 	// Add dynamic completion for prompt and model flags
 	runCmd.RegisterFlagCompletionFunc("prompt", completePromptName)

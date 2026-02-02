@@ -248,6 +248,7 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 		const (
 			colID        = 10
 			colName      = 15
+			colParent    = 10
 			colPrompt    = 20
 			colModel     = 18
 			colStatus    = 12
@@ -260,19 +261,19 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 		header := color.New(color.Bold)
 		if GetScope() == scope.ScopeGlobal {
 			if listShowLabels {
-				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
-					colID, "ID", colName, "NAME", colLabels, "LABELS", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colParent, "PARENT", colLabels, "LABELS", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
 			} else {
-				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
-					colID, "ID", colName, "NAME", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colParent, "PARENT", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", colDir, "DIRECTORY", "STARTED")
 			}
 		} else {
 			if listShowLabels {
-				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
-					colID, "ID", colName, "NAME", colLabels, "LABELS", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colParent, "PARENT", colLabels, "LABELS", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
 			} else {
-				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
-					colID, "ID", colName, "NAME", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
+				header.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %-*s  %s\n",
+					colID, "ID", colName, "NAME", colParent, "PARENT", colPrompt, "PROMPT", colModel, "MODEL", colStatus, "STATUS", colIteration, "ITERATION", "STARTED")
 			}
 		}
 
@@ -325,11 +326,20 @@ Multiple filters are combined with AND logic (all conditions must match).`,
 				labelsStr = labelsStr[:colLabels-3] + "..."
 			}
 
+			// Format parent for display
+			parent := a.ParentID
+			if parent == "" {
+				parent = "-"
+			}
+			if len(parent) > colParent {
+				parent = parent[:colParent-3] + "..."
+			}
+
 			// Print fixed-width columns, with status colored separately
 			if listShowLabels {
-				fmt.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colLabels, labelsStr, colPrompt, prompt, colModel, a.Model)
+				fmt.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colParent, parent, colLabels, labelsStr, colPrompt, prompt, colModel, a.Model)
 			} else {
-				fmt.Printf("%-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colPrompt, prompt, colModel, a.Model)
+				fmt.Printf("%-*s  %-*s  %-*s  %-*s  %-*s  ", colID, a.ID, colName, name, colParent, parent, colPrompt, prompt, colModel, a.Model)
 			}
 			statusColor.Printf("%-*s", colStatus, statusStr)
 			if GetScope() == scope.ScopeGlobal {

@@ -184,6 +184,13 @@ func InjectAgentID(promptContent, agentID string) string {
 	return agentIDLine + "\n\n" + promptContent
 }
 
+// InjectSubAgentRestriction injects a message telling the agent not to spawn sub-agents.
+// This is used when an agent is already a sub-agent to prevent deep nesting.
+func InjectSubAgentRestriction(promptContent, parentID string) string {
+	restriction := fmt.Sprintf("You are a sub-agent (parent task: %s). Do NOT spawn additional sub-agents using 'swarm run --parent'. Complete your task directly without delegating to sub-agents.", parentID)
+	return restriction + "\n\n" + promptContent
+}
+
 // ApplyPrefixSuffix wraps prompt content with optional prefix and suffix strings.
 // The prefix is prepended and suffix is appended, each separated by double newlines.
 func ApplyPrefixSuffix(promptContent, prefix, suffix string) string {

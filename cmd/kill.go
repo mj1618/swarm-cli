@@ -10,8 +10,9 @@ import (
 )
 
 var (
-	killGraceful bool
-	killLabels   []string
+	killGraceful  bool
+	killLabels    []string
+	killNoCascade bool
 )
 
 var killCmd = &cobra.Command{
@@ -24,6 +25,10 @@ The agent can be specified by its ID, name, or special identifier:
 
 By default, the agent is terminated immediately. Use --graceful to allow
 the current iteration to complete before terminating.
+
+When killing an agent that has sub-agents (spawned with --parent), all
+sub-agents are also killed by default. Use --no-cascade to kill only the
+specified agent without affecting its sub-agents.
 
 Use --label to kill all running agents matching the specified labels.
 When using --label, the task-id-or-name argument is not required.`,
@@ -39,6 +44,9 @@ When using --label, the task-id-or-name argument is not required.`,
 
   # Graceful termination (wait for current iteration)
   swarm kill abc123 --graceful
+
+  # Kill agent but not its sub-agents
+  swarm kill abc123 --no-cascade
 
   # Kill all agents with a specific label
   swarm kill --label team=frontend
@@ -123,27 +131,62 @@ When using --label, the task-id-or-name argument is not required.`,
 			return fmt.Errorf("agent is not running (status: %s)", agent.Status)
 		}
 
-		// Use atomic method for control field to avoid race conditions
-		if killGraceful {
-			// Graceful termination: wait for current iteration to complete
-			if err := mgr.SetTerminateMode(agent.ID, "after_iteration"); err != nil {
-				return fmt.Errorf("failed to update agent state: %w", err)
+		// Collect all agents to kill (parent + descendants if cascading)
+		agentsToKill := []*state.AgentState{agent}
+
+		if !killNoCascade {
+			descendants, err := mgr.GetDescendants(agent.ID)
+			if err != nil {
+				fmt.Printf("Warning: failed to get sub-agents: %v\n", err)
+			} else if len(descendants) > 0 {
+				// Filter to only running descendants
+				for _, d := range descendants {
+					if d.Status == "running" {
+						agentsToKill = append(agentsToKill, d)
+					}
+				}
 			}
-			fmt.Printf("Agent %s will terminate after current iteration\n", agent.ID)
-			return nil
 		}
 
-		// Immediate termination
-		if err := mgr.SetTerminateMode(agent.ID, "immediate"); err != nil {
-			return fmt.Errorf("failed to update agent state: %w", err)
+		// Kill all agents
+		killed := 0
+		for _, a := range agentsToKill {
+			if killGraceful {
+				// Graceful termination: wait for current iteration to complete
+				if err := mgr.SetTerminateMode(a.ID, "after_iteration"); err != nil {
+					fmt.Printf("Warning: failed to update agent %s: %v\n", a.ID, err)
+					continue
+				}
+				if a.ID == agent.ID {
+					fmt.Printf("Agent %s will terminate after current iteration\n", a.ID)
+				} else {
+					fmt.Printf("Sub-agent %s will terminate after current iteration\n", a.ID)
+				}
+			} else {
+				// Immediate termination
+				if err := mgr.SetTerminateMode(a.ID, "immediate"); err != nil {
+					fmt.Printf("Warning: failed to update agent %s: %v\n", a.ID, err)
+					continue
+				}
+
+				// Send termination signal to the process
+				if err := process.Kill(a.PID); err != nil {
+					fmt.Printf("Warning: could not send signal to process %d: %v\n", a.PID, err)
+				}
+
+				if a.ID == agent.ID {
+					fmt.Printf("Sent termination signal to agent %s (PID: %d)\n", a.ID, a.PID)
+				} else {
+					fmt.Printf("Sent termination signal to sub-agent %s (PID: %d)\n", a.ID, a.PID)
+				}
+			}
+			killed++
 		}
 
-		// Send termination signal to the process
-		if err := process.Kill(agent.PID); err != nil {
-			fmt.Printf("Warning: could not send signal to process %d: %v\n", agent.PID, err)
+		if killed > 1 {
+			fmt.Printf("Killed %d agent(s) total (1 parent + %d sub-agents)\n", killed, killed-1)
 		}
 
-		fmt.Printf("Sent termination signal to agent %s (PID: %d)\n", agent.ID, agent.PID)
 		return nil
 	},
 }
@@ -151,6 +194,7 @@ When using --label, the task-id-or-name argument is not required.`,
 func init() {
 	killCmd.Flags().BoolVarP(&killGraceful, "graceful", "G", false, "Terminate after current iteration completes")
 	killCmd.Flags().StringArrayVarP(&killLabels, "label", "l", nil, "Kill agents matching label (can be repeated for AND logic)")
+	killCmd.Flags().BoolVar(&killNoCascade, "no-cascade", false, "Do not kill sub-agents when killing a parent agent")
 
 	// Add dynamic completion for agent identifier
 	killCmd.ValidArgsFunction = completeRunningAgentIdentifier
