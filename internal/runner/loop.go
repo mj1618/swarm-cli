@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -64,6 +65,9 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 	agentState := cfg.AgentState
 	result := &LoopResult{}
 
+	// Mutex to protect concurrent access to agentState fields
+	var stateMu sync.Mutex
+
 	// Set up total timeout context
 	var timeoutCtx context.Context
 	var timeoutCancel context.CancelFunc
@@ -76,6 +80,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 
 	// Ensure cleanup on exit
 	defer func() {
+		stateMu.Lock()
 		if result.TimedOut {
 			agentState.TimeoutReason = "total"
 		}
@@ -87,8 +92,11 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		}
 		_ = mgr.MergeUpdate(agentState)
 
-		// Execute on-complete hook
-		if agentState.OnComplete != "" {
+		// Execute on-complete hook (copy hook value while holding lock)
+		onComplete := agentState.OnComplete
+		stateMu.Unlock()
+
+		if onComplete != "" {
 			if err := agent.ExecuteOnCompleteHook(agentState); err != nil {
 				fmt.Fprintf(cfg.Output, "[swarm] Warning: on-complete hook failed: %v\n", err)
 			}
@@ -107,7 +115,14 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 	}
 
 	// Run iterations (0 means unlimited), starting from startingIteration
-	for i := startingIteration; agentState.Iterations == 0 || i <= agentState.Iterations; i++ {
+	for i := startingIteration; ; i++ {
+		// Check loop condition under lock
+		stateMu.Lock()
+		iterations := agentState.Iterations
+		stateMu.Unlock()
+		if iterations != 0 && i > iterations {
+			break
+		}
 		// Check for total timeout before starting iteration
 		select {
 		case <-timeoutCtx.Done():
@@ -119,8 +134,12 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		}
 
 		// Check for control signals from state
-		currentState, err := mgr.Get(agentState.ID)
+		stateMu.Lock()
+		agentID := agentState.ID
+		stateMu.Unlock()
+		currentState, err := mgr.Get(agentID)
 		if err == nil && currentState != nil {
+			stateMu.Lock()
 			// Update iterations if changed
 			if currentState.Iterations != agentState.Iterations {
 				agentState.Iterations = currentState.Iterations
@@ -141,11 +160,13 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			if currentState.TerminateMode == "immediate" {
 				fmt.Fprintln(cfg.Output, "\n[swarm] Received immediate termination signal")
 				agentState.ExitReason = "killed"
+				stateMu.Unlock()
 				return result, nil
 			}
 			if currentState.TerminateMode == "after_iteration" && i > 1 {
 				fmt.Fprintln(cfg.Output, "\n[swarm] Terminating after iteration as requested")
 				agentState.ExitReason = "killed"
+				stateMu.Unlock()
 				return result, nil
 			}
 
@@ -156,10 +177,11 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 				now := time.Now()
 				agentState.PausedAt = &now
 				_ = mgr.MergeUpdate(agentState)
+				stateMu.Unlock()
 
 				for currentState.Paused && currentState.Status == "running" {
 					time.Sleep(1 * time.Second)
-					currentState, err = mgr.Get(agentState.ID)
+					currentState, err = mgr.Get(agentID)
 					if err != nil {
 						break
 					}
@@ -167,7 +189,9 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 					if currentState.TerminateMode != "" {
 						if currentState.TerminateMode == "immediate" {
 							fmt.Fprintln(cfg.Output, "\n[swarm] Received immediate termination signal")
+							stateMu.Lock()
 							agentState.ExitReason = "killed"
+							stateMu.Unlock()
 							return result, nil
 						}
 						break
@@ -176,21 +200,29 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 
 				if !currentState.Paused {
 					fmt.Fprintln(cfg.Output, "\n[swarm] Agent resumed")
+					stateMu.Lock()
 					agentState.Paused = false
 					agentState.PausedAt = nil
 					_ = mgr.MergeUpdate(agentState)
+					stateMu.Unlock()
 				}
+			} else {
+				stateMu.Unlock()
 			}
 		}
 
-		// Update current iteration
+		// Update current iteration and get values needed for this iteration
+		stateMu.Lock()
 		agentState.CurrentIter = i
 		_ = mgr.MergeUpdate(agentState)
+		iterationsForDisplay := agentState.Iterations
+		modelForConfig := agentState.Model
+		stateMu.Unlock()
 
-		if agentState.Iterations == 0 {
+		if iterationsForDisplay == 0 {
 			fmt.Fprintf(cfg.Output, "\n[swarm] === Iteration %d ===\n", i)
 		} else {
-			fmt.Fprintf(cfg.Output, "\n[swarm] === Iteration %d/%d ===\n", i, agentState.Iterations)
+			fmt.Fprintf(cfg.Output, "\n[swarm] === Iteration %d/%d ===\n", i, iterationsForDisplay)
 		}
 
 		// Generate a per-iteration agent ID and inject it into the prompt.
@@ -199,7 +231,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 
 		// Create agent config with per-iteration timeout
 		agentCfg := agent.Config{
-			Model:   agentState.Model,
+			Model:   modelForConfig,
 			Prompt:  iterationPrompt,
 			Command: cfg.Command,
 			Env:     cfg.Env,
@@ -211,6 +243,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		
 		// Set up usage callback to update state
 		runner.SetUsageCallback(func(stats logparser.UsageStats) {
+			stateMu.Lock()
 			// Update token counts (stats are cumulative within iteration)
 			agentState.InputTokens = stats.InputTokens
 			agentState.OutputTokens = stats.OutputTokens
@@ -224,10 +257,12 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			
 			// Update state (will be throttled by the parser's update frequency)
 			_ = mgr.MergeUpdate(agentState)
+			stateMu.Unlock()
 		})
 
 		// Run agent - errors should NOT stop the run (including iteration timeouts)
 		if err := runner.RunWithContext(timeoutCtx, cfg.Output); err != nil {
+			stateMu.Lock()
 			agentState.FailedIters++
 			agentState.LastError = err.Error()
 			if strings.Contains(err.Error(), "timed out") {
@@ -240,12 +275,16 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			} else {
 				fmt.Fprintf(cfg.Output, "\n[swarm] Agent error (continuing): %v\n", err)
 			}
+			stateMu.Unlock()
 		} else {
+			stateMu.Lock()
 			agentState.SuccessfulIters++
+			stateMu.Unlock()
 		}
 		
 		// Capture final usage stats from this iteration
 		finalStats := runner.UsageStats()
+		stateMu.Lock()
 		agentState.InputTokens = finalStats.InputTokens
 		agentState.OutputTokens = finalStats.OutputTokens
 		if finalStats.CurrentTask != "" {
@@ -256,12 +295,15 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
 		}
 		_ = mgr.MergeUpdate(agentState)
+		stateMu.Unlock()
 
 		// Check for signals and total timeout
 		select {
 		case sig := <-sigChan:
 			fmt.Fprintf(cfg.Output, "\n[swarm] Received signal %v, stopping\n", sig)
+			stateMu.Lock()
 			agentState.ExitReason = "signal"
+			stateMu.Unlock()
 			return result, nil
 		case <-timeoutCtx.Done():
 			fmt.Fprintln(cfg.Output, "\n[swarm] Total timeout reached, stopping")
@@ -272,6 +314,9 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		}
 	}
 
-	fmt.Fprintf(cfg.Output, "\n[swarm] Run completed (%d iterations)\n", agentState.CurrentIter)
+	stateMu.Lock()
+	currentIter := agentState.CurrentIter
+	stateMu.Unlock()
+	fmt.Fprintf(cfg.Output, "\n[swarm] Run completed (%d iterations)\n", currentIter)
 	return result, nil
 }

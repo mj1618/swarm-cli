@@ -488,13 +488,8 @@ Labels can be attached to agents for categorization and filtering using the
 				detachedArgs = append(detachedArgs, "--_internal-parent", effectiveParentID)
 			}
 
-			// Start detached process
-			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
-			if err != nil {
-				return fmt.Errorf("failed to start detached process: %w", err)
-			}
-
-			// Register agent state
+			// Register agent state BEFORE starting child to avoid race condition
+			// where child tries to Get() state before parent has Register()'d it
 			mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
 			if err != nil {
 				return fmt.Errorf("failed to initialize state manager: %w", err)
@@ -512,7 +507,7 @@ Labels can be attached to agents for categorization and filtering using the
 				Name:        effectiveName,
 				ParentID:    effectiveParentID,
 				Labels:      labels,
-				PID:         pid,
+				PID:         0, // Placeholder, updated after child starts
 				Prompt:      promptName,
 				Model:       effectiveModel,
 				StartedAt:   time.Now(),
@@ -528,6 +523,20 @@ Labels can be attached to agents for categorization and filtering using the
 
 			if err := mgr.Register(agentState); err != nil {
 				return fmt.Errorf("failed to register agent: %w", err)
+			}
+
+			// Start detached process AFTER registering state
+			pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
+			if err != nil {
+				// Clean up the registered state since child failed to start
+				_ = mgr.Remove(taskID)
+				return fmt.Errorf("failed to start detached process: %w", err)
+			}
+
+			// Update state with actual PID
+			agentState.PID = pid
+			if err := mgr.Update(agentState); err != nil {
+				return fmt.Errorf("failed to update agent PID: %w", err)
 			}
 
 			fmt.Printf("Started detached agent: %s (PID: %d)\n", taskID, pid)

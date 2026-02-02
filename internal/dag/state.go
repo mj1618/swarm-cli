@@ -81,11 +81,17 @@ func NewStateTracker(taskNames []string) *StateTracker {
 	return st
 }
 
-// Get returns the state for a task.
+// Get returns a copy of the state for a task to avoid race conditions.
 func (st *StateTracker) Get(name string) *TaskState {
 	st.mu.RLock()
 	defer st.mu.RUnlock()
-	return st.states[name]
+	state := st.states[name]
+	if state == nil {
+		return nil
+	}
+	// Return a copy to avoid race conditions
+	stateCopy := *state
+	return &stateCopy
 }
 
 // GetAll returns a copy of all states.

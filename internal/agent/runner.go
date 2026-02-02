@@ -19,6 +19,7 @@ type UsageCallback func(stats logparser.UsageStats)
 type Runner struct {
 	config        Config
 	cmd           *exec.Cmd
+	cmdMu         sync.RWMutex // protects cmd
 	usageCallback UsageCallback
 	usageStats    logparser.UsageStats
 	statsMu       sync.Mutex
@@ -63,7 +64,9 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 
 	// Expand placeholders in command args
 	args := r.config.Command.ExpandArgs(r.config.Model, r.config.Prompt)
+	r.cmdMu.Lock()
 	r.cmd = exec.CommandContext(ctx, r.config.Command.Executable, args...)
+	r.cmdMu.Unlock()
 
 	// Apply custom environment variables if specified
 	// Inherit parent environment and append custom vars (later values override earlier)
@@ -162,7 +165,6 @@ func (r *Runner) extractUsageFromLine(line string) {
 	}
 
 	r.statsMu.Lock()
-	defer r.statsMu.Unlock()
 
 	updated := false
 
@@ -210,13 +212,25 @@ func (r *Runner) extractUsageFromLine(line string) {
 		updated = true
 	}
 
+	// Copy stats and callback reference before releasing lock
+	var statsCopy logparser.UsageStats
+	var callback UsageCallback
 	if updated && r.usageCallback != nil {
-		r.usageCallback(r.usageStats)
+		statsCopy = r.usageStats
+		callback = r.usageCallback
+	}
+	r.statsMu.Unlock()
+
+	// Invoke callback outside of lock to prevent potential deadlock/contention
+	if callback != nil {
+		callback(statsCopy)
 	}
 }
 
 // PID returns the process ID of the running agent, or 0 if not running.
 func (r *Runner) PID() int {
+	r.cmdMu.RLock()
+	defer r.cmdMu.RUnlock()
 	if r.cmd != nil && r.cmd.Process != nil {
 		return r.cmd.Process.Pid
 	}
@@ -225,6 +239,8 @@ func (r *Runner) PID() int {
 
 // Kill sends a signal to terminate the agent process.
 func (r *Runner) Kill() error {
+	r.cmdMu.RLock()
+	defer r.cmdMu.RUnlock()
 	if r.cmd != nil && r.cmd.Process != nil {
 		return r.cmd.Process.Kill()
 	}

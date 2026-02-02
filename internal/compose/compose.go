@@ -250,9 +250,15 @@ func (p *Pipeline) GetPipelineTasks(allTasks map[string]Task) []string {
 
 // GetTasks returns the tasks to run, filtered by the given names.
 // If names is empty, all tasks are returned.
+// Returns a copy of the map to avoid race conditions with concurrent access.
 func (cf *ComposeFile) GetTasks(names []string) (map[string]Task, error) {
 	if len(names) == 0 {
-		return cf.Tasks, nil
+		// Return a copy to avoid concurrent access issues
+		result := make(map[string]Task, len(cf.Tasks))
+		for k, v := range cf.Tasks {
+			result[k] = v
+		}
+		return result, nil
 	}
 
 	result := make(map[string]Task)

@@ -120,6 +120,47 @@ func GenerateID() string {
 	return hex.EncodeToString(b)
 }
 
+// copyAgentState creates a deep copy of an AgentState to avoid race conditions
+// when the returned pointer is used outside the lock.
+func copyAgentState(agent *AgentState) *AgentState {
+	if agent == nil {
+		return nil
+	}
+	copy := *agent
+
+	// Deep copy map
+	if agent.Labels != nil {
+		copy.Labels = make(map[string]string, len(agent.Labels))
+		for k, v := range agent.Labels {
+			copy.Labels[k] = v
+		}
+	}
+
+	// Deep copy slices
+	if agent.EnvNames != nil {
+		copy.EnvNames = make([]string, len(agent.EnvNames))
+		for i, v := range agent.EnvNames {
+			copy.EnvNames[i] = v
+		}
+	}
+
+	// Deep copy time pointers
+	if agent.PausedAt != nil {
+		t := *agent.PausedAt
+		copy.PausedAt = &t
+	}
+	if agent.TerminatedAt != nil {
+		t := *agent.TerminatedAt
+		copy.TerminatedAt = &t
+	}
+	if agent.TimeoutAt != nil {
+		t := *agent.TimeoutAt
+		copy.TimeoutAt = &t
+	}
+
+	return &copy
+}
+
 // Register adds a new agent to the state.
 // If the agent has a name that conflicts with a running agent, a number suffix is added.
 func (m *Manager) Register(agent *AgentState) error {
@@ -358,6 +399,7 @@ func (m *Manager) SetPaused(id string, paused bool) error {
 
 // Get retrieves an agent's state by ID.
 // Note: Get does not filter by scope - it retrieves the agent regardless of working directory.
+// Returns a copy of the state to avoid race conditions.
 func (m *Manager) Get(id string) (*AgentState, error) {
 	fl, err := m.lock()
 	if err != nil {
@@ -375,12 +417,13 @@ func (m *Manager) Get(id string) (*AgentState, error) {
 		return nil, fmt.Errorf("agent not found: %s", id)
 	}
 
-	return agent, nil
+	return copyAgentState(agent), nil
 }
 
 // GetByNameOrID retrieves an agent's state by ID or name.
 // It first tries to find by ID, then falls back to searching by name.
 // Note: GetByNameOrID does not filter by scope - it retrieves the agent regardless of working directory.
+// Returns a copy of the state to avoid race conditions.
 func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
 	fl, err := m.lock()
 	if err != nil {
@@ -395,13 +438,13 @@ func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
 
 	// First try direct ID lookup
 	if agent, exists := state.Agents[identifier]; exists {
-		return agent, nil
+		return copyAgentState(agent), nil
 	}
 
 	// Fall back to name search
 	for _, agent := range state.Agents {
 		if agent.Name == identifier && identifier != "" {
-			return agent, nil
+			return copyAgentState(agent), nil
 		}
 	}
 
@@ -411,6 +454,7 @@ func (m *Manager) GetByNameOrID(identifier string) (*AgentState, error) {
 // GetLast returns the most recently started agent.
 // Respects the manager's scope setting.
 // Returns an error if no agents are found.
+// Returns a copy of the state to avoid race conditions.
 func (m *Manager) GetLast() (*AgentState, error) {
 	fl, err := m.lock()
 	if err != nil {
@@ -441,11 +485,12 @@ func (m *Manager) GetLast() (*AgentState, error) {
 		return nil, fmt.Errorf("no agents found")
 	}
 
-	return latest, nil
+	return copyAgentState(latest), nil
 }
 
 // GetChildren returns all agents that have the given parentID as their parent.
 // Note: GetChildren does not filter by scope - it returns all children regardless of working directory.
+// Returns copies of the states to avoid race conditions.
 func (m *Manager) GetChildren(parentID string) ([]*AgentState, error) {
 	fl, err := m.lock()
 	if err != nil {
@@ -464,7 +509,7 @@ func (m *Manager) GetChildren(parentID string) ([]*AgentState, error) {
 	var children []*AgentState
 	for _, agent := range state.Agents {
 		if agent.ParentID == parentID {
-			children = append(children, agent)
+			children = append(children, copyAgentState(agent))
 		}
 	}
 
@@ -478,6 +523,7 @@ func (m *Manager) GetChildren(parentID string) ([]*AgentState, error) {
 
 // GetDescendants returns all agents in the subtree rooted at parentID (children, grandchildren, etc.).
 // Note: GetDescendants does not filter by scope - it returns all descendants regardless of working directory.
+// Returns copies of the states to avoid race conditions.
 func (m *Manager) GetDescendants(parentID string) ([]*AgentState, error) {
 	fl, err := m.lock()
 	if err != nil {
@@ -510,7 +556,7 @@ func (m *Manager) GetDescendants(parentID string) ([]*AgentState, error) {
 		queue = queue[1:]
 
 		for _, child := range childrenMap[currentID] {
-			descendants = append(descendants, child)
+			descendants = append(descendants, copyAgentState(child))
 			queue = append(queue, child.ID)
 		}
 	}
@@ -528,6 +574,7 @@ func (m *Manager) GetDescendants(parentID string) ([]*AgentState, error) {
 // For ScopeGlobal, returns all agents.
 // If onlyRunning is true, only returns agents with status "running".
 // Results are always sorted by StartedAt time (oldest first).
+// Returns copies of the states to avoid race conditions.
 func (m *Manager) List(onlyRunning bool) ([]*AgentState, error) {
 	fl, err := m.lock()
 	if err != nil {
@@ -553,7 +600,7 @@ func (m *Manager) List(onlyRunning bool) ([]*AgentState, error) {
 		if onlyRunning && agent.Status != "running" {
 			continue
 		}
-		agents = append(agents, agent)
+		agents = append(agents, copyAgentState(agent))
 	}
 
 	// Sort by StartedAt time (oldest first)
@@ -632,6 +679,19 @@ func (m *Manager) cleanup() error {
 	changed := false
 	now := time.Now()
 	for id, agent := range state.Agents {
+		// Handle agents with PID=0 (registered but child never started or updated PID)
+		if agent.Status == "running" && agent.PID == 0 {
+			// Give some time for the parent to update the PID after starting child
+			if time.Since(agent.StartedAt) > 30*time.Second {
+				agent.Status = "terminated"
+				agent.ExitReason = "crashed"
+				agent.TerminatedAt = &now
+				state.Agents[id] = agent
+				changed = true
+			}
+			continue
+		}
+
 		// Check if process is still running
 		if agent.Status == "running" && !isProcessRunning(agent.PID) {
 			agent.Status = "terminated"
