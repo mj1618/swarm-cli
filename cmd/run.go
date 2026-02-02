@@ -555,34 +555,51 @@ Labels can be attached to agents for categorization and filtering using the
 				return fmt.Errorf("failed to initialize state manager: %w", err)
 			}
 
-			// Calculate timeout_at if total timeout is set
-			var timeoutAt *time.Time
-			if totalTimeout > 0 {
-				t := time.Now().Add(totalTimeout)
-				timeoutAt = &t
-			}
+			var agentState *state.AgentState
 
-			// Register single-iteration agent in state
-			agentState := &state.AgentState{
-				ID:          taskID,
-				Name:        effectiveName,
-				ParentID:    effectiveParentID,
-				Labels:      labels,
-				PID:         os.Getpid(),
-				Prompt:      promptName,
-				Model:       effectiveModel,
-				StartedAt:   time.Now(),
-				Iterations:  1,
-				CurrentIter: 1,
-				Status:      "running",
-				WorkingDir:  workingDir,
-				EnvNames:    envNames,
-				TimeoutAt:   timeoutAt,
-				OnComplete:  effectiveOnComplete,
-			}
+			if runInternalDetached {
+				// Detached child: retrieve existing state registered by parent
+				// This preserves the LogFile path set by the parent
+				agentState, err = mgr.Get(taskID)
+				if err != nil {
+					return fmt.Errorf("failed to get agent state: %w", err)
+				}
+				// Update PID and current iteration for the child process
+				agentState.PID = os.Getpid()
+				agentState.CurrentIter = 1
+				if err := mgr.Update(agentState); err != nil {
+					return fmt.Errorf("failed to update agent state: %w", err)
+				}
+			} else {
+				// Calculate timeout_at if total timeout is set
+				var timeoutAt *time.Time
+				if totalTimeout > 0 {
+					t := time.Now().Add(totalTimeout)
+					timeoutAt = &t
+				}
 
-			if err := mgr.Register(agentState); err != nil {
-				return fmt.Errorf("failed to register agent: %w", err)
+				// Register single-iteration agent in state
+				agentState = &state.AgentState{
+					ID:          taskID,
+					Name:        effectiveName,
+					ParentID:    effectiveParentID,
+					Labels:      labels,
+					PID:         os.Getpid(),
+					Prompt:      promptName,
+					Model:       effectiveModel,
+					StartedAt:   time.Now(),
+					Iterations:  1,
+					CurrentIter: 1,
+					Status:      "running",
+					WorkingDir:  workingDir,
+					EnvNames:    envNames,
+					TimeoutAt:   timeoutAt,
+					OnComplete:  effectiveOnComplete,
+				}
+
+				if err := mgr.Register(agentState); err != nil {
+					return fmt.Errorf("failed to register agent: %w", err)
+				}
 			}
 
 			// Track if we timed out for proper exit code
