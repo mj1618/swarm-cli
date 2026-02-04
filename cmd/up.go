@@ -9,14 +9,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/agent"
-	"github.com/matt/swarm-cli/internal/compose"
-	"github.com/matt/swarm-cli/internal/dag"
-	"github.com/matt/swarm-cli/internal/detach"
-	"github.com/matt/swarm-cli/internal/output"
-	"github.com/matt/swarm-cli/internal/prompt"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/agent"
+	"github.com/mj1618/swarm-cli/internal/compose"
+	"github.com/mj1618/swarm-cli/internal/dag"
+	"github.com/mj1618/swarm-cli/internal/detach"
+	"github.com/mj1618/swarm-cli/internal/output"
+	"github.com/mj1618/swarm-cli/internal/prompt"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/matt/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 

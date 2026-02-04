@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/matt/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/config"
 )
 
 // CommandConfig is an alias for config.CommandConfig

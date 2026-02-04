@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/matt/swarm-cli/internal/compose"
+	"github.com/mj1618/swarm-cli/internal/compose"
 )
 
 // TestFrontendTaskCompose tests loading and validating a compose file with a frontend task

@@ -12,11 +12,11 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/matt/swarm-cli/internal/config"
-	"github.com/matt/swarm-cli/internal/logparser"
-	"github.com/matt/swarm-cli/internal/process"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/logparser"
+	"github.com/mj1618/swarm-cli/internal/process"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

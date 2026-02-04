@@ -8,13 +8,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/agent"
-	"github.com/matt/swarm-cli/internal/detach"
-	"github.com/matt/swarm-cli/internal/label"
-	"github.com/matt/swarm-cli/internal/prompt"
-	"github.com/matt/swarm-cli/internal/runner"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/agent"
+	"github.com/mj1618/swarm-cli/internal/detach"
+	"github.com/mj1618/swarm-cli/internal/label"
+	"github.com/mj1618/swarm-cli/internal/prompt"
+	"github.com/mj1618/swarm-cli/internal/runner"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/label"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/label"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

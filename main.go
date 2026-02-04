@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/matt/swarm-cli/cmd"
+	"github.com/mj1618/swarm-cli/cmd"
 )
 
 func main() {

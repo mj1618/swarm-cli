@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/matt/swarm-cli/internal/prompt"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/prompt"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

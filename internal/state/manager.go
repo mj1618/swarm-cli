@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/scope"
 )
 
 // AgentState represents the state of a running agent.

@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/compose"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/compose"
+	"github.com/mj1618/swarm-cli/internal/state"
 )
 
 func TestComposeLogsCommandFlags(t *testing.T) {

@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/logparser"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/logparser"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

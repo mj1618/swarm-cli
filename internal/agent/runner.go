@@ -9,7 +9,7 @@ import (
 	"os/exec"
 	"sync"
 
-	"github.com/matt/swarm-cli/internal/logparser"
+	"github.com/mj1618/swarm-cli/internal/logparser"
 )
 
 // UsageCallback is called when usage stats are updated during agent execution.

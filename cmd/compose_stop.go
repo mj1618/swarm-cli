@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/compose"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/compose"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

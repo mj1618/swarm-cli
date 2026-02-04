@@ -3,7 +3,7 @@ package agent
 import (
 	"time"
 
-	"github.com/matt/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/config"
 )
 
 // Config holds the configuration for running an agent.

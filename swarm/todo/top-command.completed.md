@@ -57,7 +57,7 @@ swarm top --interval 1s
 
 ╭─ Selected: abc123 (frontend-work) ───────────────────────────────────────────╮
 │  Started: 2026-01-28 14:32:05                                                │
-│  Directory: /Users/matt/projects/frontend                                    │
+│  Directory: /Users/mj1618/projects/frontend                                    │
 │  Log: ~/.swarm/logs/abc123.log                                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
@@ -122,8 +122,8 @@ import (
     "github.com/charmbracelet/bubbles/table"
     tea "github.com/charmbracelet/bubbletea"
     "github.com/charmbracelet/lipgloss"
-    "github.com/matt/swarm-cli/internal/scope"
-    "github.com/matt/swarm-cli/internal/state"
+    "github.com/mj1618/swarm-cli/internal/scope"
+    "github.com/mj1618/swarm-cli/internal/state"
     "github.com/spf13/cobra"
 )
 

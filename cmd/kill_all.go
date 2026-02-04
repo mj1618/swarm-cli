@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/mattn/go-isatty"
-	"github.com/matt/swarm-cli/internal/process"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618n/go-isatty"
+	"github.com/mj1618/swarm-cli/internal/process"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

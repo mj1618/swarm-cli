@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/matt/swarm-cli/internal/config"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
-	"github.com/matt/swarm-cli/internal/version"
+	"github.com/mj1618/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 

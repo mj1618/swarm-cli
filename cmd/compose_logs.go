@@ -10,11 +10,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/compose"
-	"github.com/matt/swarm-cli/internal/logparser"
-	"github.com/matt/swarm-cli/internal/output"
-	"github.com/matt/swarm-cli/internal/scope"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/compose"
+	"github.com/mj1618/swarm-cli/internal/logparser"
+	"github.com/mj1618/swarm-cli/internal/output"
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 

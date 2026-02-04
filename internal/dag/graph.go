@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sort"
 
-	"github.com/matt/swarm-cli/internal/compose"
+	"github.com/mj1618/swarm-cli/internal/compose"
 )
 
 // Graph represents a directed acyclic graph of task dependencies.

@@ -7,7 +7,7 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/matt/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/config"
 	"github.com/spf13/cobra"
 )
 

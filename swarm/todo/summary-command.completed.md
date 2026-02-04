@@ -134,8 +134,8 @@ import (
     "fmt"
 
     "github.com/fatih/color"
-    "github.com/matt/swarm-cli/internal/logsummary"
-    "github.com/matt/swarm-cli/internal/state"
+    "github.com/mj1618/swarm-cli/internal/logsummary"
+    "github.com/mj1618/swarm-cli/internal/state"
     "github.com/spf13/cobra"
 )
 
@@ -309,7 +309,7 @@ import (
     "strings"
     "time"
 
-    "github.com/matt/swarm-cli/internal/state"
+    "github.com/mj1618/swarm-cli/internal/state"
 )
 
 // Summary contains parsed summary information from agent logs.

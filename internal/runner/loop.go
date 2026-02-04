@@ -11,11 +11,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/agent"
-	"github.com/matt/swarm-cli/internal/config"
-	"github.com/matt/swarm-cli/internal/logparser"
-	"github.com/matt/swarm-cli/internal/prompt"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/agent"
+	"github.com/mj1618/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/logparser"
+	"github.com/mj1618/swarm-cli/internal/prompt"
+	"github.com/mj1618/swarm-cli/internal/state"
 )
 
 // LoopConfig holds the configuration for running the multi-iteration agent loop.

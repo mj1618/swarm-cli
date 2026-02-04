@@ -106,7 +106,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/matt/swarm-cli/internal/version"
+	"github.com/mj1618/swarm-cli/internal/version"
 	"github.com/spf13/cobra"
 )
 
@@ -175,9 +175,9 @@ builds:
       - arm64
     ldflags:
       - -s -w
-      - -X github.com/matt/swarm-cli/internal/version.Version={{.Version}}
-      - -X github.com/matt/swarm-cli/internal/version.Commit={{.ShortCommit}}
-      - -X github.com/matt/swarm-cli/internal/version.BuildDate={{.Date}}
+      - -X github.com/mj1618/swarm-cli/internal/version.Version={{.Version}}
+      - -X github.com/mj1618/swarm-cli/internal/version.Commit={{.ShortCommit}}
+      - -X github.com/mj1618/swarm-cli/internal/version.BuildDate={{.Date}}
 ```
 
 ### cmd/root.go changes
@@ -197,7 +197,7 @@ Optionally, also set the root command's version for `swarm --version` support:
 
 ```go
 // In cmd/root.go
-import "github.com/matt/swarm-cli/internal/version"
+import "github.com/mj1618/swarm-cli/internal/version"
 
 func init() {
 	rootCmd.Version = version.Version
@@ -228,7 +228,7 @@ go build -o swarm .
 # Should show "dev" version
 
 # Build with ldflags (simulating release)
-go build -ldflags "-X github.com/matt/swarm-cli/internal/version.Version=1.0.0 -X github.com/matt/swarm-cli/internal/version.Commit=abc1234 -X github.com/matt/swarm-cli/internal/version.BuildDate=2025-01-28" -o swarm .
+go build -ldflags "-X github.com/mj1618/swarm-cli/internal/version.Version=1.0.0 -X github.com/mj1618/swarm-cli/internal/version.Commit=abc1234 -X github.com/mj1618/swarm-cli/internal/version.BuildDate=2025-01-28" -o swarm .
 ./swarm version
 # Should show injected values
 ```
@@ -245,7 +245,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/matt/swarm-cli/internal/version"
+	"github.com/mj1618/swarm-cli/internal/version"
 )
 
 func TestVersionCommand(t *testing.T) {

@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/matt/swarm-cli/internal/config"
-	"github.com/matt/swarm-cli/internal/state"
+	"github.com/mj1618/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/state"
 )
 
 func TestLoopConfigStructure(t *testing.T) {
