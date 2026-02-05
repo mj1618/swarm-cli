@@ -66,6 +66,10 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 	args := r.config.Command.ExpandArgs(r.config.Model, r.config.Prompt)
 	r.cmdMu.Lock()
 	r.cmd = exec.CommandContext(ctx, r.config.Command.Executable, args...)
+
+	// Set up process attributes for proper process group handling.
+	// This allows ForceKill to terminate the entire process group including child processes.
+	setProcAttr(r.cmd)
 	r.cmdMu.Unlock()
 
 	// Apply custom environment variables if specified
