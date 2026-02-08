@@ -162,6 +162,7 @@ func ClaudeCodeConfig() *Config {
 				"-p",
 				"--model", "{model}",
 				"--output-format", "stream-json",
+				"--verbose",
 				"--dangerously-skip-permissions",
 				"{prompt}",
 			},

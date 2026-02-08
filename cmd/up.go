@@ -21,9 +21,11 @@ import (
 )
 
 var (
-	upFile     string
-	upDetach   bool
-	upPipeline string
+	upFile              string
+	upDetach            bool
+	upPipeline          string
+	upInternalDetached  bool
+	upInternalTaskID    string
 )
 
 var upCmd = &cobra.Command{
@@ -88,10 +90,15 @@ Pipelines define DAG workflows with iteration cycles:
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
+		// If running as a detached child, run the pipeline directly
+		if upInternalDetached && upPipeline != "" {
+			return runPipeline(cf, upPipeline, promptsDir, workingDir)
+		}
+
 		// If a specific pipeline is requested, run only that pipeline
 		if upPipeline != "" {
 			if upDetach {
-				return fmt.Errorf("detached mode is not yet supported for pipelines")
+				return runPipelineDetached(cf, upPipeline, promptsDir, workingDir)
 			}
 			return runPipeline(cf, upPipeline, promptsDir, workingDir)
 		}
@@ -125,6 +132,10 @@ func init() {
 	upCmd.Flags().StringVarP(&upFile, "file", "f", compose.DefaultPath(), "Path to compose file")
 	upCmd.Flags().BoolVarP(&upDetach, "detach", "d", false, "Run all tasks in background")
 	upCmd.Flags().StringVarP(&upPipeline, "pipeline", "p", "", "Run a named pipeline (DAG with iterations)")
+	upCmd.Flags().BoolVar(&upInternalDetached, "_internal-detached", false, "Internal flag for detached execution")
+	upCmd.Flags().MarkHidden("_internal-detached")
+	upCmd.Flags().StringVar(&upInternalTaskID, "_internal-task-id", "", "Internal flag for passing task ID to detached child")
+	upCmd.Flags().MarkHidden("_internal-task-id")
 }
 
 // runPipeline runs a named pipeline using the DAG executor.
@@ -155,6 +166,69 @@ func runPipeline(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir s
 
 	// Run the pipeline
 	return executor.RunPipeline(*pipeline, cf.Tasks)
+}
+
+// runPipelineDetached spawns a pipeline as a detached background process.
+func runPipelineDetached(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir string) error {
+	// Verify the pipeline exists
+	pipeline, err := cf.GetPipeline(pipelineName)
+	if err != nil {
+		return err
+	}
+
+	taskID := state.GenerateID()
+
+	logFile, err := detach.LogFilePath(taskID)
+	if err != nil {
+		return fmt.Errorf("failed to create log file: %w", err)
+	}
+
+	// Build args for the detached process
+	detachedArgs := []string{"up", "--_internal-detached", "--_internal-task-id", taskID, "--pipeline", pipelineName}
+	if globalFlag {
+		detachedArgs = append(detachedArgs, "--global")
+	}
+	if upFile != compose.DefaultPath() {
+		detachedArgs = append(detachedArgs, "--file", upFile)
+	}
+
+	// Register state before starting the process
+	effectiveIterations := pipeline.Iterations
+	if effectiveIterations == 0 {
+		effectiveIterations = 1
+	}
+
+	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to initialize state manager: %w", err)
+	}
+
+	agentState := &state.AgentState{
+		ID:          taskID,
+		Name:        fmt.Sprintf("pipeline:%s", pipelineName),
+		Prompt:      fmt.Sprintf("pipeline:%s", pipelineName),
+		Model:       appConfig.Model,
+		StartedAt:   time.Now(),
+		Iterations:  effectiveIterations,
+		CurrentIter: 0,
+		Status:      "running",
+		LogFile:     logFile,
+		WorkingDir:  workingDir,
+	}
+
+	// Start detached process
+	pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
+	if err != nil {
+		return fmt.Errorf("failed to start detached process: %w", err)
+	}
+
+	agentState.PID = pid
+	if err := mgr.Register(agentState); err != nil {
+		return fmt.Errorf("failed to register state: %w", err)
+	}
+
+	fmt.Printf("Started pipeline %q in background (ID: %s, PID: %d)\n", pipelineName, taskID, pid)
+	return nil
 }
 
 // runAllPipelinesAndStandaloneTasks runs all defined pipelines and standalone tasks.
@@ -194,21 +268,31 @@ func runAllPipelinesAndStandaloneTasks(cf *compose.ComposeFile, promptsDir, work
 	}
 	fmt.Println()
 
-	// Run pipelines sequentially (each pipeline runs its full iteration cycle)
-	for _, pipelineName := range pipelineNames {
-		pipeline := cf.Pipelines[pipelineName]
+	// Run pipelines
+	if upDetach {
+		// Detached mode: spawn each pipeline as a background process
+		for _, pipelineName := range pipelineNames {
+			if err := runPipelineDetached(cf, pipelineName, promptsDir, workingDir); err != nil {
+				return fmt.Errorf("pipeline %q failed to start: %w", pipelineName, err)
+			}
+		}
+	} else {
+		// Foreground mode: run pipelines sequentially
+		for _, pipelineName := range pipelineNames {
+			pipeline := cf.Pipelines[pipelineName]
 
-		fmt.Printf("=== Pipeline: %s ===\n", pipelineName)
+			fmt.Printf("=== Pipeline: %s ===\n", pipelineName)
 
-		executor := dag.NewExecutor(dag.ExecutorConfig{
-			AppConfig:  appConfig,
-			PromptsDir: promptsDir,
-			WorkingDir: workingDir,
-			Output:     os.Stdout,
-		})
+			executor := dag.NewExecutor(dag.ExecutorConfig{
+				AppConfig:  appConfig,
+				PromptsDir: promptsDir,
+				WorkingDir: workingDir,
+				Output:     os.Stdout,
+			})
 
-		if err := executor.RunPipeline(pipeline, cf.Tasks); err != nil {
-			return fmt.Errorf("pipeline %q failed: %w", pipelineName, err)
+			if err := executor.RunPipeline(pipeline, cf.Tasks); err != nil {
+				return fmt.Errorf("pipeline %q failed: %w", pipelineName, err)
+			}
 		}
 	}
 
