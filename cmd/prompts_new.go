@@ -31,7 +31,7 @@ Use --content to create with specific content (useful for scripting).
 Use --no-edit to create without opening the editor.
 
 By default, creates prompts in the project directory (./swarm/prompts/).
-Use --global to create in the global directory (~/.swarm/prompts/).`,
+Use --global to create in the global directory (~/swarm/prompts/).`,
 	Example: `  # Create a new prompt and open in editor
   swarm prompts new my-feature
 

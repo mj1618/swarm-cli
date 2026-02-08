@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -31,6 +32,12 @@ type ExecutorConfig struct {
 
 	// Verbose enables verbose output
 	Verbose bool
+
+	// StateManager is the state manager for persisting pipeline progress (optional)
+	StateManager *state.Manager
+
+	// TaskID is the agent state ID to update during execution (optional)
+	TaskID string
 }
 
 // Executor runs pipelines with DAG-ordered task execution.
@@ -57,18 +64,44 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 		return fmt.Errorf("invalid DAG: %w", err)
 	}
 
+	// Create output directory for inter-agent communication
+	runID := state.GenerateID()
+	outputDir := filepath.Join(e.cfg.WorkingDir, "swarm", "outputs", runID)
+	if err := os.MkdirAll(outputDir, 0755); err != nil {
+		return fmt.Errorf("failed to create output directory: %w", err)
+	}
+
 	iterations := pipeline.EffectiveIterations()
 	fmt.Fprintf(e.cfg.Output, "Running pipeline with %d iteration(s) and %d task(s)\n", iterations, len(taskNames))
 
 	// Run each iteration
 	for i := 1; i <= iterations; i++ {
+		// Update state with current iteration
+		if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
+			if agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
+				agentState.CurrentIter = i
+				_ = e.cfg.StateManager.MergeUpdate(agentState)
+			}
+		}
+
 		fmt.Fprintf(e.cfg.Output, "\n=== Pipeline Iteration %d/%d ===\n", i, iterations)
 
-		if err := e.runDAG(graph, taskNames, i); err != nil {
+		if err := e.runDAG(graph, taskNames, i, outputDir); err != nil {
 			return fmt.Errorf("iteration %d failed: %w", i, err)
 		}
 
 		fmt.Fprintf(e.cfg.Output, "--- Iteration %d complete ---\n", i)
+	}
+
+	// Mark pipeline as terminated on completion
+	if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
+		if agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
+			agentState.Status = "terminated"
+			agentState.ExitReason = "completed"
+			now := time.Now()
+			agentState.TerminatedAt = &now
+			_ = e.cfg.StateManager.MergeUpdate(agentState)
+		}
 	}
 
 	fmt.Fprintf(e.cfg.Output, "\nPipeline completed successfully (%d iterations)\n", iterations)
@@ -76,7 +109,7 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 }
 
 // runDAG executes a single DAG iteration.
-func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration int) error {
+func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration int, outputDir string) error {
 	// Initialize state tracker
 	states := NewStateTracker(taskNames)
 
@@ -108,7 +141,7 @@ func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration int) error
 		}
 
 		// Execute ready tasks in parallel
-		if err := e.executeTasks(graph, readyTasks, states, writers, iteration); err != nil {
+		if err := e.executeTasks(graph, readyTasks, states, writers, iteration, outputDir); err != nil {
 			// Log error but continue - individual task failures don't stop the DAG
 			fmt.Fprintf(e.cfg.Output, "Warning: task execution error: %v\n", err)
 		}
@@ -140,7 +173,7 @@ func (e *Executor) skipBlockedTasks(graph *Graph, tracker *StateTracker, current
 }
 
 // executeTasks runs multiple tasks in parallel.
-func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *StateTracker, writers *output.WriterGroup, iteration int) error {
+func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *StateTracker, writers *output.WriterGroup, iteration int, outputDir string) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errors []error
@@ -161,7 +194,7 @@ func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *State
 
 			fmt.Fprintf(out, "Starting (iteration %d)\n", iteration)
 
-			err := e.runTask(name, t, out)
+			err := e.runTask(name, t, out, outputDir)
 			if err != nil {
 				tracker.SetFailed(name, err)
 				fmt.Fprintf(out, "Failed: %v\n", err)
@@ -184,7 +217,7 @@ func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *State
 }
 
 // runTask executes a single task.
-func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer) error {
+func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, outputDir string) error {
 	// Generate task ID
 	taskID := state.GenerateID()
 
@@ -192,6 +225,12 @@ func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer) er
 	promptContent, _, err := e.loadTaskPrompt(task)
 	if err != nil {
 		return err
+	}
+
+	// Process {{output:task_name}} directives before other injections
+	promptContent, err = prompt.ProcessOutputDirectives(promptContent, outputDir)
+	if err != nil {
+		return fmt.Errorf("failed to process output directives: %w", err)
 	}
 
 	// Inject task ID into prompt
@@ -206,6 +245,9 @@ func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer) er
 	// Generate agent ID and inject it
 	agentID := state.GenerateID()
 	promptContent = prompt.InjectAgentID(promptContent, agentID)
+
+	// Inject the output directory so the agent can write its own state
+	promptContent = prompt.InjectOutputDir(promptContent, outputDir, taskName)
 
 	// Create and run the agent
 	cfg := agent.Config{

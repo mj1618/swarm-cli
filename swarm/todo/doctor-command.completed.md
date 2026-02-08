@@ -40,7 +40,7 @@ swarm doctor
 
 ✓ Configuration
   Global config: ~/.config/swarm/config.toml (found)
-  Project config: swarm/.swarm.toml (not found, using defaults)
+  Project config: swarm/swarm.toml (not found, using defaults)
   Backend: cursor
   Model: claude-opus-4-20250514
 
@@ -50,13 +50,13 @@ swarm doctor
   Version: 0.50.0
 
 ✓ State
-  State file: ~/.swarm/state.json (exists, 2.4 KB)
+  State file: ~/swarm/state.json (exists, 2.4 KB)
   Running agents: 2
   Terminated agents: 15
   Stale entries: 0
 
 ✓ Disk Space
-  Log directory: ~/.swarm/logs/
+  Log directory: ~/swarm/logs/
   Log files: 17 files, 45 MB total
   Available space: 52 GB
 
@@ -91,7 +91,7 @@ swarm doctor
     swarm prune
 
 ⚠ Disk Space
-  Log directory: ~/.swarm/logs/
+  Log directory: ~/swarm/logs/
   Log files: 847 files, 12 GB total
   Available space: 1.2 GB (LOW)
   

@@ -55,7 +55,7 @@ var configSetModelCmd = &cobra.Command{
     Long: `Set the default model for agent runs.
 
 The model is used when no --model flag is specified on the run command.
-By default, updates the project config (swarm/.swarm.toml). Use --global to update the global config.`,
+By default, updates the project config (swarm/swarm.toml). Use --global to update the global config.`,
     Example: `  # Set default model for project
   swarm config set-model opus
 
@@ -118,7 +118,7 @@ Success:
 ```
 $ swarm config set-model opus
 Default model set to "opus"
-Updated config: /path/to/project/swarm/.swarm.toml
+Updated config: /path/to/project/swarm/swarm.toml
 ```
 
 With global flag:

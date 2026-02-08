@@ -17,10 +17,10 @@ go test ./...                     # Run all tests
 - `cmd/` — CLI commands (cobra). One file per command.
 - `internal/agent/` — agent execution and process management
 - `internal/compose/` — YAML compose file parsing and validation
-- `internal/config/` — configuration loading (TOML). Merges global (`~/.config/swarm/config.toml`) + project (`swarm/.swarm.toml`) + CLI flags
+- `internal/config/` — configuration loading (TOML). Merges global (`~/.config/swarm/config.toml`) + project (`swarm/swarm.toml`) + CLI flags
 - `internal/dag/` — DAG executor for pipeline workflows with dependency conditions
 - `internal/runner/` — multi-iteration loop with signal handling, pause/resume, timeouts
-- `internal/state/` — agent state persistence to `~/.swarm/state.json`
+- `internal/state/` — agent state persistence to `~/swarm/state.json`
 - `internal/prompt/` — prompt loading from files/stdin/strings, `{{include:}}` directive processing
 - `internal/logparser/` — parses agent output for token/cost stats
 - `internal/output/` — terminal output formatting (bubbletea/lipgloss)
@@ -28,11 +28,11 @@ go test ./...                     # Run all tests
 
 ## Key Configuration
 
-- Backend config: `swarm/.swarm.toml` (backend=claude-code, model=opus)
+- Backend config: `swarm/swarm.toml` (backend=claude-code, model=opus)
 - Compose file: `swarm/swarm.yaml` (defines tasks with prompts and iterations)
 - Prompts directory: `swarm/prompts/` (markdown files)
-- State: `~/.swarm/state.json`
-- Logs: `~/.swarm/logs/`
+- State: `~/swarm/state.json`
+- Logs: `~/swarm/logs/`
 
 ## Testing the CLI Manually
 

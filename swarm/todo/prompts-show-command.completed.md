@@ -2,7 +2,7 @@
 
 ## Problem
 
-The `swarm prompts` command lists available prompts by name, but there's no way to view the content of a prompt from the CLI. Users have to manually navigate to `./swarm/prompts/` or `~/.swarm/prompts/` and open the file to see what a prompt contains.
+The `swarm prompts` command lists available prompts by name, but there's no way to view the content of a prompt from the CLI. Users have to manually navigate to `./swarm/prompts/` or `~/swarm/prompts/` and open the file to see what a prompt contains.
 
 This is a common workflow:
 1. User runs `swarm prompts` to see available prompts
@@ -86,7 +86,7 @@ var promptsCmd = &cobra.Command{
 
 Prompts are markdown files stored in:
   - Project: ./swarm/prompts/
-  - Global:  ~/.swarm/prompts/`,
+  - Global:  ~/swarm/prompts/`,
 }
 
 func init() {
@@ -113,7 +113,7 @@ var promptsListCmd = &cobra.Command{
 	Long: `List all available prompt files from the prompts directory.
 
 By default, shows prompts from the project directory (./swarm/prompts/).
-Use --global to show prompts from the global directory (~/.swarm/prompts/).`,
+Use --global to show prompts from the global directory (~/swarm/prompts/).`,
 	Example: `  # List prompts in current project
   swarm prompts list
 
@@ -176,7 +176,7 @@ var promptsShowCmd = &cobra.Command{
 	Long: `Display the content of a prompt file.
 
 By default, shows prompts from the project directory (./swarm/prompts/).
-Use --global to show a prompt from the global directory (~/.swarm/prompts/).`,
+Use --global to show a prompt from the global directory (~/swarm/prompts/).`,
 	Example: `  # Show a project prompt
   swarm prompts show coder
 

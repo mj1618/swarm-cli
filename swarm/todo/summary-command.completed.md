@@ -6,7 +6,7 @@ When agents complete or terminate, users often want a quick overview of what hap
 
 1. **Read full logs**: `swarm logs my-agent --tail 500` and manually scan for relevant info
 2. **Use inspect**: `swarm inspect my-agent` only shows metadata, not what the agent actually did
-3. **Grep manually**: `cat ~/.swarm/logs/abc123.log | grep -i error` to find specific patterns
+3. **Grep manually**: `cat ~/swarm/logs/abc123.log | grep -i error` to find specific patterns
 
 This is time-consuming for users who manage multiple agents or need quick status checks.
 

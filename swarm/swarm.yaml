@@ -5,7 +5,14 @@ tasks:
   coder:
     prompt: coder
     depends_on: [planner]
+  evaluator:
+    prompt: evaluator
+    depends_on: [coder]
+  tester:
+    prompt: tester
+    depends_on: [evaluator]
+
 pipelines:
   main:
     iterations: 20
-    tasks: [planner, coder]
+    tasks: [planner, coder, evaluator, tester]

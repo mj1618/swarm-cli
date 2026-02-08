@@ -58,7 +58,7 @@ swarm top --interval 1s
 ╭─ Selected: abc123 (frontend-work) ───────────────────────────────────────────╮
 │  Started: 2026-01-28 14:32:05                                                │
 │  Directory: /Users/mj1618/projects/frontend                                    │
-│  Log: ~/.swarm/logs/abc123.log                                               │
+│  Log: ~/swarm/logs/abc123.log                                               │
 ╰──────────────────────────────────────────────────────────────────────────────╯
 
 Keys: [↑/↓] select  [p]ause  [r]esume  [k]ill  [l]ogs  [Enter] attach  [q]uit

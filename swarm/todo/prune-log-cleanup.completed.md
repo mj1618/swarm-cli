@@ -2,7 +2,7 @@
 
 ## Problem
 
-When users run `swarm prune` to remove terminated agents, only the state entries are removed from `~/.swarm/state.json`. The associated log files in `~/.swarm/logs/` remain on disk indefinitely.
+When users run `swarm prune` to remove terminated agents, only the state entries are removed from `~/swarm/state.json`. The associated log files in `~/swarm/logs/` remain on disk indefinitely.
 
 Over time, this leads to:
 1. Accumulation of orphaned log files consuming disk space

@@ -25,12 +25,12 @@ Currently, when users remove agents with `swarm rm`:
 ```bash
 # Remove an agent
 swarm rm abc123
-# Log file remains at ~/.swarm/logs/abc123.log - must manually delete
+# Log file remains at ~/swarm/logs/abc123.log - must manually delete
 ```
 
 This creates orphaned log files that accumulate over time. Users must either:
 
-1. Manually find and delete log files: `rm ~/.swarm/logs/abc123.log`
+1. Manually find and delete log files: `rm ~/swarm/logs/abc123.log`
 2. Use `swarm prune --logs` to clean up, but this removes ALL terminated agents, not specific ones
 
 The `prune` command has this capability:

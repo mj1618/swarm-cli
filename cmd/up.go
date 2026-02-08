@@ -188,13 +188,24 @@ func runPipeline(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir s
 
 	fmt.Printf("Running pipeline %q from %s\n", pipelineName, upFile)
 
-	// Create the executor
-	executor := dag.NewExecutor(dag.ExecutorConfig{
+	execCfg := dag.ExecutorConfig{
 		AppConfig:  appConfig,
 		PromptsDir: promptsDir,
 		WorkingDir: workingDir,
 		Output:     os.Stdout,
-	})
+	}
+
+	// If running as a detached child, set up state tracking
+	if upInternalTaskID != "" {
+		mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
+		if err == nil {
+			execCfg.StateManager = mgr
+			execCfg.TaskID = upInternalTaskID
+		}
+	}
+
+	// Create the executor
+	executor := dag.NewExecutor(execCfg)
 
 	// Run the pipeline
 	return executor.RunPipeline(*pipeline, cf.Tasks)

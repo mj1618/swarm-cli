@@ -213,7 +213,7 @@ func GlobalConfigPath() (string, error) {
 
 // ProjectConfigPath returns the path to the project config file.
 func ProjectConfigPath() string {
-	return "swarm/.swarm.toml"
+	return "swarm/swarm.toml"
 }
 
 // Load reads and merges configuration from global and project config files.

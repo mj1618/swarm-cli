@@ -14,7 +14,7 @@ var promptsCmd = &cobra.Command{
 
 Prompts are markdown files stored in:
   - Project: ./swarm/prompts/
-  - Global:  ~/.swarm/prompts/
+  - Global:  ~/swarm/prompts/
 
 When called without a subcommand, lists available prompts.`,
 	Example: `  # List prompts in current project
@@ -38,7 +38,7 @@ var promptsListCmd = &cobra.Command{
 	Long: `List all available prompt files from the prompts directory.
 
 By default, shows prompts from the project directory (./swarm/prompts/).
-Use --global to show prompts from the global directory (~/.swarm/prompts/).`,
+Use --global to show prompts from the global directory (~/swarm/prompts/).`,
 	Example: `  # List prompts in current project
   swarm prompts list
 

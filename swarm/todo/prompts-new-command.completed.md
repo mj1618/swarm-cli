@@ -19,7 +19,7 @@ All acceptance criteria verified through testing.
 
 Currently, users must manually create prompt files by navigating to the prompts directory and creating markdown files. This is cumbersome and error-prone:
 
-1. Users need to remember the correct directory path (`./swarm/prompts/` or `~/.swarm/prompts/`)
+1. Users need to remember the correct directory path (`./swarm/prompts/` or `~/swarm/prompts/`)
 2. Users must ensure the `.md` extension is added
 3. There's no way to scaffold from an existing prompt as a starting point
 4. New users may not know what a well-structured prompt looks like
@@ -290,7 +290,7 @@ swarm prompts new test-writer --content "Write unit tests for untested functions
 
 ```bash
 $ swarm prompts new common-review --global
-Created prompt: ~/.swarm/prompts/common-review.md
+Created prompt: ~/swarm/prompts/common-review.md
 ```
 
 ## Edge cases
@@ -306,7 +306,7 @@ Created prompt: ~/.swarm/prompts/common-review.md
 ## Acceptance criteria
 
 - `swarm prompts new my-feature` creates `./swarm/prompts/my-feature.md` with default template
-- `swarm prompts new my-feature --global` creates in `~/.swarm/prompts/`
+- `swarm prompts new my-feature --global` creates in `~/swarm/prompts/`
 - `swarm prompts new my-feature --from coder` copies content from existing `coder` prompt
 - `swarm prompts new my-feature --content "..."` uses provided content
 - `swarm prompts new my-feature --no-edit` creates without opening editor

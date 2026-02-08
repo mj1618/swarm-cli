@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/fatih/color"
+	"github.com/mj1618/swarm-cli/internal/compose"
 	"github.com/mj1618/swarm-cli/internal/config"
 	"github.com/mj1618/swarm-cli/internal/prompt"
 	"github.com/mj1618/swarm-cli/internal/state"
@@ -313,41 +314,75 @@ func checkPrompts() CheckResult {
 		return result
 	}
 
+	promptsDirExists := true
 	if _, err := os.Stat(promptsDir); os.IsNotExist(err) {
-		result.Status = "fail"
-		result.Details = append(result.Details, fmt.Sprintf("Prompts directory: %s (NOT FOUND)", promptsDir))
-		result.Suggestions = append(result.Suggestions,
-			fmt.Sprintf("Create prompts directory: mkdir -p %s", promptsDir),
-			"Add a prompt file: swarm prompts new my-task")
-		return result
+		promptsDirExists = false
 	}
 
-	result.Details = append(result.Details, fmt.Sprintf("Prompts directory: %s", promptsDir))
+	if promptsDirExists {
+		result.Details = append(result.Details, fmt.Sprintf("Prompts directory: %s", promptsDir))
 
-	// Count prompts
-	prompts, err := prompt.ListPrompts(promptsDir)
+		// List available prompts
+		prompts, err := prompt.ListPrompts(promptsDir)
+		if err != nil {
+			result.Status = "warn"
+			result.Details = append(result.Details, fmt.Sprintf("Could not list prompts: %v", err))
+		} else if len(prompts) > 0 {
+			display := prompts
+			if len(display) > 5 {
+				display = display[:5]
+			}
+			promptList := strings.Join(display, ", ")
+			if len(prompts) > 5 {
+				promptList += fmt.Sprintf(" ... and %d more", len(prompts)-5)
+			}
+			result.Details = append(result.Details, fmt.Sprintf("Prompts found: %d (%s)", len(prompts), promptList))
+		}
+	}
+
+	// Check compose file for prompt references
+	composePath := compose.DefaultPath()
+	cf, err := compose.Load(composePath)
 	if err != nil {
-		result.Status = "warn"
-		result.Details = append(result.Details, fmt.Sprintf("Could not list prompts: %v", err))
+		// No compose file or parse error — skip compose-level checks
+		if !promptsDirExists {
+			result.Details = append(result.Details, fmt.Sprintf("Prompts directory: %s (not found)", promptsDir))
+		}
 		return result
 	}
 
-	if len(prompts) == 0 {
-		result.Status = "warn"
-		result.Details = append(result.Details, "No prompts found (*.md files)")
+	var missing []string
+
+	for name, task := range cf.Tasks {
+		if task.Prompt != "" {
+			// prompt: references the prompts directory
+			if !promptsDirExists {
+				missing = append(missing, fmt.Sprintf("%s: prompt %q (prompts directory not found)", name, task.Prompt))
+				continue
+			}
+			promptPath := prompt.GetPromptPath(promptsDir, task.Prompt)
+			if _, err := os.Stat(promptPath); os.IsNotExist(err) {
+				missing = append(missing, fmt.Sprintf("%s: prompt %q not found", name, task.Prompt))
+			}
+		}
+		if task.PromptFile != "" {
+			if _, err := os.Stat(task.PromptFile); os.IsNotExist(err) {
+				missing = append(missing, fmt.Sprintf("%s: prompt-file %q not found", name, task.PromptFile))
+			}
+		}
+	}
+
+	if len(missing) > 0 {
+		result.Status = "fail"
+		for _, m := range missing {
+			result.Details = append(result.Details, m)
+		}
 		result.Suggestions = append(result.Suggestions,
-			"Add a prompt file: swarm prompts new my-task")
-	} else {
-		// Show first few prompt names
-		display := prompts
-		if len(display) > 5 {
-			display = display[:5]
-		}
-		promptList := strings.Join(display, ", ")
-		if len(prompts) > 5 {
-			promptList += fmt.Sprintf(" ... and %d more", len(prompts)-5)
-		}
-		result.Details = append(result.Details, fmt.Sprintf("Prompts found: %d (%s)", len(prompts), promptList))
+			"Create missing prompts: swarm prompts new <name>",
+			"Or use prompt-string for inline prompts in swarm.yaml")
+	} else if !promptsDirExists {
+		// No compose references need it and it doesn't exist — that's fine
+		result.Details = append(result.Details, fmt.Sprintf("Prompts directory: %s (not found, not needed)", promptsDir))
 	}
 
 	return result

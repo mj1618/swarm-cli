@@ -1,3 +1,7 @@
+# Context from planner
+
+{{output:planner}}
+
 # Find unfinished tasks
 
 Use your agent id to find tasks that you left unfinished by looking for files named:

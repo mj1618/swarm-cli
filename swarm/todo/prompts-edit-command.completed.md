@@ -119,7 +119,7 @@ The editor is determined by:
 4. Fallback: vim, vi, nano (Unix) or notepad (Windows)
 
 By default, shows prompts from the project directory (./swarm/prompts/).
-Use --global to edit a prompt from the global directory (~/.swarm/prompts/).`,
+Use --global to edit a prompt from the global directory (~/swarm/prompts/).`,
     Example: `  # Edit a project prompt
   swarm prompts edit coder
 

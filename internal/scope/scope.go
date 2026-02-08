@@ -16,7 +16,7 @@ const (
 
 	// ScopeGlobal scopes operations globally.
 	// - Lists all agents regardless of where they were started
-	// - Uses ~/.swarm/prompts/ for prompts
+	// - Uses ~/swarm/prompts/ for prompts
 	ScopeGlobal
 )
 
@@ -42,7 +42,7 @@ func (s Scope) PromptsDir() (string, error) {
 	}
 }
 
-// GlobalPromptsDir returns the global prompts directory (~/.swarm/prompts/).
+// GlobalPromptsDir returns the global prompts directory (~/swarm/prompts/).
 func GlobalPromptsDir() (string, error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {

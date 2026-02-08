@@ -87,7 +87,7 @@ The on-complete command receives context about the completed agent via environme
 Add ability to set default on-complete hooks in `swarm.yaml`:
 
 ```yaml
-# swarm/.swarm.toml
+# swarm/swarm.toml
 on_complete = "notify-send 'Agent completed: {name}'"
 
 # Or per-prompt hooks

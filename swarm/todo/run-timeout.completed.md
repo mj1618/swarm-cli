@@ -98,7 +98,7 @@ swarm run -p my-task --timeout 1h30m   # combined
 Timeouts can also be set in config files:
 
 ```toml
-# swarm/.swarm.toml or ~/.config/swarm/config.toml
+# swarm/swarm.toml or ~/.config/swarm/config.toml
 
 # Default total timeout (0 = no timeout)
 timeout = "2h"

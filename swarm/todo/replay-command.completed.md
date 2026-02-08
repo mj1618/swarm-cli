@@ -66,7 +66,7 @@ Original configuration:
 Started detached agent: def456 (PID: 12345)
 Name: my-agent-replay-1
 Iterations: 10
-Log file: ~/.swarm/logs/def456.log
+Log file: ~/swarm/logs/def456.log
 ```
 
 ### Dry run output

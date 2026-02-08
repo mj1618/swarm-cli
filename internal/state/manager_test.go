@@ -10,7 +10,7 @@ import (
 )
 
 // newTestManager creates a Manager backed by a temp directory so tests
-// don't interfere with the real ~/.swarm/state.json or each other.
+// don't interfere with the real ~/swarm/state.json or each other.
 func newTestManager(t *testing.T) *Manager {
 	t.Helper()
 	dir := t.TempDir()

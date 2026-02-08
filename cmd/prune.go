@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -14,6 +15,7 @@ import (
 
 var pruneForce bool
 var pruneLogs bool
+var pruneOutputs bool
 var pruneOlderThan string
 
 var pruneCmd = &cobra.Command{
@@ -25,6 +27,9 @@ This command removes all agents that are no longer running. By default,
 it will prompt for confirmation. Use --force to skip the confirmation.
 
 Use --logs to also delete the log files associated with pruned agents.
+
+Use --outputs to clean up pipeline output capture directories (./swarm/outputs/).
+When used with --older-than, only output dirs older than the threshold are removed.
 
 Use --older-than to only prune agents older than a specified duration.
 Supported duration formats: 30s, 5m, 2h, 1d (days), 7d.`,
@@ -44,7 +49,10 @@ Supported duration formats: 30s, 5m, 2h, 1d (days), 7d.`,
   swarm prune --older-than 7d
 
   # Remove agents and logs older than 24 hours
-  swarm prune --logs --older-than 24h`,
+  swarm prune --logs --older-than 24h
+
+  # Clean up pipeline output directories older than 7 days
+  swarm prune --outputs --older-than 7d --force`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		// Create state manager with scope
 		mgr, err := state.NewManagerWithScope(GetScope(), "")
@@ -150,6 +158,17 @@ Supported duration formats: 30s, 5m, 2h, 1d (days), 7d.`,
 		} else {
 			fmt.Printf("Removed %d agent(s).\n", removed)
 		}
+
+		// Clean up pipeline output directories if requested
+		if pruneOutputs {
+			outputsRemoved, err := pruneOutputDirs(cutoffTime)
+			if err != nil {
+				fmt.Printf("Warning: failed to clean output directories: %v\n", err)
+			} else if outputsRemoved > 0 {
+				fmt.Printf("Removed %d pipeline output directory(ies).\n", outputsRemoved)
+			}
+		}
+
 		return nil
 	},
 }
@@ -157,8 +176,49 @@ Supported duration formats: 30s, 5m, 2h, 1d (days), 7d.`,
 func init() {
 	pruneCmd.Flags().BoolVarP(&pruneForce, "force", "f", false, "Do not prompt for confirmation")
 	pruneCmd.Flags().BoolVar(&pruneLogs, "logs", false, "Also delete log files for pruned agents")
+	pruneCmd.Flags().BoolVar(&pruneOutputs, "outputs", false, "Also clean up pipeline output directories (./swarm/outputs/)")
 	pruneCmd.Flags().StringVar(&pruneOlderThan, "older-than", "", "Only prune agents older than duration (e.g., 7d, 24h, 30m)")
 	rootCmd.AddCommand(pruneCmd)
+}
+
+// pruneOutputDirs removes pipeline output directories from ./swarm/outputs/.
+// If cutoffTime is non-zero, only directories older than that time are removed.
+func pruneOutputDirs(cutoffTime time.Time) (int, error) {
+	outputsDir := filepath.Join(".", "swarm", "outputs")
+	entries, err := os.ReadDir(outputsDir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+
+	removed := 0
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+
+		// Filter by age if cutoff specified
+		if !cutoffTime.IsZero() {
+			info, err := entry.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().After(cutoffTime) {
+				continue
+			}
+		}
+
+		dirPath := filepath.Join(outputsDir, entry.Name())
+		if err := os.RemoveAll(dirPath); err != nil {
+			fmt.Printf("Warning: failed to remove output directory %s: %v\n", entry.Name(), err)
+			continue
+		}
+		removed++
+	}
+
+	return removed, nil
 }
 
 // pruneParseDurationWithDays handles durations with day support (e.g., "1d").

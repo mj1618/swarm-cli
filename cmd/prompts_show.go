@@ -21,7 +21,7 @@ var promptsShowCmd = &cobra.Command{
 	Long: `Display the content of a prompt file.
 
 By default, shows prompts from the project directory (./swarm/prompts/).
-Use --global to show a prompt from the global directory (~/.swarm/prompts/).
+Use --global to show a prompt from the global directory (~/swarm/prompts/).
 
 The --expand flag expands all {{include: path}} directives, showing the
 fully resolved prompt content.`,

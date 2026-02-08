@@ -184,7 +184,7 @@ agent --version
 claude --version
 ```
 
-The backend can also be configured per-project in `swarm/.swarm.toml` or globally in `~/.config/swarm/config.toml`. See the [Configuration](#configuration) section for details.
+The backend can also be configured per-project in `swarm/swarm.toml` or globally in `~/.config/swarm/config.toml`. See the [Configuration](#configuration) section for details.
 
 ## Quick Start
 
@@ -477,7 +477,7 @@ swarm config set-backend claude-code --global
 Swarm CLI uses TOML configuration files with the following priority (highest to lowest):
 
 1. CLI flags
-2. Project config (`swarm/.swarm.toml`)
+2. Project config (`swarm/swarm.toml`)
 3. Global config (`~/.config/swarm/config.toml`)
 4. Built-in defaults
 
@@ -547,7 +547,7 @@ Prompts are markdown files that contain instructions for the agent.
 | Scope | Directory |
 |-------|-----------|
 | Project | `./swarm/prompts/` |
-| Global | `~/.swarm/prompts/` |
+| Global | `~/swarm/prompts/` |
 
 ### Creating Prompts
 
@@ -597,11 +597,11 @@ Swarm CLI supports two scopes for organizing work:
 
 - Prompts: `./swarm/prompts/`
 - Agents: Only shows agents started in the current directory
-- Config: `swarm/.swarm.toml`
+- Config: `swarm/swarm.toml`
 
 ### Global Scope (`--global` / `-g`)
 
-- Prompts: `~/.swarm/prompts/`
+- Prompts: `~/swarm/prompts/`
 - Agents: Shows all agents across all directories
 - Config: `~/.config/swarm/config.toml`
 
@@ -673,11 +673,11 @@ swarm config set-backend cursor --global
 # Create project-specific overrides
 cd ~/projects/frontend
 swarm config set-backend cursor
-# Edit swarm/.swarm.toml to use faster model for frontend work
+# Edit swarm/swarm.toml to use faster model for frontend work
 
 cd ~/projects/backend  
 swarm config set-backend cursor
-# Edit swarm/.swarm.toml to use more capable model for backend work
+# Edit swarm/swarm.toml to use more capable model for backend work
 ```
 
 ### Running Multiple Tasks (Compose)
@@ -965,10 +965,10 @@ claude --version
 
 ### Clearing stale agent state
 
-Agent state is stored in `~/.swarm/state/`. If agents appear stuck or stale, you can manually clean the state:
+Agent state is stored in `~/swarm/state/`. If agents appear stuck or stale, you can manually clean the state:
 
 ```bash
-rm -rf ~/.swarm/state/*
+rm -rf ~/swarm/state/*
 ```
 
 ## License

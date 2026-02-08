@@ -184,6 +184,13 @@ func InjectAgentID(promptContent, agentID string) string {
 	return agentIDLine + "\n\n" + promptContent
 }
 
+// InjectOutputDir injects the pipeline output directory and task name into the prompt.
+// This tells the agent where to write state that downstream tasks can read.
+func InjectOutputDir(promptContent, outputDir, taskName string) string {
+	line := fmt.Sprintf("Your SWARM_STATE_DIR is %s. Read here to see what previous stages of the pipeline did. Write any output or state you want to share with downstream pipeline tasks to this directory.", outputDir)
+	return line + "\n\n" + promptContent
+}
+
 // InjectSubAgentRestriction injects a message telling the agent not to spawn sub-agents.
 // This is used when an agent is already a sub-agent to prevent deep nesting.
 func InjectSubAgentRestriction(promptContent, parentID string) string {

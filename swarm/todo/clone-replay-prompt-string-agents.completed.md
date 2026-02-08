@@ -18,7 +18,7 @@ Store the prompt content in the agent state so it can be recovered by `clone` an
 
 1. **Add a `PromptContent` field to `AgentState`** — store the full prompt string in state JSON. This is the simplest approach but could make `state.json` large if prompts are very long.
 
-2. **Store prompt content in a sidecar file** — e.g., `~/.swarm/prompts/<agent-id>.md`. Keeps state.json small but adds file management complexity.
+2. **Store prompt content in a sidecar file** — e.g., `~/swarm/prompts/<agent-id>.md`. Keeps state.json small but adds file management complexity.
 
 Option 1 is recommended for simplicity. Prompt strings are typically short (a few sentences), and even long ones (a few KB) are negligible compared to log files.
 
