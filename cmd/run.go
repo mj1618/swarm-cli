@@ -248,6 +248,14 @@ Labels can be attached to agents for categorization and filtering using the
 			}
 		}
 
+		// Store raw prompt content for -s/--stdin so clone/replay can reconstruct
+		var storedPromptContent string
+		if runPromptString != "" {
+			storedPromptContent = runPromptString
+		} else if stdinContent != "" {
+			storedPromptContent = stdinContent
+		}
+
 		// Apply prefix/suffix to prompt content
 		// For detached child, use values passed from parent
 		effectivePrefix := runPrefix
@@ -503,22 +511,23 @@ Labels can be attached to agents for categorization and filtering using the
 			}
 
 			agentState := &state.AgentState{
-				ID:          taskID,
-				Name:        effectiveName,
-				ParentID:    effectiveParentID,
-				Labels:      labels,
-				PID:         0, // Placeholder, updated after child starts
-				Prompt:      promptName,
-				Model:       effectiveModel,
-				StartedAt:   time.Now(),
-				Iterations:  effectiveIterations,
-				CurrentIter: 0,
-				Status:      "running",
-				LogFile:     logFile,
-				WorkingDir:  workingDir,
-				EnvNames:    envNames,
-				TimeoutAt:   timeoutAt,
-				OnComplete:  runOnComplete,
+				ID:            taskID,
+				Name:          effectiveName,
+				ParentID:      effectiveParentID,
+				Labels:        labels,
+				PID:           0, // Placeholder, updated after child starts
+				Prompt:        promptName,
+				PromptContent: storedPromptContent,
+				Model:         effectiveModel,
+				StartedAt:     time.Now(),
+				Iterations:    effectiveIterations,
+				CurrentIter:   0,
+				Status:        "running",
+				LogFile:       logFile,
+				WorkingDir:    workingDir,
+				EnvNames:      envNames,
+				TimeoutAt:     timeoutAt,
+				OnComplete:    runOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -589,21 +598,22 @@ Labels can be attached to agents for categorization and filtering using the
 
 				// Register single-iteration agent in state
 				agentState = &state.AgentState{
-					ID:          taskID,
-					Name:        effectiveName,
-					ParentID:    effectiveParentID,
-					Labels:      labels,
-					PID:         os.Getpid(),
-					Prompt:      promptName,
-					Model:       effectiveModel,
-					StartedAt:   time.Now(),
-					Iterations:  1,
-					CurrentIter: 1,
-					Status:      "running",
-					WorkingDir:  workingDir,
-					EnvNames:    envNames,
-					TimeoutAt:   timeoutAt,
-					OnComplete:  effectiveOnComplete,
+					ID:            taskID,
+					Name:          effectiveName,
+					ParentID:      effectiveParentID,
+					Labels:        labels,
+					PID:           os.Getpid(),
+					Prompt:        promptName,
+					PromptContent: storedPromptContent,
+					Model:         effectiveModel,
+					StartedAt:     time.Now(),
+					Iterations:    1,
+					CurrentIter:   1,
+					Status:        "running",
+					WorkingDir:    workingDir,
+					EnvNames:      envNames,
+					TimeoutAt:     timeoutAt,
+					OnComplete:    effectiveOnComplete,
 				}
 
 				if err := mgr.Register(agentState); err != nil {
@@ -704,21 +714,22 @@ Labels can be attached to agents for categorization and filtering using the
 
 			// Register this agent with working directory
 			agentState = &state.AgentState{
-				ID:          taskID,
-				Name:        effectiveName,
-				ParentID:    effectiveParentID,
-				Labels:      labels,
-				PID:         os.Getpid(),
-				Prompt:      promptName,
-				Model:       effectiveModel,
-				StartedAt:   time.Now(),
-				Iterations:  effectiveIterations,
-				CurrentIter: 0,
-				Status:      "running",
-				WorkingDir:  workingDir,
-				EnvNames:    envNames,
-				TimeoutAt:   timeoutAt,
-				OnComplete:  effectiveOnComplete,
+				ID:            taskID,
+				Name:          effectiveName,
+				ParentID:      effectiveParentID,
+				Labels:        labels,
+				PID:           os.Getpid(),
+				Prompt:        promptName,
+				PromptContent: storedPromptContent,
+				Model:         effectiveModel,
+				StartedAt:     time.Now(),
+				Iterations:    effectiveIterations,
+				CurrentIter:   0,
+				Status:        "running",
+				WorkingDir:    workingDir,
+				EnvNames:      envNames,
+				TimeoutAt:     timeoutAt,
+				OnComplete:    effectiveOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {

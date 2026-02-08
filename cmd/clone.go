@@ -145,14 +145,13 @@ to run in the source agent's original directory.`,
 		cmdParts = append(cmdParts, "swarm", "run")
 
 		// Determine how to pass the prompt
-		if promptName == "<string>" {
-			return fmt.Errorf("cannot clone agent with inline string prompt (prompt content not stored)")
+		if promptName == "<string>" || promptName == "<stdin>" || strings.HasSuffix(promptName, "+stdin") {
+			if source.PromptContent == "" {
+				return fmt.Errorf("cannot clone agent with prompt source %q (prompt content not stored)", promptName)
+			}
+			cmdParts = append(cmdParts, "-s", source.PromptContent)
 		} else if strings.Contains(promptName, "/") {
 			cmdParts = append(cmdParts, "-f", promptName)
-		} else if strings.HasSuffix(promptName, "+stdin") {
-			return fmt.Errorf("cannot clone agent with stdin-combined prompt (prompt content not stored)")
-		} else if promptName == "<stdin>" {
-			return fmt.Errorf("cannot clone agent with stdin prompt (prompt content not stored)")
 		} else {
 			cmdParts = append(cmdParts, "-p", promptName)
 		}
@@ -191,7 +190,13 @@ to run in the source agent's original directory.`,
 
 		// Load the prompt content
 		var promptContent string
-		if strings.Contains(promptName, "/") {
+		if promptName == "<string>" || promptName == "<stdin>" || strings.HasSuffix(promptName, "+stdin") {
+			// Use stored prompt content for inline/stdin prompts
+			if source.PromptContent == "" {
+				return fmt.Errorf("cannot clone agent with prompt source %q (prompt content not stored)", promptName)
+			}
+			promptContent = prompt.WrapPromptString(source.PromptContent)
+		} else if strings.Contains(promptName, "/") {
 			// File path - load from file
 			promptContent, err = prompt.LoadPromptFromFile(promptName)
 			if err != nil {
@@ -250,7 +255,13 @@ to run in the source agent's original directory.`,
 			detachedArgs = append(detachedArgs, "--model", effectiveModel)
 
 			// Determine how to pass the prompt
-			if strings.Contains(promptName, "/") {
+			if promptName == "<string>" || promptName == "<stdin>" || strings.HasSuffix(promptName, "+stdin") {
+				// Use stored prompt content for inline/stdin prompts
+				if source.PromptContent == "" {
+					return fmt.Errorf("cannot clone agent with prompt source %q (prompt content not stored)", promptName)
+				}
+				detachedArgs = append(detachedArgs, "--prompt-string", source.PromptContent)
+			} else if strings.Contains(promptName, "/") {
 				detachedArgs = append(detachedArgs, "--prompt-file", promptName)
 			} else {
 				detachedArgs = append(detachedArgs, "--prompt", promptName)
@@ -281,19 +292,20 @@ to run in the source agent's original directory.`,
 
 			// Register agent state
 			agentState := &state.AgentState{
-				ID:          taskID,
-				Name:        effectiveName,
-				PID:         pid,
-				Prompt:      promptName,
-				Model:       effectiveModel,
-				StartedAt:   time.Now(),
-				Iterations:  effectiveIterations,
-				CurrentIter: 0,
-				Status:      "running",
-				LogFile:     logFile,
-				WorkingDir:  effectiveWorkingDir,
-				EnvNames:    envNames,
-				OnComplete:  cloneOnComplete,
+				ID:            taskID,
+				Name:          effectiveName,
+				PID:           pid,
+				Prompt:        promptName,
+				PromptContent: source.PromptContent, // Preserve for future clones/replays
+				Model:         effectiveModel,
+				StartedAt:     time.Now(),
+				Iterations:    effectiveIterations,
+				CurrentIter:   0,
+				Status:        "running",
+				LogFile:       logFile,
+				WorkingDir:    effectiveWorkingDir,
+				EnvNames:      envNames,
+				OnComplete:    cloneOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -320,18 +332,19 @@ to run in the source agent's original directory.`,
 		if effectiveIterations == 1 {
 			// Register single-iteration agent in state
 			agentState := &state.AgentState{
-				ID:          taskID,
-				Name:        effectiveName,
-				PID:         os.Getpid(),
-				Prompt:      promptName,
-				Model:       effectiveModel,
-				StartedAt:   time.Now(),
-				Iterations:  1,
-				CurrentIter: 1,
-				Status:      "running",
-				WorkingDir:  effectiveWorkingDir,
-				EnvNames:    envNames,
-				OnComplete:  cloneOnComplete,
+				ID:            taskID,
+				Name:          effectiveName,
+				PID:           os.Getpid(),
+				Prompt:        promptName,
+				PromptContent: source.PromptContent, // Preserve for future clones/replays
+				Model:         effectiveModel,
+				StartedAt:     time.Now(),
+				Iterations:    1,
+				CurrentIter:   1,
+				Status:        "running",
+				WorkingDir:    effectiveWorkingDir,
+				EnvNames:      envNames,
+				OnComplete:    cloneOnComplete,
 			}
 
 			if err := mgr.Register(agentState); err != nil {
@@ -378,18 +391,19 @@ to run in the source agent's original directory.`,
 
 		// Register this agent with working directory
 		agentState := &state.AgentState{
-			ID:          taskID,
-			Name:        effectiveName,
-			PID:         os.Getpid(),
-			Prompt:      promptName,
-			Model:       effectiveModel,
-			StartedAt:   time.Now(),
-			Iterations:  effectiveIterations,
-			CurrentIter: 0,
-			Status:      "running",
-			WorkingDir:  effectiveWorkingDir,
-			EnvNames:    envNames,
-			OnComplete:  cloneOnComplete,
+			ID:            taskID,
+			Name:          effectiveName,
+			PID:           os.Getpid(),
+			Prompt:        promptName,
+			PromptContent: source.PromptContent, // Preserve for future clones/replays
+			Model:         effectiveModel,
+			StartedAt:     time.Now(),
+			Iterations:    effectiveIterations,
+			CurrentIter:   0,
+			Status:        "running",
+			WorkingDir:    effectiveWorkingDir,
+			EnvNames:      envNames,
+			OnComplete:    cloneOnComplete,
 		}
 
 		if err := mgr.Register(agentState); err != nil {

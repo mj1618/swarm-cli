@@ -76,14 +76,16 @@ a unique ID and a name based on the original (e.g., "my-agent-replay-1").`,
 			return fmt.Errorf("agent not found: %w", err)
 		}
 
-		// Check if prompt is replayable
-		if agent.Prompt == "<file>" || agent.Prompt == "<string>" || agent.Prompt == "<stdin>" {
-			return fmt.Errorf("cannot replay agent with prompt source %q - use 'swarm run' directly with the original prompt", agent.Prompt)
+		// Check if prompt content is available for inline/stdin prompts
+		if agent.Prompt == "<string>" || agent.Prompt == "<stdin>" || strings.HasSuffix(agent.Prompt, "+stdin") {
+			if agent.PromptContent == "" {
+				return fmt.Errorf("cannot replay agent with prompt source %q (prompt content not stored)", agent.Prompt)
+			}
 		}
 
-		// Handle combined stdin prompts (like "coder+stdin")
-		if strings.HasSuffix(agent.Prompt, "+stdin") {
-			return fmt.Errorf("cannot replay agent with stdin-combined prompt %q - use 'swarm run' directly with the original prompt", agent.Prompt)
+		// Still reject <file> prompts as they were never stored
+		if agent.Prompt == "<file>" {
+			return fmt.Errorf("cannot replay agent with prompt source %q - use 'swarm run' directly with the original prompt", agent.Prompt)
 		}
 
 		// Determine configuration (original values with overrides)
@@ -123,7 +125,12 @@ a unique ID and a name based on the original (e.g., "my-agent-replay-1").`,
 
 		// Build the command args for display
 		runArgs := []string{"run"}
-		runArgs = append(runArgs, "-p", prompt)
+		// Use -s for inline/stdin prompts, -p for named prompts
+		if prompt == "<string>" || prompt == "<stdin>" || strings.HasSuffix(prompt, "+stdin") {
+			runArgs = append(runArgs, "-s", agent.PromptContent)
+		} else {
+			runArgs = append(runArgs, "-p", prompt)
+		}
 		runArgs = append(runArgs, "-m", model)
 		runArgs = append(runArgs, "-n", strconv.Itoa(iterations))
 		runArgs = append(runArgs, "-N", name)
@@ -186,7 +193,14 @@ a unique ID and a name based on the original (e.g., "my-agent-replay-1").`,
 		fmt.Println()
 
 		// Execute the run command by setting the run flags
-		runPrompt = prompt
+		// Use prompt string for inline/stdin prompts, otherwise use prompt name
+		if prompt == "<string>" || prompt == "<stdin>" || strings.HasSuffix(prompt, "+stdin") {
+			runPromptString = agent.PromptContent
+			runPrompt = ""
+		} else {
+			runPrompt = prompt
+			runPromptString = ""
+		}
 		runModel = model
 		runIterations = iterations
 		runName = name
@@ -194,7 +208,6 @@ a unique ID and a name based on the original (e.g., "my-agent-replay-1").`,
 
 		// Clear any other run flags that might have been set
 		runPromptFile = ""
-		runPromptString = ""
 		runStdin = false
 		runForever = false
 		runWorkingDir = ""

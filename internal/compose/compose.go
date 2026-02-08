@@ -347,6 +347,30 @@ func (cf *ComposeFile) GetStandaloneTasks() map[string]Task {
 	return standalone
 }
 
+// Warnings returns non-fatal warnings about the compose file configuration.
+// These highlight situations that are likely user mistakes but not validation errors.
+func (cf *ComposeFile) Warnings() []string {
+	var warnings []string
+
+	// Check for tasks with depends_on but no pipeline to run them
+	if !cf.HasPipelines() {
+		var orphanedTasks []string
+		for name, task := range cf.Tasks {
+			if len(task.DependsOn) > 0 {
+				orphanedTasks = append(orphanedTasks, name)
+			}
+		}
+		if len(orphanedTasks) > 0 {
+			warnings = append(warnings, fmt.Sprintf(
+				"tasks %v have depends_on but no pipeline is defined — these tasks will not run. Define a pipelines section to run them in DAG order.",
+				orphanedTasks,
+			))
+		}
+	}
+
+	return warnings
+}
+
 // isDependent returns true if any task depends on the given task name.
 func (cf *ComposeFile) isDependent(taskName string) bool {
 	for _, task := range cf.Tasks {

@@ -21,20 +21,21 @@ type AgentState struct {
 	ParentID      string            `json:"parent_id,omitempty"` // Parent agent ID for sub-agents
 	Labels        map[string]string `json:"labels,omitempty"`
 	PID           int               `json:"pid"`
-	Prompt        string     `json:"prompt"`
-	Model         string     `json:"model"`
-	StartedAt     time.Time  `json:"started_at"`
-	Iterations    int        `json:"iterations"`
-	CurrentIter   int        `json:"current_iteration"`
-	Status        string     `json:"status"`         // running, terminated
-	TerminateMode string     `json:"terminate_mode"` // "", "immediate", "after_iteration"
-	Paused        bool       `json:"paused"`         // Whether agent loop is paused
-	PausedAt      *time.Time `json:"paused_at,omitempty"` // When agent entered pause loop
-	LogFile       string     `json:"log_file"`
-	WorkingDir    string     `json:"working_dir"` // Directory where agent was started
-	EnvNames      []string   `json:"env_names,omitempty"` // Environment variable names (values not stored for security)
-	TimeoutAt     *time.Time `json:"timeout_at,omitempty"`     // When total timeout will trigger
-	TimeoutReason string     `json:"timeout_reason,omitempty"` // "total" or "iteration" when terminated by timeout
+	Prompt        string            `json:"prompt"`
+	PromptContent string            `json:"prompt_content,omitempty"` // Stored for -s/--stdin so clone/replay can reconstruct
+	Model         string            `json:"model"`
+	StartedAt     time.Time         `json:"started_at"`
+	Iterations    int               `json:"iterations"`
+	CurrentIter   int               `json:"current_iteration"`
+	Status        string            `json:"status"`              // running, terminated
+	TerminateMode string            `json:"terminate_mode"`      // "", "immediate", "after_iteration"
+	Paused        bool              `json:"paused"`              // Whether agent loop is paused
+	PausedAt      *time.Time        `json:"paused_at,omitempty"` // When agent entered pause loop
+	LogFile       string            `json:"log_file"`
+	WorkingDir    string            `json:"working_dir"`              // Directory where agent was started
+	EnvNames      []string          `json:"env_names,omitempty"`      // Environment variable names (values not stored for security)
+	TimeoutAt     *time.Time        `json:"timeout_at,omitempty"`     // When total timeout will trigger
+	TimeoutReason string            `json:"timeout_reason,omitempty"` // "total" or "iteration" when terminated by timeout
 
 	// Termination tracking
 	TerminatedAt *time.Time `json:"terminated_at,omitempty"` // When agent stopped
@@ -46,9 +47,9 @@ type AgentState struct {
 	LastError       string `json:"last_error,omitempty"`  // Last error message if any
 
 	// Token and cost tracking
-	InputTokens  int64   `json:"input_tokens"`        // Total input tokens used
-	OutputTokens int64   `json:"output_tokens"`       // Total output tokens used
-	TotalCost    float64 `json:"total_cost_usd"`      // Total cost in USD
+	InputTokens  int64   `json:"input_tokens"`           // Total input tokens used
+	OutputTokens int64   `json:"output_tokens"`          // Total output tokens used
+	TotalCost    float64 `json:"total_cost_usd"`         // Total cost in USD
 	CurrentTask  string  `json:"current_task,omitempty"` // Last activity summary (e.g., "Read: auth.ts")
 
 	// Hooks
@@ -288,15 +289,16 @@ func mergeControlFields(existing, agent *AgentState) {
 	// Iterations: preserve disk value if it differs (externally changed)
 	// The runner reads this at iteration start and syncs it to its local copy
 	agent.Iterations = existing.Iterations
-	
+
 	// Model: preserve disk value if it differs (externally changed)
 	agent.Model = existing.Model
-	
+
 	// TerminateMode: preserve disk value - this is set by `swarm stop`
 	agent.TerminateMode = existing.TerminateMode
-	
+
 	// Paused: preserve disk value - this is set by `swarm pause`
 	agent.Paused = existing.Paused
+	agent.PausedAt = existing.PausedAt
 }
 
 // SetIterations atomically updates the Iterations field for an agent.

@@ -23,16 +23,10 @@ func TestDownCommandFlags(t *testing.T) {
 		}
 	}
 
+	// Verify graceful flag does NOT exist (down always kills immediately)
 	gracefulFlag := cmd.Flags().Lookup("graceful")
-	if gracefulFlag == nil {
-		t.Error("expected 'graceful' flag to exist")
-	} else {
-		if gracefulFlag.Shorthand != "G" {
-			t.Errorf("graceful flag shorthand = %q, want %q", gracefulFlag.Shorthand, "G")
-		}
-		if gracefulFlag.DefValue != "false" {
-			t.Errorf("graceful flag default = %q, want %q", gracefulFlag.DefValue, "false")
-		}
+	if gracefulFlag != nil {
+		t.Error("expected 'graceful' flag to NOT exist; down should always kill immediately")
 	}
 }
 

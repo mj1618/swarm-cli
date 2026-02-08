@@ -187,6 +187,9 @@ func runAllPipelinesAndStandaloneTasks(cf *compose.ComposeFile, promptsDir, work
 	}
 	if len(pipelineNames) == 0 && len(standaloneNames) == 0 {
 		fmt.Println("  No pipelines or standalone tasks to run")
+		for _, w := range cf.Warnings() {
+			fmt.Printf("  Warning: %s\n", w)
+		}
 		return nil
 	}
 	fmt.Println()

@@ -3,6 +3,7 @@ package compose
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -410,9 +411,9 @@ func TestTaskEffectiveName(t *testing.T) {
 
 func TestTaskEffectiveIterations(t *testing.T) {
 	tests := []struct {
-		name       string
-		task       Task
-		wantIter   int
+		name     string
+		task     Task
+		wantIter int
 	}{
 		{
 			name:     "zero returns 1",
@@ -1018,6 +1019,76 @@ func TestDependency_EffectiveCondition(t *testing.T) {
 		if got := d.EffectiveCondition(); got != tt.want {
 			t.Errorf("EffectiveCondition() for %q = %q, want %q", tt.condition, got, tt.want)
 		}
+	}
+}
+
+func TestWarnings_DependsOnWithoutPipeline(t *testing.T) {
+	tests := []struct {
+		name         string
+		cf           *ComposeFile
+		wantWarnings int
+	}{
+		{
+			name: "depends_on without pipeline emits warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b", DependsOn: []Dependency{{Task: "a"}}},
+				},
+			},
+			wantWarnings: 1,
+		},
+		{
+			name: "depends_on with pipeline emits no warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b", DependsOn: []Dependency{{Task: "a"}}},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"a", "b"}},
+				},
+			},
+			wantWarnings: 0,
+		},
+		{
+			name: "no depends_on and no pipeline emits no warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+					"b": {Prompt: "b"},
+				},
+			},
+			wantWarnings: 0,
+		},
+		{
+			name: "no depends_on with pipeline emits no warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"a": {Prompt: "a"},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"a"}},
+				},
+			},
+			wantWarnings: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			warnings := tt.cf.Warnings()
+			if len(warnings) != tt.wantWarnings {
+				t.Errorf("Warnings() returned %d warnings, want %d: %v", len(warnings), tt.wantWarnings, warnings)
+			}
+			if tt.wantWarnings > 0 {
+				// Verify warning mentions the task name and suggests pipelines
+				w := warnings[0]
+				if !strings.Contains(w, "depends_on") || !strings.Contains(w, "pipeline") {
+					t.Errorf("warning should mention depends_on and pipeline, got: %s", w)
+				}
+			}
+		})
 	}
 }
 
