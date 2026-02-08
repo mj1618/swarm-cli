@@ -4,6 +4,8 @@ package process
 
 import (
 	"os"
+	"os/exec"
+	"strconv"
 )
 
 // Kill terminates a process on Windows.
@@ -15,8 +17,15 @@ func Kill(pid int) error {
 	return proc.Kill()
 }
 
-// ForceKill immediately terminates a process on Windows.
-// On Windows, this is the same as Kill since there's no graceful termination signal.
+// ForceKill immediately terminates a process and all its descendants on Windows.
+// Uses taskkill /T to kill the entire process tree.
 func ForceKill(pid int) error {
-	return Kill(pid)
+	// taskkill /T kills the process and all child processes
+	// taskkill /F forces termination
+	err := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid)).Run()
+	if err != nil {
+		// Fall back to killing just the process
+		return Kill(pid)
+	}
+	return nil
 }

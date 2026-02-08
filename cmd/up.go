@@ -55,13 +55,16 @@ Pipelines define DAG workflows with iteration cycles:
 	Example: `  # Run all pipelines and standalone tasks
   swarm up
 
-  # Run specific tasks only (bypass pipeline logic)
+  # Run specific tasks only
   swarm up frontend backend
 
-  # Run only a specific pipeline
-  swarm up --pipeline development
+  # Run a specific pipeline by name
+  swarm up development
 
-  # Run in detached mode (standalone tasks only)
+  # Mix tasks and pipelines
+  swarm up development frontend
+
+  # Run in detached mode
   swarm up -d
 
   # Use a custom compose file
@@ -95,7 +98,7 @@ Pipelines define DAG workflows with iteration cycles:
 			return runPipeline(cf, upPipeline, promptsDir, workingDir)
 		}
 
-		// If a specific pipeline is requested, run only that pipeline
+		// If a specific pipeline is requested via flag, run only that pipeline
 		if upPipeline != "" {
 			if upDetach {
 				return runPipelineDetached(cf, upPipeline, promptsDir, workingDir)
@@ -103,24 +106,53 @@ Pipelines define DAG workflows with iteration cycles:
 			return runPipeline(cf, upPipeline, promptsDir, workingDir)
 		}
 
-		// If specific tasks are requested via args, run only those tasks
+		// If specific tasks/pipelines are requested via args, run them
 		if len(args) > 0 {
-			tasks, err := cf.GetTasks(args)
-			if err != nil {
-				return err
+			// Separate args into task names and pipeline names
+			var taskArgs []string
+			var pipelineArgNames []string
+			for _, arg := range args {
+				if _, exists := cf.Pipelines[arg]; exists {
+					pipelineArgNames = append(pipelineArgNames, arg)
+				} else {
+					taskArgs = append(taskArgs, arg)
+				}
 			}
-			taskNames := make([]string, 0, len(tasks))
-			for name := range tasks {
-				taskNames = append(taskNames, name)
-			}
-			sort.Strings(taskNames)
 
-			fmt.Printf("Starting %d task(s) from %s\n", len(tasks), upFile)
-
-			if upDetach {
-				return runTasksDetached(taskNames, tasks, promptsDir, workingDir)
+			// Run requested pipelines
+			for _, pipelineName := range pipelineArgNames {
+				if upDetach {
+					if err := runPipelineDetached(cf, pipelineName, promptsDir, workingDir); err != nil {
+						return fmt.Errorf("pipeline %q failed to start: %w", pipelineName, err)
+					}
+				} else {
+					if err := runPipeline(cf, pipelineName, promptsDir, workingDir); err != nil {
+						return fmt.Errorf("pipeline %q failed: %w", pipelineName, err)
+					}
+				}
 			}
-			return runTasksForeground(taskNames, tasks, promptsDir, workingDir)
+
+			// Run requested tasks
+			if len(taskArgs) > 0 {
+				tasks, err := cf.GetTasks(taskArgs)
+				if err != nil {
+					return err
+				}
+				taskNames := make([]string, 0, len(tasks))
+				for name := range tasks {
+					taskNames = append(taskNames, name)
+				}
+				sort.Strings(taskNames)
+
+				fmt.Printf("Starting %d task(s) from %s\n", len(tasks), upFile)
+
+				if upDetach {
+					return runTasksDetached(taskNames, tasks, promptsDir, workingDir)
+				}
+				return runTasksForeground(taskNames, tasks, promptsDir, workingDir)
+			}
+
+			return nil
 		}
 
 		// Default behavior: run all pipelines + standalone tasks

@@ -47,8 +47,19 @@ started from the specified compose file are affected.`,
 			return fmt.Errorf("invalid compose file: %w", err)
 		}
 
-		// Get tasks (filtered by args if provided)
-		tasks, err := cf.GetTasks(args)
+		// Separate args into task names and pipeline names
+		var taskArgs []string
+		var pipelineArgs []string
+		for _, arg := range args {
+			if _, exists := cf.Pipelines[arg]; exists {
+				pipelineArgs = append(pipelineArgs, arg)
+			} else {
+				taskArgs = append(taskArgs, arg)
+			}
+		}
+
+		// Get tasks (filtered by task args if provided)
+		tasks, err := cf.GetTasks(taskArgs)
 		if err != nil {
 			return err
 		}
@@ -63,6 +74,19 @@ started from the specified compose file are affected.`,
 		effectiveNames := make(map[string]bool)
 		for taskName, task := range tasks {
 			effectiveNames[task.EffectiveName(taskName)] = true
+		}
+
+		// Also include pipeline names (pipelines are registered as "pipeline:<name>")
+		if len(args) == 0 {
+			// No specific tasks requested — kill all pipelines from the compose file
+			for pipelineName := range cf.Pipelines {
+				effectiveNames[fmt.Sprintf("pipeline:%s", pipelineName)] = true
+			}
+		} else {
+			// Include explicitly requested pipelines
+			for _, name := range pipelineArgs {
+				effectiveNames[fmt.Sprintf("pipeline:%s", name)] = true
+			}
 		}
 
 		// Create state manager with scope
