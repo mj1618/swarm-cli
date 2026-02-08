@@ -2,6 +2,8 @@
 
 A command-line tool for running and managing AI agents. Swarm CLI allows you to run agents for single or multiple iterations, with full control over running agents including the ability to modify settings on-the-fly.
 
+**Getting started?** Check out [swarm-starter](https://github.com/mj1618/swarm-starter) for ready-to-use example prompts and compose files.
+
 ![Swarm CLI - Starting and listing agents](images/screenshot-1.png)
 
 ```bash

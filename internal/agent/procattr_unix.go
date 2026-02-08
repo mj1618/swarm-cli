@@ -4,14 +4,14 @@ package agent
 
 import (
 	"os/exec"
-	"syscall"
 )
 
 // setProcAttr sets Unix-specific process attributes.
-// This makes the command its own process group leader, allowing
-// ForceKill to terminate the entire process group including child processes.
+// We intentionally do NOT set Setpgid here. The detached swarm-cli parent
+// uses Setsid (which creates a new session and process group), and we want
+// the agent CLI to inherit that process group. This way, ForceKill(-pid)
+// on the swarm-cli PID kills the entire group including the agent CLI
+// and any children it spawns.
 func setProcAttr(cmd *exec.Cmd) {
-	cmd.SysProcAttr = &syscall.SysProcAttr{
-		Setpgid: true,
-	}
+	// No Setpgid — inherit parent's process group so signals propagate correctly
 }

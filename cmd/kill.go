@@ -104,10 +104,10 @@ When using --label, the task-id-or-name argument is not required.`,
 						fmt.Printf("Warning: failed to update agent %s: %v\n", agent.ID, err)
 						continue
 					}
-					if err := process.Kill(agent.PID); err != nil {
-						fmt.Printf("Warning: could not send signal to agent %s (PID %d): %v\n", agent.ID, agent.PID, err)
+					if err := process.ForceKill(agent.PID); err != nil {
+						fmt.Printf("Warning: could not kill agent %s (PID %d): %v\n", agent.ID, agent.PID, err)
 					}
-					fmt.Printf("Sent termination signal to agent %s (PID: %d)\n", agent.ID, agent.PID)
+					fmt.Printf("Killed agent %s (PID: %d)\n", agent.ID, agent.PID)
 				}
 				killed++
 			}
@@ -169,15 +169,15 @@ When using --label, the task-id-or-name argument is not required.`,
 					continue
 				}
 
-				// Send termination signal to the process
-				if err := process.Kill(a.PID); err != nil {
-					fmt.Printf("Warning: could not send signal to process %d: %v\n", a.PID, err)
+				// Force kill the process and its entire process group
+				if err := process.ForceKill(a.PID); err != nil {
+					fmt.Printf("Warning: could not kill process %d: %v\n", a.PID, err)
 				}
 
 				if a.ID == agent.ID {
-					fmt.Printf("Sent termination signal to agent %s (PID: %d)\n", a.ID, a.PID)
+					fmt.Printf("Killed agent %s (PID: %d)\n", a.ID, a.PID)
 				} else {
-					fmt.Printf("Sent termination signal to sub-agent %s (PID: %d)\n", a.ID, a.PID)
+					fmt.Printf("Killed sub-agent %s (PID: %d)\n", a.ID, a.PID)
 				}
 			}
 			killed++
