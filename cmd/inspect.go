@@ -45,7 +45,7 @@ The agent can be specified by its ID, name, or special identifier:
 
 		agent, err := ResolveAgentIdentifier(mgr, processIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		// JSON format output

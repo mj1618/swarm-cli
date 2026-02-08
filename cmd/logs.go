@@ -105,7 +105,7 @@ flags can be specified to match any of the patterns (OR logic).`,
 
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		if agent.LogFile == "" {

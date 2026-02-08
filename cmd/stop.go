@@ -109,7 +109,7 @@ When using --label, the task-id-or-name argument is not required.`,
 		agentIdentifier := args[0]
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		if agent.Status != "running" {

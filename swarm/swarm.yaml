@@ -2,7 +2,10 @@ version: "1"
 tasks:
   planner:
     prompt: planner
-    iterations: 20
   coder:
     prompt: coder
-    iterations: 33
+    depends_on: [planner]
+pipelines:
+  main:
+    iterations: 20
+    tasks: [planner, coder]

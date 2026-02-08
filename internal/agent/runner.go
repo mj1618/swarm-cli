@@ -94,11 +94,18 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 		return err
 	}
 
+	// WaitGroup to ensure all output is consumed before cmd.Wait() closes pipes.
+	// Per Go docs, cmd.Wait() closes StdoutPipe/StderrPipe, so all reads must
+	// complete first to avoid losing data.
+	var outputWg sync.WaitGroup
+
 	// Process stdout based on RawOutput setting
 	if r.config.Command.RawOutput {
 		// Direct streaming for Claude Code - continuous stream without parsing
 		// Still try to extract usage stats if callback is set
+		outputWg.Add(1)
 		go func() {
+			defer outputWg.Done()
 			if r.usageCallback != nil {
 				// Wrap with a tee reader to parse while streaming
 				pr, pw := io.Pipe()
@@ -127,7 +134,9 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 				r.usageCallback(stats)
 			}
 		})
+		outputWg.Add(1)
 		go func() {
+			defer outputWg.Done()
 			scanner := bufio.NewScanner(stdout)
 			// Increase buffer size for potentially long lines
 			buf := make([]byte, 0, 64*1024)
@@ -142,11 +151,17 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 	}
 
 	// Forward stderr directly
+	outputWg.Add(1)
 	go func() {
+		defer outputWg.Done()
 		io.Copy(os.Stderr, stderr)
 	}()
 
-	// Wait for command to complete
+	// Wait for all output goroutines to finish reading before calling cmd.Wait(),
+	// which closes the pipes and could cause data loss.
+	outputWg.Wait()
+
+	// Wait for command to complete and release resources
 	err = r.cmd.Wait()
 
 	// Check if the error was due to context cancellation/timeout

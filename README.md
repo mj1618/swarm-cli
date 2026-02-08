@@ -85,6 +85,7 @@ swarm config set-model opus-4.5-thinking
   - [Managing Long-Running Agents](#managing-long-running-agents)
   - [Multi-Project Setup](#multi-project-setup)
   - [Running Multiple Tasks (Compose)](#running-multiple-tasks-compose)
+  - [Pipelines & DAG Execution](#pipelines--dag-execution)
 - [Troubleshooting](#troubleshooting)
 - [License](#license)
 
@@ -96,6 +97,7 @@ swarm config set-model opus-4.5-thinking
 - **Live configuration updates** - change model or iterations while agents are running
 - **Multiple backends** - supports Cursor's agent CLI and Claude Code CLI
 - **Project & global scoping** - organize prompts and agents per-project or globally
+- **Pipelines & DAG execution** - define task dependencies with conditional branching (success/failure/any/always)
 - **Configurable** - TOML configuration with sensible defaults
 
 ## Installation
@@ -725,6 +727,9 @@ swarm up -f custom.yaml
 | `model` | Model to use (optional, overrides config) |
 | `iterations` | Number of iterations (optional, default: 1) |
 | `name` | Custom agent name (optional, defaults to task name) |
+| `prefix` | Text prepended to the prompt at runtime (optional) |
+| `suffix` | Text appended to the prompt at runtime (optional) |
+| `depends_on` | Task dependencies for pipeline/DAG execution (optional) |
 
 Only one prompt source is allowed per task (`prompt`, `prompt-file`, or `prompt-string`).
 
@@ -763,6 +768,170 @@ swarm list
 # View specific task logs
 swarm logs api-improvements
 ```
+
+#### Pipelines & DAG Execution
+
+Tasks can declare dependencies on other tasks using `depends_on`, forming a DAG (Directed Acyclic Graph). Wrap these in a `pipelines` section to run the full DAG across multiple iterations.
+
+**Dependencies:**
+
+Dependencies support both a simple form (task name as a string) and a full form with a condition:
+
+```yaml
+tasks:
+  analyze:
+    prompt: analyze-code
+
+  implement:
+    prompt: write-code
+    depends_on: [analyze]          # Simple form: runs after analyze succeeds
+
+  test:
+    prompt: run-tests
+    depends_on:
+      - task: implement
+        condition: success         # Full form with explicit condition
+
+  fix:
+    prompt: fix-errors
+    depends_on:
+      - task: test
+        condition: failure         # Only runs if tests failed
+
+  report:
+    prompt-string: "Summarize results"
+    depends_on:
+      - task: test
+        condition: any             # Runs whether tests passed or failed
+
+  cleanup:
+    prompt-string: "Clean up temp files"
+    depends_on:
+      - task: report
+        condition: always          # Runs even if report was skipped
+```
+
+**Dependency conditions:**
+
+| Condition | Behavior |
+|-----------|----------|
+| `success` (default) | Task runs only if the dependency succeeded |
+| `failure` | Task runs only if the dependency failed |
+| `any` | Task runs if the dependency completed (success or failure) |
+| `always` | Task runs after the dependency reaches any terminal state, even if skipped |
+
+Tasks with unsatisfied conditions are **skipped** — for example, if a task depends on another with `condition: success` but that dependency failed, the dependent task is skipped.
+
+**Pipelines:**
+
+The `pipelines` section defines named workflows that run the DAG for multiple iterations. Each iteration runs the entire DAG to completion before the next begins.
+
+```yaml
+version: "1"
+
+tasks:
+  plan:
+    prompt: planner
+
+  code:
+    prompt: coder
+    depends_on: [plan]
+
+  test:
+    prompt: tester
+    depends_on: [code]
+
+  fix:
+    prompt: fixer
+    depends_on:
+      - task: test
+        condition: failure
+
+pipelines:
+  development:
+    iterations: 10
+    tasks: [plan, code, test, fix]
+
+  quick-check:
+    iterations: 1
+    tasks: [code, test]
+```
+
+**Pipeline fields:**
+
+| Field | Description |
+|-------|-------------|
+| `iterations` | Number of full DAG cycles (default: 1) |
+| `tasks` | List of tasks to include (default: all tasks) |
+
+**Running pipelines:**
+
+```bash
+# Run all pipelines, then standalone tasks
+swarm up
+
+# Run a specific named pipeline
+swarm up --pipeline development
+
+# Run specific tasks directly (bypasses pipeline logic)
+swarm up plan code test
+```
+
+**Execution semantics:**
+- Root tasks (no dependencies) run first
+- Independent tasks at the same level run in parallel
+- Each pipeline iteration resets all task states
+- Tasks not included in any pipeline and with no dependencies run as standalone tasks in parallel after all pipelines complete
+
+**Complete example — CI-style workflow:**
+
+```yaml
+version: "1"
+
+tasks:
+  lint:
+    prompt-string: "Run linters and fix warnings"
+    model: sonnet
+
+  implement:
+    prompt: implement-feature
+    model: opus
+    iterations: 3
+
+  test:
+    prompt: run-tests
+    depends_on: [implement]
+
+  fix:
+    prompt: fix-failures
+    depends_on:
+      - task: test
+        condition: failure
+
+  review:
+    prompt: code-review
+    depends_on:
+      - task: test
+        condition: success
+
+  deploy:
+    prompt-string: "Prepare deployment artifacts"
+    depends_on:
+      - task: review
+        condition: always
+
+pipelines:
+  ci:
+    iterations: 5
+    tasks: [implement, test, fix, review, deploy]
+```
+
+```bash
+# Run the CI pipeline and lint in parallel
+swarm up
+```
+
+In this example, `lint` has no dependencies and is not in the `ci` pipeline, so it runs as a standalone task in parallel with the pipeline.
 
 ## Troubleshooting
 

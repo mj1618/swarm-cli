@@ -701,3 +701,631 @@ func TestMultipleContentItems(t *testing.T) {
 		t.Error("Missing third part")
 	}
 }
+
+// --- Claude Code stream-json format tests ---
+
+func TestProcessLineClaudeCodeToolUseInAssistant(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	// Claude Code embeds tool_use blocks in assistant message content
+	eventJSON := `{
+		"type": "assistant",
+		"message": {
+			"role": "assistant",
+			"content": [
+				{"type": "text", "text": "Let me read that file."},
+				{"type": "tool_use", "id": "tu_1", "name": "Read", "input": {"file_path": "/src/main.go"}}
+			]
+		}
+	}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Let me read that file.") {
+		t.Errorf("Should contain text content, got: %q", output)
+	}
+	if !strings.Contains(output, "Read file: /src/main.go") {
+		t.Errorf("Should contain tool use summary, got: %q", output)
+	}
+	if !strings.Contains(output, "[tool_use]") {
+		t.Errorf("Should contain [tool_use] header, got: %q", output)
+	}
+}
+
+func TestProcessLineClaudeCodeBashToolUse(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	eventJSON := `{
+		"type": "assistant",
+		"message": {
+			"role": "assistant",
+			"content": [
+				{"type": "tool_use", "id": "tu_2", "name": "Bash", "input": {"command": "go test ./..."}}
+			]
+		}
+	}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Shell: go test ./...") {
+		t.Errorf("Should contain shell command summary, got: %q", output)
+	}
+}
+
+func TestProcessLineClaudeCodeWriteToolUse(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	eventJSON := `{
+		"type": "assistant",
+		"message": {
+			"role": "assistant",
+			"content": [
+				{"type": "tool_use", "id": "tu_3", "name": "Write", "input": {"file_path": "/tmp/test.go", "content": "package main"}}
+			]
+		}
+	}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Write file: /tmp/test.go") {
+		t.Errorf("Should contain write file summary, got: %q", output)
+	}
+}
+
+func TestProcessLineClaudeCodeEditToolUse(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	eventJSON := `{
+		"type": "assistant",
+		"message": {
+			"role": "assistant",
+			"content": [
+				{"type": "tool_use", "id": "tu_4", "name": "Edit", "input": {"file_path": "/src/main.go", "old_string": "foo", "new_string": "bar"}}
+			]
+		}
+	}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Edit file: /src/main.go") {
+		t.Errorf("Should contain edit file summary, got: %q", output)
+	}
+}
+
+func TestProcessLineClaudeCodeGlobGrepToolUse(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	eventJSON := `{
+		"type": "assistant",
+		"message": {
+			"role": "assistant",
+			"content": [
+				{"type": "tool_use", "id": "tu_5", "name": "Glob", "input": {"pattern": "**/*.go"}},
+				{"type": "tool_use", "id": "tu_6", "name": "Grep", "input": {"pattern": "func main"}}
+			]
+		}
+	}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Glob: **/*.go") {
+		t.Errorf("Should contain glob summary, got: %q", output)
+	}
+	if !strings.Contains(output, "Grep: func main") {
+		t.Errorf("Should contain grep summary, got: %q", output)
+	}
+}
+
+func TestProcessLineClaudeCodeTextOnlyAssistant(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	// Text-only assistant messages should still merge like before
+	events := []string{
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Part A "}]}}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Part B"}]}}`,
+	}
+
+	for _, e := range events {
+		p.ProcessLine(e)
+	}
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Part A") {
+		t.Error("Missing Part A")
+	}
+	if !strings.Contains(output, "Part B") {
+		t.Error("Missing Part B")
+	}
+	// Should have only one [assistant] header (merged)
+	headerCount := strings.Count(output, "[assistant]")
+	if headerCount != 1 {
+		t.Errorf("Should have exactly 1 assistant header, got %d in: %q", headerCount, output)
+	}
+}
+
+func TestProcessLineClaudeCodeToolResultEvent(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	eventJSON := `{"type": "tool_result", "content": "file contents here"}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Result: file contents here") {
+		t.Errorf("Should contain tool result, got: %q", output)
+	}
+}
+
+func TestProcessLineClaudeCodeStandaloneToolUse(t *testing.T) {
+	var buf bytes.Buffer
+	p := NewParser(&buf)
+
+	eventJSON := `{"type": "tool_use", "tool_name": "Bash", "input": {"command": "ls -la"}}`
+
+	p.ProcessLine(eventJSON)
+	p.Flush()
+
+	output := buf.String()
+	if !strings.Contains(output, "Shell: ls -la") {
+		t.Errorf("Should contain shell summary, got: %q", output)
+	}
+}
+
+// --- StreamingParser tests: realtime claude-code output parsing ---
+
+func TestStreamingParserUsageAccumulation(t *testing.T) {
+	var buf bytes.Buffer
+	var callbackCount int
+	var lastStats UsageStats
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		callbackCount++
+		lastStats = stats
+	})
+
+	// Simulate a claude-code session with multiple usage events
+	lines := []string{
+		`{"type": "system", "subtype": "init", "model": "opus", "cwd": "/tmp", "session_id": "s1"}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Let me help."}]}, "usage": {"input_tokens": 100, "output_tokens": 50}}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_1", "name": "Read", "input": {"file_path": "/src/main.go"}}]}, "usage": {"input_tokens": 200, "output_tokens": 30}}`,
+		`{"type": "tool_result", "content": "package main\nfunc main() {}", "usage": {"input_tokens": 150, "output_tokens": 80}}`,
+	}
+
+	for _, line := range lines {
+		sp.ProcessLine(line)
+	}
+	sp.Flush()
+
+	// Usage should accumulate across events
+	stats := sp.Stats()
+	if stats.InputTokens != 450 {
+		t.Errorf("Expected 450 input tokens, got %d", stats.InputTokens)
+	}
+	if stats.OutputTokens != 160 {
+		t.Errorf("Expected 160 output tokens, got %d", stats.OutputTokens)
+	}
+
+	// Callback should have been called for each usage update
+	if callbackCount < 3 {
+		t.Errorf("Expected at least 3 callback invocations, got %d", callbackCount)
+	}
+
+	// Last stats from callback should match
+	if lastStats.InputTokens != stats.InputTokens {
+		t.Errorf("Last callback stats mismatch: got %d, want %d", lastStats.InputTokens, stats.InputTokens)
+	}
+}
+
+func TestStreamingParserCurrentTaskUpdates(t *testing.T) {
+	var buf bytes.Buffer
+	var taskHistory []string
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		taskHistory = append(taskHistory, stats.CurrentTask)
+	})
+
+	// Simulate a claude-code session with various tool events
+	lines := []string{
+		// System init
+		`{"type": "system", "subtype": "init", "model": "opus", "cwd": "/project"}`,
+		// Assistant thinking
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "I'll read the file and make changes to fix the bug in the authentication module."}]}, "usage": {"input_tokens": 100, "output_tokens": 50}}`,
+		// Tool use: Read file
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_1", "name": "Read", "input": {"file_path": "/src/auth.go"}}]}, "usage": {"input_tokens": 50, "output_tokens": 20}}`,
+		// Tool use: Bash command
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_2", "name": "Bash", "input": {"command": "go test ./internal/auth/..."}}]}, "usage": {"input_tokens": 50, "output_tokens": 20}}`,
+		// Tool use: Edit file
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_3", "name": "Edit", "input": {"file_path": "/src/auth.go", "old_string": "foo", "new_string": "bar"}}]}, "usage": {"input_tokens": 50, "output_tokens": 20}}`,
+		// Tool use: Grep
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_4", "name": "Grep", "input": {"pattern": "func Auth"}}]}, "usage": {"input_tokens": 50, "output_tokens": 20}}`,
+		// Result
+		`{"type": "result", "subtype": "success", "result": "Done", "duration_ms": 5000, "usage": {"input_tokens": 50, "output_tokens": 10}}`,
+	}
+
+	for _, line := range lines {
+		sp.ProcessLine(line)
+	}
+	sp.Flush()
+
+	// Verify task updates happened and contain expected summaries
+	if len(taskHistory) == 0 {
+		t.Fatal("Expected task history to be non-empty")
+	}
+
+	// Check that specific task summaries appeared in order
+	expectedTasks := []string{
+		"Initializing...",
+		"Thinking:",
+		"Read: /src/auth.go",
+		"Shell: go test ./internal/auth/...",
+		"Edit: /src/auth.go",
+		"Search",
+		"Result: success",
+	}
+
+	for _, expected := range expectedTasks {
+		found := false
+		for _, task := range taskHistory {
+			if strings.Contains(task, expected) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("Expected task containing %q in history, got: %v", expected, taskHistory)
+		}
+	}
+}
+
+func TestStreamingParserRealtimeCallbackTiming(t *testing.T) {
+	// Verify that callbacks fire after each line, not batched
+	var buf bytes.Buffer
+	callbackAfterLine := make(map[int]UsageStats)
+	lineNum := 0
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		callbackAfterLine[lineNum] = stats
+	})
+
+	lines := []string{
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "Hello"}]}, "usage": {"input_tokens": 100, "output_tokens": 50}}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_1", "name": "Bash", "input": {"command": "ls"}}]}, "usage": {"input_tokens": 200, "output_tokens": 100}}`,
+		`{"type": "result", "subtype": "success", "result": "ok", "usage": {"input_tokens": 50, "output_tokens": 10}}`,
+	}
+
+	for i, line := range lines {
+		lineNum = i
+		sp.ProcessLine(line)
+	}
+	sp.Flush()
+
+	// Line 0 should have triggered a callback with 100 input tokens
+	if stats, ok := callbackAfterLine[0]; ok {
+		if stats.InputTokens != 100 {
+			t.Errorf("After line 0: expected 100 input tokens, got %d", stats.InputTokens)
+		}
+	} else {
+		t.Error("Expected callback after line 0")
+	}
+
+	// Line 1 should have accumulated tokens
+	if stats, ok := callbackAfterLine[1]; ok {
+		if stats.InputTokens != 300 {
+			t.Errorf("After line 1: expected 300 input tokens, got %d", stats.InputTokens)
+		}
+	} else {
+		t.Error("Expected callback after line 1")
+	}
+
+	// Line 2 should have all tokens
+	if stats, ok := callbackAfterLine[2]; ok {
+		if stats.InputTokens != 350 {
+			t.Errorf("After line 2: expected 350 input tokens, got %d", stats.InputTokens)
+		}
+	} else {
+		t.Error("Expected callback after line 2")
+	}
+}
+
+func TestStreamingParserDirectTokenFields(t *testing.T) {
+	// Test that direct input_tokens/output_tokens fields (not nested in usage) are extracted
+	var buf bytes.Buffer
+	sp := NewStreamingParser(&buf, nil)
+
+	lines := []string{
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}, "input_tokens": 500, "output_tokens": 200}`,
+		`{"type": "result", "subtype": "success", "result": "done", "input_tokens": 100, "output_tokens": 50}`,
+	}
+
+	for _, line := range lines {
+		sp.ProcessLine(line)
+	}
+	sp.Flush()
+
+	stats := sp.Stats()
+	if stats.InputTokens != 600 {
+		t.Errorf("Expected 600 input tokens from direct fields, got %d", stats.InputTokens)
+	}
+	if stats.OutputTokens != 250 {
+		t.Errorf("Expected 250 output tokens from direct fields, got %d", stats.OutputTokens)
+	}
+}
+
+func TestStreamingParserPromptCompletionTokenFields(t *testing.T) {
+	// Test alternative naming: prompt_tokens / completion_tokens
+	var buf bytes.Buffer
+	sp := NewStreamingParser(&buf, nil)
+
+	sp.ProcessLine(`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}, "usage": {"prompt_tokens": 300, "completion_tokens": 150}}`)
+	sp.Flush()
+
+	stats := sp.Stats()
+	if stats.InputTokens != 300 {
+		t.Errorf("Expected 300 input tokens from prompt_tokens, got %d", stats.InputTokens)
+	}
+	if stats.OutputTokens != 150 {
+		t.Errorf("Expected 150 output tokens from completion_tokens, got %d", stats.OutputTokens)
+	}
+}
+
+func TestStreamingParserFullClaudeCodeSession(t *testing.T) {
+	// End-to-end test simulating a realistic Claude Code streaming session
+	var buf bytes.Buffer
+	var finalStats UsageStats
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		finalStats = stats
+	})
+
+	// Simulate a realistic Claude Code session
+	session := []string{
+		// Init
+		`{"type": "system", "subtype": "init", "model": "claude-opus-4-6", "cwd": "/Users/dev/project", "session_id": "sess_abc123", "timestamp_ms": 1700000000000}`,
+		// Assistant starts thinking
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "I'll help you fix this bug. Let me first look at the relevant files."}]}, "usage": {"input_tokens": 1500, "output_tokens": 30}}`,
+		// Read a file
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_01", "name": "Read", "input": {"file_path": "/Users/dev/project/src/handler.go"}}]}, "usage": {"input_tokens": 200, "output_tokens": 15}}`,
+		// Tool result
+		`{"type": "tool_result", "content": "package handler\n\nfunc Handle(r *Request) error {\n\treturn nil\n}"}`,
+		// Grep for related code
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_02", "name": "Grep", "input": {"pattern": "Handle\\(", "path": "/Users/dev/project/src"}}]}, "usage": {"input_tokens": 3000, "output_tokens": 20}}`,
+		// Tool result
+		`{"type": "tool_result", "content": "src/handler.go:3:func Handle(r *Request) error {\nsrc/main.go:15:  handler.Handle(req)"}`,
+		// Edit the file
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "I see the issue. The handler doesn't validate the request. Let me fix that."}, {"type": "tool_use", "id": "toolu_03", "name": "Edit", "input": {"file_path": "/Users/dev/project/src/handler.go", "old_string": "func Handle(r *Request) error {\n\treturn nil\n}", "new_string": "func Handle(r *Request) error {\n\tif r == nil {\n\t\treturn fmt.Errorf(\"nil request\")\n\t}\n\treturn nil\n}"}}]}, "usage": {"input_tokens": 3500, "output_tokens": 60}}`,
+		// Run tests
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "toolu_04", "name": "Bash", "input": {"command": "cd /Users/dev/project && go test ./..."}}]}, "usage": {"input_tokens": 4000, "output_tokens": 20}}`,
+		// Tool result
+		`{"type": "tool_result", "content": "ok\tproject/src\t0.003s"}`,
+		// Final response
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "The fix has been applied and all tests pass."}]}, "usage": {"input_tokens": 4500, "output_tokens": 15}}`,
+		// Result
+		`{"type": "result", "subtype": "success", "result": "Task completed successfully", "duration_ms": 12500, "usage": {"input_tokens": 500, "output_tokens": 10}}`,
+	}
+
+	for _, line := range session {
+		sp.ProcessLine(line)
+	}
+	sp.Flush()
+
+	output := buf.String()
+
+	// Verify key output elements are present
+	checks := []struct {
+		desc    string
+		content string
+	}{
+		{"system init", "System init"},
+		{"model info", "claude-opus-4-6"},
+		{"assistant text", "fix this bug"},
+		{"read tool use", "Read file:"},
+		{"tool result", "Result:"},
+		{"grep tool use", "Grep:"},
+		{"edit tool use", "Edit file:"},
+		{"bash tool use", "Shell: cd /Users/dev/project && go test"},
+		{"final text", "tests pass"},
+		{"result", "success"},
+	}
+
+	for _, c := range checks {
+		if !strings.Contains(output, c.content) {
+			t.Errorf("Output should contain %s (%q), got: %q", c.desc, c.content, output)
+		}
+	}
+
+	// Verify usage stats accumulated
+	if finalStats.InputTokens == 0 {
+		t.Error("Expected non-zero input tokens")
+	}
+	if finalStats.OutputTokens == 0 {
+		t.Error("Expected non-zero output tokens")
+	}
+
+	// Final task should reflect the result
+	if !strings.Contains(finalStats.CurrentTask, "Result") {
+		t.Errorf("Final task should contain 'Result', got: %q", finalStats.CurrentTask)
+	}
+}
+
+func TestStreamingParserClaudeCodeStandaloneToolUseTask(t *testing.T) {
+	// Test standalone tool_use events (not embedded in assistant message)
+	var buf bytes.Buffer
+	var lastTask string
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		lastTask = stats.CurrentTask
+	})
+
+	lines := []string{
+		`{"type": "tool_use", "tool_name": "Read", "input": {"file_path": "/etc/hosts"}, "usage": {"input_tokens": 10, "output_tokens": 5}}`,
+		`{"type": "tool_use", "name": "WebSearch", "input": {"query": "golang error handling"}, "usage": {"input_tokens": 10, "output_tokens": 5}}`,
+		`{"type": "tool_use", "tool_name": "Task", "input": {}, "usage": {"input_tokens": 10, "output_tokens": 5}}`,
+	}
+
+	expectedTasks := []string{
+		"Read:",
+		"Web search",
+		"Subagent",
+	}
+
+	for i, line := range lines {
+		sp.ProcessLine(line)
+		if !strings.Contains(lastTask, expectedTasks[i]) {
+			t.Errorf("After line %d: expected task containing %q, got %q", i, expectedTasks[i], lastTask)
+		}
+	}
+}
+
+func TestStreamingParserNoCallbackOnNonUsageEvents(t *testing.T) {
+	// Events without usage data should not trigger callback
+	var buf bytes.Buffer
+	callbackCount := 0
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		callbackCount++
+	})
+
+	// These events have no usage data and no task-changing info beyond init
+	sp.ProcessLine(`{"type": "system", "subtype": "init", "model": "opus"}`)
+
+	afterInit := callbackCount
+
+	// Plain text events without usage should not trigger additional callbacks
+	sp.ProcessLine(`{"type": "thinking", "text": "hmm"}`)
+	sp.Flush()
+
+	if callbackCount != afterInit {
+		t.Errorf("Non-usage events should not trigger extra callbacks: got %d after init count %d", callbackCount, afterInit)
+	}
+}
+
+func TestStreamingParserCursorFormatToolCall(t *testing.T) {
+	// Verify the parser also handles Cursor-format tool_call events for task tracking
+	var buf bytes.Buffer
+	var lastTask string
+
+	sp := NewStreamingParser(&buf, func(stats UsageStats) {
+		lastTask = stats.CurrentTask
+	})
+
+	// Cursor-format shell tool call with usage
+	sp.ProcessLine(`{"type": "tool_call", "tool_call": {"shellToolCall": {"args": {"command": "npm test"}}}, "usage": {"input_tokens": 100, "output_tokens": 20}}`)
+
+	if !strings.Contains(lastTask, "Shell") || !strings.Contains(lastTask, "npm test") {
+		t.Errorf("Expected task 'Shell: npm test', got: %q", lastTask)
+	}
+
+	// Cursor-format read tool call
+	sp.ProcessLine(`{"type": "tool_call", "tool_call": {"readToolCall": {"args": {"file_path": "/very/long/path/to/deeply/nested/component/file.tsx"}}}, "usage": {"input_tokens": 50, "output_tokens": 10}}`)
+
+	if !strings.Contains(lastTask, "Read:") {
+		t.Errorf("Expected task containing 'Read:', got: %q", lastTask)
+	}
+
+	stats := sp.Stats()
+	if stats.InputTokens != 150 {
+		t.Errorf("Expected 150 input tokens, got %d", stats.InputTokens)
+	}
+}
+
+func TestScanLogFileClaudeCodeFormat(t *testing.T) {
+	// Test ScanLogFile with claude-code format events
+	logContent := strings.Join([]string{
+		`{"type": "system", "subtype": "init", "model": "opus"}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hello"}]}, "usage": {"input_tokens": 500, "output_tokens": 100}}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "id": "tu_1", "name": "Bash", "input": {"command": "ls"}}]}, "usage": {"input_tokens": 800, "output_tokens": 50}}`,
+		`{"type": "tool_result", "content": "file1.go\nfile2.go"}`,
+		`{"type": "result", "subtype": "success", "result": "done", "usage": {"input_tokens": 200, "output_tokens": 30}}`,
+	}, "\n")
+
+	stats := ScanLogFile(strings.NewReader(logContent))
+
+	if stats.InputTokens != 1500 {
+		t.Errorf("Expected 1500 input tokens, got %d", stats.InputTokens)
+	}
+	if stats.OutputTokens != 180 {
+		t.Errorf("Expected 180 output tokens, got %d", stats.OutputTokens)
+	}
+}
+
+func TestParseEventClaudeCodeFormats(t *testing.T) {
+	tests := []struct {
+		name     string
+		line     string
+		wantType string
+		wantNil  bool
+	}{
+		{
+			name:     "system init",
+			line:     `{"type": "system", "subtype": "init", "model": "opus"}`,
+			wantType: "system",
+		},
+		{
+			name:     "assistant with tool_use",
+			line:     `{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "tool_use", "name": "Read", "input": {"file_path": "/foo"}}]}}`,
+			wantType: "assistant",
+		},
+		{
+			name:     "tool_result",
+			line:     `{"type": "tool_result", "content": "file contents"}`,
+			wantType: "tool_result",
+		},
+		{
+			name:     "standalone tool_use",
+			line:     `{"type": "tool_use", "tool_name": "Bash", "input": {"command": "ls"}}`,
+			wantType: "tool_use",
+		},
+		{
+			name:     "result success",
+			line:     `{"type": "result", "subtype": "success", "result": "done", "duration_ms": 5000}`,
+			wantType: "result",
+		},
+		{
+			name:    "empty line",
+			line:    "",
+			wantNil: true,
+		},
+		{
+			name:    "invalid json",
+			line:    "not json",
+			wantNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			event := ParseEvent(tt.line)
+			if tt.wantNil {
+				if event != nil {
+					t.Errorf("Expected nil event, got type=%q", event.Type)
+				}
+				return
+			}
+			if event == nil {
+				t.Fatal("Expected non-nil event")
+			}
+			if event.Type != tt.wantType {
+				t.Errorf("Expected type %q, got %q", tt.wantType, event.Type)
+			}
+		})
+	}
+}

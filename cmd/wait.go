@@ -68,7 +68,7 @@ The agent can be specified by its ID, name, or special identifier:
 		for _, identifier := range args {
 			agent, err := ResolveAgentIdentifier(mgr, identifier)
 			if err != nil {
-				return fmt.Errorf("agent not found: %s", identifier)
+				return err
 			}
 			agentIDs = append(agentIDs, agent.ID)
 			if agent.Name != "" {

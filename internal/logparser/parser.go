@@ -43,6 +43,11 @@ type LogEvent struct {
 	// Alternative usage locations in different API formats
 	InputTokens  *int64                `json:"input_tokens,omitempty"`
 	OutputTokens *int64                `json:"output_tokens,omitempty"`
+	// Claude Code stream-json fields for tool events
+	ToolName string                 `json:"tool_name,omitempty"`
+	Name     string                 `json:"name,omitempty"`
+	Input    map[string]interface{} `json:"input,omitempty"`
+	Content  string                 `json:"content,omitempty"`
 }
 
 // Usage represents token usage from an API response.
@@ -69,9 +74,13 @@ type Message struct {
 }
 
 // ContentItem represents a content item in a message.
+// For Claude Code stream-json, content items can also be tool_use or tool_result blocks.
 type ContentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type  string                 `json:"type"`
+	Text  string                 `json:"text"`
+	ID    string                 `json:"id,omitempty"`
+	Name  string                 `json:"name,omitempty"`
+	Input map[string]interface{} `json:"input,omitempty"`
 }
 
 // NewParser creates a new log parser that writes to the given output.
@@ -171,15 +180,31 @@ func (sp *StreamingParser) updateCurrentTask(event *LogEvent) bool {
 	switch event.Type {
 	case "tool_call":
 		newTask = sp.summarizeToolCallForTask(event)
+	case "tool_use":
+		// Claude Code standalone tool_use event
+		name := event.ToolName
+		if name == "" {
+			name = event.Name
+		}
+		newTask = sp.summarizeClaudeToolUseForTask(name, event.Input)
 	case "assistant":
 		// Only update if we have meaningful content
 		if event.Message != nil {
-			text := sp.pickTextFromContent(event.Message.Content)
-			if len(text) > 50 {
-				text = text[:47] + "..."
+			// Check for tool_use content blocks (Claude Code format)
+			for _, item := range event.Message.Content {
+				if item.Type == "tool_use" {
+					newTask = sp.summarizeClaudeToolUseForTask(item.Name, item.Input)
+					break
+				}
 			}
-			if text != "" {
-				newTask = "Thinking: " + text
+			if newTask == "" {
+				text := sp.pickTextFromContent(event.Message.Content)
+				if len(text) > 50 {
+					text = text[:47] + "..."
+				}
+				if text != "" {
+					newTask = "Thinking: " + text
+				}
 			}
 		}
 	case "system":
@@ -265,6 +290,52 @@ func (sp *StreamingParser) summarizeToolCallForTask(event *LogEvent) string {
 	return name
 }
 
+// summarizeClaudeToolUseForTask creates a short summary for Claude Code tool_use events.
+func (sp *StreamingParser) summarizeClaudeToolUseForTask(name string, input map[string]interface{}) string {
+	if name == "" {
+		return "Tool call"
+	}
+
+	switch name {
+	case "Bash":
+		if cmd := sp.getStringFromInput(input, "command"); cmd != "" {
+			cmd = sp.asSingleLine(cmd)
+			if len(cmd) > 40 {
+				cmd = cmd[:37] + "..."
+			}
+			return "Shell: " + cmd
+		}
+		return "Shell"
+	case "Read":
+		if path := sp.getStringFromInput(input, "file_path"); path != "" {
+			return "Read: " + sp.truncatePath(path)
+		}
+		return "Read file"
+	case "Write":
+		if path := sp.getStringFromInput(input, "file_path"); path != "" {
+			return "Write: " + sp.truncatePath(path)
+		}
+		return "Write file"
+	case "Edit":
+		if path := sp.getStringFromInput(input, "file_path"); path != "" {
+			return "Edit: " + sp.truncatePath(path)
+		}
+		return "Edit file"
+	case "Glob":
+		return "Glob"
+	case "Grep":
+		return "Search"
+	case "WebFetch":
+		return "Web fetch"
+	case "WebSearch":
+		return "Web search"
+	case "Task":
+		return "Subagent"
+	}
+
+	return name
+}
+
 // truncatePath shortens a file path for display.
 func (sp *StreamingParser) truncatePath(path string) string {
 	// Get just the filename if path is too long
@@ -311,6 +382,32 @@ func (p *Parser) ProcessLine(line string) {
 		role := event.Message.Role
 		if role == "" {
 			role = event.Type
+		}
+		// Check if this message contains tool_use content blocks (Claude Code format)
+		hasToolUse := false
+		for _, item := range event.Message.Content {
+			if item.Type == "tool_use" {
+				hasToolUse = true
+				break
+			}
+		}
+		if hasToolUse {
+			// Flush any open run, then print each content block appropriately
+			p.flushRun()
+			for _, item := range event.Message.Content {
+				switch item.Type {
+				case "tool_use":
+					summary := p.summarizeClaudeToolUse(item.Name, item.Input)
+					p.maybePrintHeader("[tool_use]")
+					p.safeWrite(summary + "\n\n")
+				case "text":
+					if text := p.sanitizeSingleLine(item.Text); text != "" {
+						p.startOrAppendRun(role, fmt.Sprintf("[%s]", role), text)
+						p.flushRun()
+					}
+				}
+			}
+			return
 		}
 		text := p.pickRawTextFromContent(event.Message.Content)
 		p.startOrAppendRun(role, fmt.Sprintf("[%s]", role), text)
@@ -450,9 +547,34 @@ func (p *Parser) bodyFor(event *LogEvent) string {
 		return text
 	}
 
-	// Tool call
+	// Tool call (Cursor format)
 	if event.Type == "tool_call" {
 		return p.summarizeToolCall(event)
+	}
+
+	// Tool use (Claude Code format - standalone event)
+	if event.Type == "tool_use" {
+		name := event.ToolName
+		if name == "" {
+			name = event.Name
+		}
+		return p.summarizeClaudeToolUse(name, event.Input)
+	}
+
+	// Tool result (Claude Code format)
+	if event.Type == "tool_result" {
+		content := event.Content
+		if content == "" {
+			content = event.Result
+		}
+		if content == "" {
+			content = "(empty)"
+		}
+		msg := p.asSingleLine(content)
+		if len(msg) > 200 {
+			msg = msg[:197] + "..."
+		}
+		return fmt.Sprintf("Result: %s", msg)
 	}
 
 	// Result
@@ -537,6 +659,76 @@ func (p *Parser) summarizeToolCall(event *LogEvent) string {
 
 	// Fallback: show tool name
 	return toolName
+}
+
+// summarizeClaudeToolUse creates a human-readable summary for a Claude Code tool_use content block.
+func (p *Parser) summarizeClaudeToolUse(name string, input map[string]interface{}) string {
+	if name == "" {
+		return "Tool call"
+	}
+
+	switch name {
+	case "Bash":
+		if cmd := p.getStringFromInput(input, "command"); cmd != "" {
+			return fmt.Sprintf("Shell: %s", p.asSingleLine(cmd))
+		}
+		return "Shell"
+	case "Read":
+		if path := p.getStringFromInput(input, "file_path"); path != "" {
+			return fmt.Sprintf("Read file: %s", p.asSingleLine(path))
+		}
+		return "Read file"
+	case "Write":
+		if path := p.getStringFromInput(input, "file_path"); path != "" {
+			return fmt.Sprintf("Write file: %s", p.asSingleLine(path))
+		}
+		return "Write file"
+	case "Edit":
+		if path := p.getStringFromInput(input, "file_path"); path != "" {
+			return fmt.Sprintf("Edit file: %s", p.asSingleLine(path))
+		}
+		return "Edit file"
+	case "Glob":
+		if pattern := p.getStringFromInput(input, "pattern"); pattern != "" {
+			return fmt.Sprintf("Glob: %s", p.asSingleLine(pattern))
+		}
+		return "Glob"
+	case "Grep":
+		if pattern := p.getStringFromInput(input, "pattern"); pattern != "" {
+			return fmt.Sprintf("Grep: %s", p.asSingleLine(pattern))
+		}
+		return "Grep"
+	case "WebFetch":
+		if url := p.getStringFromInput(input, "url"); url != "" {
+			return fmt.Sprintf("Fetch: %s", p.asSingleLine(url))
+		}
+		return "Web fetch"
+	case "WebSearch":
+		if query := p.getStringFromInput(input, "query"); query != "" {
+			return fmt.Sprintf("Search: %s", p.asSingleLine(query))
+		}
+		return "Web search"
+	case "TodoWrite":
+		return "Update todos"
+	case "Task":
+		return "Launch subagent"
+	case "NotebookEdit":
+		return "Edit notebook"
+	}
+
+	return name
+}
+
+func (p *Parser) getStringFromInput(input map[string]interface{}, key string) string {
+	if input == nil {
+		return ""
+	}
+	if v, ok := input[key]; ok {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	return ""
 }
 
 func (p *Parser) getStringArg(args map[string]interface{}, keys ...string) string {

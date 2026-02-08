@@ -74,7 +74,7 @@ Use -- to pass path filters to git diff.`,
 
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		// Check if we're in a git repository

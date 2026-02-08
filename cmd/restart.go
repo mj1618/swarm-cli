@@ -105,7 +105,7 @@ labels on the restarted agent.`,
 		// Find the agent to restart
 		oldAgent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		// Validate agent is terminated

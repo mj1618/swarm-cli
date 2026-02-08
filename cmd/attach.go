@@ -58,7 +58,7 @@ Press 'q' or Ctrl+C to detach without killing the agent.`,
 
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		if agent.Status != "running" {

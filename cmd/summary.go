@@ -53,7 +53,7 @@ The agent can be specified by its ID, name, or special identifier:
 
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		// Parse logs and generate summary

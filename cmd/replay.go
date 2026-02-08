@@ -73,7 +73,7 @@ a unique ID and a name based on the original (e.g., "my-agent-replay-1").`,
 
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		// Check if prompt content is available for inline/stdin prompts

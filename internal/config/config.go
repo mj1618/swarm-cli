@@ -161,10 +161,11 @@ func ClaudeCodeConfig() *Config {
 			Args: []string{
 				"-p",
 				"--model", "{model}",
+				"--output-format", "stream-json",
 				"--dangerously-skip-permissions",
 				"{prompt}",
 			},
-			RawOutput: true,
+			RawOutput: false,
 		},
 	}
 }

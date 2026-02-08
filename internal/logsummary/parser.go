@@ -64,8 +64,10 @@ type logMessage struct {
 }
 
 type contentItem struct {
-	Type string `json:"type"`
-	Text string `json:"text"`
+	Type  string                 `json:"type"`
+	Text  string                 `json:"text"`
+	Name  string                 `json:"name,omitempty"`
+	Input map[string]interface{} `json:"input,omitempty"`
 }
 
 // Patterns for parsing logs
@@ -164,7 +166,7 @@ func Parse(agent *state.AgentState) (*Summary, error) {
 			}
 		}
 
-		// Count tool calls
+		// Count tool calls (Cursor format)
 		if entry.Type == "tool_call" && entry.ToolCall != nil {
 			summary.ToolCalls++
 
@@ -183,6 +185,25 @@ func Parse(agent *state.AgentState) (*Summary, error) {
 					case "Delete", "deleteToolCall":
 						if path := getStringFromMap(args, "path", "file_path"); path != "" {
 							filesDeleted[path] = true
+						}
+					}
+				}
+			}
+		}
+
+		// Count tool calls from Claude Code assistant messages with tool_use content blocks
+		if entry.Type == "assistant" && entry.Message != nil {
+			for _, item := range entry.Message.Content {
+				if item.Type == "tool_use" {
+					summary.ToolCalls++
+					switch item.Name {
+					case "Write":
+						if path := getStringFromMap(item.Input, "file_path"); path != "" {
+							filesCreated[path] = true
+						}
+					case "Edit":
+						if path := getStringFromMap(item.Input, "file_path"); path != "" {
+							filesModified[path] = true
 						}
 					}
 				}
@@ -211,20 +232,18 @@ func Parse(agent *state.AgentState) (*Summary, error) {
 				if toolName == "shellToolCall" || toolName == "Shell" {
 					if args := extractArgs(toolData); args != nil {
 						cmd := getStringFromMap(args, "command", "simpleCommand")
-						if strings.Contains(cmd, "git commit") {
-							summary.Events = append(summary.Events, LogEvent{
-								Iteration: currentIteration,
-								Type:      "commit",
-								Message:   truncateString(cmd, 80),
-							})
-						} else if strings.Contains(cmd, "npm test") || strings.Contains(cmd, "go test") || strings.Contains(cmd, "pytest") {
-							summary.Events = append(summary.Events, LogEvent{
-								Iteration: currentIteration,
-								Type:      "test",
-								Message:   truncateString(cmd, 80),
-							})
-						}
+						trackShellCommand(cmd, currentIteration, summary)
 					}
+				}
+			}
+		}
+
+		// Track key events from Claude Code assistant messages with Bash tool_use
+		if entry.Type == "assistant" && entry.Message != nil {
+			for _, item := range entry.Message.Content {
+				if item.Type == "tool_use" && item.Name == "Bash" {
+					cmd := getStringFromMap(item.Input, "command")
+					trackShellCommand(cmd, currentIteration, summary)
 				}
 			}
 		}
@@ -295,6 +314,25 @@ func Parse(agent *state.AgentState) (*Summary, error) {
 	}
 
 	return summary, nil
+}
+
+func trackShellCommand(cmd string, currentIteration int, summary *Summary) {
+	if cmd == "" {
+		return
+	}
+	if strings.Contains(cmd, "git commit") {
+		summary.Events = append(summary.Events, LogEvent{
+			Iteration: currentIteration,
+			Type:      "commit",
+			Message:   truncateString(cmd, 80),
+		})
+	} else if strings.Contains(cmd, "npm test") || strings.Contains(cmd, "go test") || strings.Contains(cmd, "pytest") {
+		summary.Events = append(summary.Events, LogEvent{
+			Iteration: currentIteration,
+			Type:      "test",
+			Message:   truncateString(cmd, 80),
+		})
+	}
 }
 
 func extractArgs(toolData interface{}) map[string]interface{} {

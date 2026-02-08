@@ -92,7 +92,7 @@ to run in the source agent's original directory.`,
 		// Find the source agent
 		source, err := ResolveAgentIdentifier(mgr, sourceIdentifier)
 		if err != nil {
-			return fmt.Errorf("source agent not found: %w", err)
+			return err
 		}
 
 		// Determine configuration (source values with overrides)

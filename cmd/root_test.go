@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/mj1618/swarm-cli/internal/scope"
+	"github.com/mj1618/swarm-cli/internal/state"
 	"github.com/spf13/cobra"
 )
 
@@ -259,6 +261,44 @@ func TestSubcommandsHaveRunE(t *testing.T) {
 		}
 		if cmd.RunE == nil {
 			t.Errorf("subcommand '%s' should have RunE", cmd.Name())
+		}
+	}
+}
+
+func TestResolveAgentIdentifierErrorMessage(t *testing.T) {
+	// Test that errors from GetByNameOrID are not double-wrapped
+	mgr, err := state.NewManagerWithScope(scope.ScopeGlobal, "")
+	if err != nil {
+		t.Fatalf("Failed to create state manager: %v", err)
+	}
+
+	// Test 1: Non-existent agent by ID
+	_, err = ResolveAgentIdentifier(mgr, "nonexistent")
+	if err == nil {
+		t.Fatal("Expected error for non-existent agent")
+	}
+	errMsg := err.Error()
+
+	// The error should contain "agent not found" but NOT twice
+	if !strings.Contains(errMsg, "agent not found") {
+		t.Errorf("Error message should contain 'agent not found', got: %s", errMsg)
+	}
+
+	// Check for duplication by counting occurrences
+	count := strings.Count(errMsg, "agent not found")
+	if count > 1 {
+		t.Errorf("Error message contains duplicate 'agent not found' (%d times): %s", count, errMsg)
+	}
+
+	// Test 2: @last when no agents exist
+	_, err = ResolveAgentIdentifier(mgr, "@last")
+	// Only check error duplication if there's an error (may succeed if agents exist)
+	if err != nil {
+		errMsg = err.Error()
+		// Should contain meaningful error but not duplicated
+		count = strings.Count(errMsg, "agent not found")
+		if count > 1 {
+			t.Errorf("Error message contains duplicate 'agent not found' (%d times): %s", count, errMsg)
 		}
 	}
 }

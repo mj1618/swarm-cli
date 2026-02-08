@@ -152,7 +152,7 @@ Use --set-label to add or update labels on an agent.`,
 		agentIdentifier := args[0]
 		agent, err := ResolveAgentIdentifier(mgr, agentIdentifier)
 		if err != nil {
-			return fmt.Errorf("agent not found: %w", err)
+			return err
 		}
 
 		// Handle name update first (works for both running and terminated agents)

@@ -2,9 +2,11 @@ package agent
 
 import (
 	"bytes"
+	"strings"
 	"testing"
 
 	"github.com/mj1618/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/logparser"
 )
 
 // CommandConfig is an alias for config.CommandConfig
@@ -188,5 +190,182 @@ func TestMultipleRunners(t *testing.T) {
 	runner1.config.Model = "modified"
 	if runner2.config.Model == "modified" {
 		t.Error("Modifying runner1 affected runner2")
+	}
+}
+
+// TestRunnerClaudeCodeParsedStream tests end-to-end streaming output parsing
+// using a mock process that emits claude-code format JSONL.
+func TestRunnerClaudeCodeParsedStream(t *testing.T) {
+	// Build a shell script that emits claude-code JSONL lines to stdout
+	jsonLines := []string{
+		`{"type":"system","subtype":"init","model":"opus","cwd":"/tmp","session_id":"test123"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working on it."}]},"usage":{"input_tokens":500,"output_tokens":30}}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Bash","input":{"command":"echo hello"}}]},"usage":{"input_tokens":800,"output_tokens":20}}`,
+		`{"type":"tool_result","content":"hello"}`,
+		`{"type":"result","subtype":"success","result":"done","duration_ms":2000,"usage":{"input_tokens":200,"output_tokens":10}}`,
+	}
+
+	// Use printf with \n to emit each line (echo adds trailing newline per line)
+	var script string
+	for _, line := range jsonLines {
+		script += `printf '%s\n' '` + line + `'; `
+	}
+
+	cfg := Config{
+		Model:  "opus",
+		Prompt: "test",
+		Command: CommandConfig{
+			Executable: "sh",
+			Args:       []string{"-c", script},
+			RawOutput:  false, // Use the parser (non-raw mode)
+		},
+	}
+
+	runner := NewRunner(cfg)
+
+	var usageCallbackCalled bool
+	var finalStats = make(map[string]int64)
+	runner.SetUsageCallback(func(stats logparser.UsageStats) {
+		usageCallbackCalled = true
+		finalStats["input"] = stats.InputTokens
+		finalStats["output"] = stats.OutputTokens
+	})
+
+	var buf bytes.Buffer
+	err := runner.Run(&buf)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Verify parsed output contains expected elements
+	if !strings.Contains(output, "System init") {
+		t.Errorf("Output should contain 'System init', got: %q", output)
+	}
+	if !strings.Contains(output, "Working on it") {
+		t.Errorf("Output should contain assistant text, got: %q", output)
+	}
+	if !strings.Contains(output, "Shell: echo hello") {
+		t.Errorf("Output should contain tool use summary, got: %q", output)
+	}
+	if !strings.Contains(output, "Result") {
+		t.Errorf("Output should contain result, got: %q", output)
+	}
+
+	// Verify usage stats were tracked
+	if !usageCallbackCalled {
+		t.Error("Usage callback was never called")
+	}
+	if finalStats["input"] == 0 {
+		t.Error("Expected non-zero input tokens")
+	}
+	if finalStats["output"] == 0 {
+		t.Error("Expected non-zero output tokens")
+	}
+}
+
+// TestRunnerClaudeCodeRawStream tests the raw output mode (direct streaming with usage extraction).
+func TestRunnerClaudeCodeRawStream(t *testing.T) {
+	jsonLines := []string{
+		`{"type":"system","subtype":"init","model":"opus"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Hello"}]},"usage":{"input_tokens":100,"output_tokens":20}}`,
+		`{"type":"result","subtype":"success","result":"done","usage":{"input_tokens":50,"output_tokens":10}}`,
+	}
+
+	var script string
+	for _, line := range jsonLines {
+		script += `printf '%s\n' '` + line + `'; `
+	}
+
+	cfg := Config{
+		Model:  "opus",
+		Prompt: "test",
+		Command: CommandConfig{
+			Executable: "sh",
+			Args:       []string{"-c", script},
+			RawOutput:  true, // Raw mode - streams directly
+		},
+	}
+
+	runner := NewRunner(cfg)
+
+	var lastInputTokens int64
+	runner.SetUsageCallback(func(stats logparser.UsageStats) {
+		lastInputTokens = stats.InputTokens
+	})
+
+	var buf bytes.Buffer
+	err := runner.Run(&buf)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// In raw mode, output should contain the raw JSON lines (not parsed/pretty-printed)
+	if !strings.Contains(output, `"type":"system"`) {
+		t.Errorf("Raw output should contain raw JSON, got: %q", output)
+	}
+
+	// Usage stats should still be extracted even in raw mode
+	if lastInputTokens != 150 {
+		t.Errorf("Expected 150 input tokens extracted in raw mode, got %d", lastInputTokens)
+	}
+}
+
+// TestRunnerClaudeCodeStreamingOrder verifies that output appears in the correct order.
+func TestRunnerClaudeCodeStreamingOrder(t *testing.T) {
+	jsonLines := []string{
+		`{"type":"system","subtype":"init","model":"opus"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Step one."}]}}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"tu_1","name":"Read","input":{"file_path":"/src/main.go"}}]}}`,
+		`{"type":"tool_result","content":"package main"}`,
+		`{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Step two."}]}}`,
+		`{"type":"result","subtype":"success","result":"complete"}`,
+	}
+
+	var script string
+	for _, line := range jsonLines {
+		script += `printf '%s\n' '` + line + `'; `
+	}
+
+	cfg := Config{
+		Model:  "opus",
+		Prompt: "test",
+		Command: CommandConfig{
+			Executable: "sh",
+			Args:       []string{"-c", script},
+			RawOutput:  false,
+		},
+	}
+
+	runner := NewRunner(cfg)
+	var buf bytes.Buffer
+	err := runner.Run(&buf)
+	if err != nil {
+		t.Fatalf("Run failed: %v", err)
+	}
+
+	output := buf.String()
+
+	// Verify ordering: "Step one" should appear before "Read file" which should appear before "Step two"
+	stepOneIdx := strings.Index(output, "Step one")
+	readIdx := strings.Index(output, "Read file")
+	stepTwoIdx := strings.Index(output, "Step two")
+	resultIdx := strings.Index(output, "complete")
+
+	if stepOneIdx == -1 || readIdx == -1 || stepTwoIdx == -1 || resultIdx == -1 {
+		t.Fatalf("Missing expected content in output: %q", output)
+	}
+
+	if stepOneIdx >= readIdx {
+		t.Errorf("'Step one' (%d) should appear before 'Read file' (%d)", stepOneIdx, readIdx)
+	}
+	if readIdx >= stepTwoIdx {
+		t.Errorf("'Read file' (%d) should appear before 'Step two' (%d)", readIdx, stepTwoIdx)
+	}
+	if stepTwoIdx >= resultIdx {
+		t.Errorf("'Step two' (%d) should appear before result (%d)", stepTwoIdx, resultIdx)
 	}
 }
