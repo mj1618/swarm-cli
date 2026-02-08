@@ -64,18 +64,18 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 		return fmt.Errorf("invalid DAG: %w", err)
 	}
 
-	// Create output directory for inter-agent communication
-	runID := state.GenerateID()
-	outputDir := filepath.Join(e.cfg.WorkingDir, "swarm", "outputs", runID)
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
-		return fmt.Errorf("failed to create output directory: %w", err)
-	}
-
 	iterations := pipeline.EffectiveIterations()
 	fmt.Fprintf(e.cfg.Output, "Running pipeline with %d iteration(s) and %d task(s)\n", iterations, len(taskNames))
 
 	// Run each iteration
 	for i := 1; i <= iterations; i++ {
+		// Create a unique output directory per iteration for inter-agent communication
+		runID := state.GenerateID()
+		outputDir := filepath.Join(e.cfg.WorkingDir, "swarm", "outputs", runID)
+		if err := os.MkdirAll(outputDir, 0755); err != nil {
+			return fmt.Errorf("failed to create output directory: %w", err)
+		}
+
 		// Update state with current iteration
 		if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
 			if agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
@@ -86,7 +86,7 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 
 		fmt.Fprintf(e.cfg.Output, "\n=== Pipeline Iteration %d/%d ===\n", i, iterations)
 
-		if err := e.runDAG(graph, taskNames, i, outputDir); err != nil {
+		if err := e.runDAG(graph, taskNames, i, iterations, outputDir); err != nil {
 			return fmt.Errorf("iteration %d failed: %w", i, err)
 		}
 
@@ -109,7 +109,7 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 }
 
 // runDAG executes a single DAG iteration.
-func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration int, outputDir string) error {
+func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration, totalIterations int, outputDir string) error {
 	// Initialize state tracker
 	states := NewStateTracker(taskNames)
 
@@ -141,7 +141,7 @@ func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration int, outpu
 		}
 
 		// Execute ready tasks in parallel
-		if err := e.executeTasks(graph, readyTasks, states, writers, iteration, outputDir); err != nil {
+		if err := e.executeTasks(graph, readyTasks, states, writers, iteration, totalIterations, outputDir); err != nil {
 			// Log error but continue - individual task failures don't stop the DAG
 			fmt.Fprintf(e.cfg.Output, "Warning: task execution error: %v\n", err)
 		}
@@ -173,7 +173,7 @@ func (e *Executor) skipBlockedTasks(graph *Graph, tracker *StateTracker, current
 }
 
 // executeTasks runs multiple tasks in parallel.
-func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *StateTracker, writers *output.WriterGroup, iteration int, outputDir string) error {
+func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *StateTracker, writers *output.WriterGroup, iteration, totalIterations int, outputDir string) error {
 	var wg sync.WaitGroup
 	var mu sync.Mutex
 	var errors []error
@@ -194,7 +194,7 @@ func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *State
 
 			fmt.Fprintf(out, "Starting (iteration %d)\n", iteration)
 
-			err := e.runTask(name, t, out, outputDir)
+			err := e.runTask(name, t, out, iteration, totalIterations, outputDir)
 			if err != nil {
 				tracker.SetFailed(name, err)
 				fmt.Fprintf(out, "Failed: %v\n", err)
@@ -217,7 +217,7 @@ func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *State
 }
 
 // runTask executes a single task.
-func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, outputDir string) error {
+func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, iteration, totalIterations int, outputDir string) error {
 	// Generate task ID
 	taskID := state.GenerateID()
 
@@ -245,6 +245,7 @@ func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, ou
 	// Generate agent ID and inject it
 	agentID := state.GenerateID()
 	promptContent = prompt.InjectAgentID(promptContent, agentID)
+	promptContent = prompt.InjectIteration(promptContent, iteration, totalIterations)
 
 	// Inject the output directory so the agent can write its own state
 	promptContent = prompt.InjectOutputDir(promptContent, outputDir, taskName)

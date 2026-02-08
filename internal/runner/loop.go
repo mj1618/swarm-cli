@@ -228,6 +228,7 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		// Generate a per-iteration agent ID and inject it into the prompt.
 		iterationAgentID := state.GenerateID()
 		iterationPrompt := prompt.InjectAgentID(cfg.PromptContent, iterationAgentID)
+		iterationPrompt = prompt.InjectIteration(iterationPrompt, i, iterationsForDisplay)
 
 		// Create agent config with per-iteration timeout
 		agentCfg := agent.Config{

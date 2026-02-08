@@ -191,6 +191,18 @@ func InjectOutputDir(promptContent, outputDir, taskName string) string {
 	return line + "\n\n" + promptContent
 }
 
+// InjectIteration injects the current iteration number and total into the prompt.
+// A total of 0 means unlimited iterations.
+func InjectIteration(promptContent string, current, total int) string {
+	var line string
+	if total == 0 {
+		line = fmt.Sprintf("You are on iteration %d (unlimited).", current)
+	} else {
+		line = fmt.Sprintf("You are on iteration %d of %d.", current, total)
+	}
+	return line + "\n\n" + promptContent
+}
+
 // InjectSubAgentRestriction injects a message telling the agent not to spawn sub-agents.
 // This is used when an agent is already a sub-agent to prevent deep nesting.
 func InjectSubAgentRestriction(promptContent, parentID string) string {

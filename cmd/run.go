@@ -660,6 +660,7 @@ Labels can be attached to agents for categorization and filtering using the
 			// Generate a per-iteration agent ID and inject it into the prompt.
 			iterationAgentID := state.GenerateID()
 			iterationPrompt := prompt.InjectAgentID(promptContent, iterationAgentID)
+			iterationPrompt = prompt.InjectIteration(iterationPrompt, 1, 1)
 
 			cfg := agent.Config{
 				Model:   effectiveModel,
