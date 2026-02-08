@@ -5,7 +5,21 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/mj1618/swarm-cli/internal/scope"
 )
+
+// newTestManager creates a Manager backed by a temp directory so tests
+// don't interfere with the real ~/.swarm/state.json or each other.
+func newTestManager(t *testing.T) *Manager {
+	t.Helper()
+	dir := t.TempDir()
+	return &Manager{
+		statePath: filepath.Join(dir, "state.json"),
+		lockPath:  filepath.Join(dir, "state.lock"),
+		scope:     scope.ScopeGlobal,
+	}
+}
 
 func TestGenerateID(t *testing.T) {
 	// Generate multiple IDs and ensure they're unique
@@ -380,30 +394,27 @@ func TestConcurrentAccess(t *testing.T) {
 }
 
 func TestManagerListSortingAndFiltering(t *testing.T) {
-	mgr, err := NewManager()
-	if err != nil {
-		t.Fatalf("NewManager failed: %v", err)
-	}
+	mgr := newTestManager(t)
 
 	// Create agents with different start times and statuses
 	now := time.Now()
 	agent1 := &AgentState{
 		ID:        GenerateID(),
-		PID:       11111,
+		PID:       os.Getpid(),
 		Prompt:    "oldest-running",
 		StartedAt: now.Add(-3 * time.Hour), // Oldest
 		Status:    "running",
 	}
 	agent2 := &AgentState{
 		ID:        GenerateID(),
-		PID:       22222,
+		PID:       os.Getpid(),
 		Prompt:    "middle-terminated",
 		StartedAt: now.Add(-2 * time.Hour), // Middle
 		Status:    "terminated",
 	}
 	agent3 := &AgentState{
 		ID:        GenerateID(),
-		PID:       33333,
+		PID:       os.Getpid(),
 		Prompt:    "newest-running",
 		StartedAt: now.Add(-1 * time.Hour), // Newest
 		Status:    "running",
@@ -420,27 +431,19 @@ func TestManagerListSortingAndFiltering(t *testing.T) {
 		t.Fatalf("List(false) failed: %v", err)
 	}
 
-	// Find our test agents
-	var ourAgents []*AgentState
-	for _, a := range allAgents {
-		if a.ID == agent1.ID || a.ID == agent2.ID || a.ID == agent3.ID {
-			ourAgents = append(ourAgents, a)
-		}
-	}
-
-	if len(ourAgents) != 3 {
-		t.Fatalf("Expected 3 agents, got %d", len(ourAgents))
+	if len(allAgents) != 3 {
+		t.Fatalf("Expected 3 agents, got %d", len(allAgents))
 	}
 
 	// Verify sorting: oldest should be first
-	if ourAgents[0].ID != agent1.ID {
-		t.Errorf("Expected oldest agent first, got %s", ourAgents[0].Prompt)
+	if allAgents[0].ID != agent1.ID {
+		t.Errorf("Expected oldest agent first, got %s", allAgents[0].Prompt)
 	}
-	if ourAgents[1].ID != agent2.ID {
-		t.Errorf("Expected middle agent second, got %s", ourAgents[1].Prompt)
+	if allAgents[1].ID != agent2.ID {
+		t.Errorf("Expected middle agent second, got %s", allAgents[1].Prompt)
 	}
-	if ourAgents[2].ID != agent3.ID {
-		t.Errorf("Expected newest agent third, got %s", ourAgents[2].Prompt)
+	if allAgents[2].ID != agent3.ID {
+		t.Errorf("Expected newest agent third, got %s", allAgents[2].Prompt)
 	}
 
 	// Test: List only running agents (onlyRunning=true) should exclude terminated
@@ -449,37 +452,24 @@ func TestManagerListSortingAndFiltering(t *testing.T) {
 		t.Fatalf("List(true) failed: %v", err)
 	}
 
-	// Find our running test agents
-	var ourRunningAgents []*AgentState
-	for _, a := range runningAgents {
-		if a.ID == agent1.ID || a.ID == agent2.ID || a.ID == agent3.ID {
-			ourRunningAgents = append(ourRunningAgents, a)
-		}
-	}
-
-	if len(ourRunningAgents) != 2 {
-		t.Fatalf("Expected 2 running agents, got %d", len(ourRunningAgents))
+	if len(runningAgents) != 2 {
+		t.Fatalf("Expected 2 running agents, got %d", len(runningAgents))
 	}
 
 	// Verify terminated agent is not included
-	for _, a := range ourRunningAgents {
+	for _, a := range runningAgents {
 		if a.ID == agent2.ID {
 			t.Error("Terminated agent should not be in running list")
 		}
 	}
 
 	// Verify sorting still applies: oldest running should be first
-	if ourRunningAgents[0].ID != agent1.ID {
-		t.Errorf("Expected oldest running agent first, got %s", ourRunningAgents[0].Prompt)
+	if runningAgents[0].ID != agent1.ID {
+		t.Errorf("Expected oldest running agent first, got %s", runningAgents[0].Prompt)
 	}
-	if ourRunningAgents[1].ID != agent3.ID {
-		t.Errorf("Expected newest running agent second, got %s", ourRunningAgents[1].Prompt)
+	if runningAgents[1].ID != agent3.ID {
+		t.Errorf("Expected newest running agent second, got %s", runningAgents[1].Prompt)
 	}
-
-	// Cleanup
-	_ = mgr.Remove(agent1.ID)
-	_ = mgr.Remove(agent2.ID)
-	_ = mgr.Remove(agent3.ID)
 }
 
 func TestRegisterUniqueNameSuffix(t *testing.T) {
