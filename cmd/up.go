@@ -13,6 +13,7 @@ import (
 	"github.com/mj1618/swarm-cli/internal/compose"
 	"github.com/mj1618/swarm-cli/internal/dag"
 	"github.com/mj1618/swarm-cli/internal/detach"
+	"github.com/mj1618/swarm-cli/internal/logparser"
 	"github.com/mj1618/swarm-cli/internal/output"
 	"github.com/mj1618/swarm-cli/internal/prompt"
 	"github.com/mj1618/swarm-cli/internal/scope"
@@ -608,6 +609,11 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		return nil
 	}
 
+	// Track cumulative usage across iterations
+	var cumulativeInputTokens int64
+	var cumulativeOutputTokens int64
+	var cumulativeCostUSD float64
+
 	// Multi-iteration mode with state management
 	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
 	if err != nil {
@@ -677,9 +683,36 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		}
 
 		runner := agent.NewRunner(cfg)
+
+		// Set up usage callback to update state in real time
+		iterStartInput := cumulativeInputTokens
+		iterStartOutput := cumulativeOutputTokens
+		iterStartCost := cumulativeCostUSD
+		runner.SetUsageCallback(func(stats logparser.UsageStats) {
+			agentState.InputTokens = iterStartInput + stats.InputTokens
+			agentState.OutputTokens = iterStartOutput + stats.OutputTokens
+			agentState.CurrentTask = stats.CurrentTask
+			if stats.TotalCostUSD > 0 {
+				agentState.TotalCost = iterStartCost + stats.TotalCostUSD
+			}
+			_ = mgr.MergeUpdate(agentState)
+		})
+
 		if err := runner.Run(out); err != nil {
 			fmt.Fprintf(out, "Agent error (continuing): %v\n", err)
 		}
+
+		// Accumulate final stats from this iteration
+		finalStats := runner.UsageStats()
+		cumulativeInputTokens += finalStats.InputTokens
+		cumulativeOutputTokens += finalStats.OutputTokens
+		cumulativeCostUSD += finalStats.TotalCostUSD
+		agentState.InputTokens = cumulativeInputTokens
+		agentState.OutputTokens = cumulativeOutputTokens
+		if cumulativeCostUSD > 0 {
+			agentState.TotalCost = cumulativeCostUSD
+		}
+		_ = mgr.MergeUpdate(agentState)
 	}
 
 	fmt.Fprintf(out, "Completed (%d iterations)\n", agentState.Iterations)

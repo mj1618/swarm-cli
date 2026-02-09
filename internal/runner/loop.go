@@ -114,6 +114,11 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		startingIteration = 1
 	}
 
+	// Track cumulative usage across iterations (each runner resets to zero)
+	var cumulativeInputTokens int64
+	var cumulativeOutputTokens int64
+	var cumulativeCostUSD float64
+
 	// Run iterations (0 means unlimited), starting from startingIteration
 	for i := startingIteration; ; i++ {
 		// Check loop condition under lock
@@ -243,16 +248,20 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		runner := agent.NewRunner(agentCfg)
 		
 		// Set up usage callback to update state
+		// Capture cumulative values at iteration start for accumulation
+		iterStartInput := cumulativeInputTokens
+		iterStartOutput := cumulativeOutputTokens
+		iterStartCost := cumulativeCostUSD
 		runner.SetUsageCallback(func(stats logparser.UsageStats) {
 			stateMu.Lock()
-			// Update token counts (stats are cumulative within iteration)
-			agentState.InputTokens = stats.InputTokens
-			agentState.OutputTokens = stats.OutputTokens
+			// Accumulate: previous iterations' totals + this iteration's running totals
+			agentState.InputTokens = iterStartInput + stats.InputTokens
+			agentState.OutputTokens = iterStartOutput + stats.OutputTokens
 			agentState.CurrentTask = stats.CurrentTask
 
 			// Use cost from CLI if available (accounts for cache pricing), otherwise calculate
 			if stats.TotalCostUSD > 0 {
-				agentState.TotalCost = stats.TotalCostUSD
+				agentState.TotalCost = iterStartCost + stats.TotalCostUSD
 			} else if cfg.Config != nil {
 				pricing := cfg.Config.GetPricing(agentState.Model)
 				agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
@@ -285,16 +294,21 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			stateMu.Unlock()
 		}
 		
-		// Capture final usage stats from this iteration
+		// Capture final usage stats from this iteration and accumulate
 		finalStats := runner.UsageStats()
+		cumulativeInputTokens += finalStats.InputTokens
+		cumulativeOutputTokens += finalStats.OutputTokens
+		if finalStats.TotalCostUSD > 0 {
+			cumulativeCostUSD += finalStats.TotalCostUSD
+		}
 		stateMu.Lock()
-		agentState.InputTokens = finalStats.InputTokens
-		agentState.OutputTokens = finalStats.OutputTokens
+		agentState.InputTokens = cumulativeInputTokens
+		agentState.OutputTokens = cumulativeOutputTokens
 		if finalStats.CurrentTask != "" {
 			agentState.CurrentTask = finalStats.CurrentTask
 		}
-		if finalStats.TotalCostUSD > 0 {
-			agentState.TotalCost = finalStats.TotalCostUSD
+		if cumulativeCostUSD > 0 {
+			agentState.TotalCost = cumulativeCostUSD
 		} else if cfg.Config != nil {
 			pricing := cfg.Config.GetPricing(agentState.Model)
 			agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)

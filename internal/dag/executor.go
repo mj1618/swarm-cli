@@ -43,6 +43,12 @@ type ExecutorConfig struct {
 // Executor runs pipelines with DAG-ordered task execution.
 type Executor struct {
 	cfg ExecutorConfig
+
+	// Cumulative usage stats across all tasks (protected by mu)
+	mu           sync.Mutex
+	inputTokens  int64
+	outputTokens int64
+	totalCostUSD float64
 }
 
 // NewExecutor creates a new pipeline executor.
@@ -268,7 +274,33 @@ func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, it
 	}
 
 	runner := agent.NewRunner(cfg)
-	return runner.Run(out)
+	err = runner.Run(out)
+
+	// Accumulate usage stats from this task into pipeline totals
+	stats := runner.UsageStats()
+	if stats.InputTokens > 0 || stats.OutputTokens > 0 || stats.TotalCostUSD > 0 {
+		e.mu.Lock()
+		e.inputTokens += stats.InputTokens
+		e.outputTokens += stats.OutputTokens
+		e.totalCostUSD += stats.TotalCostUSD
+		// Update pipeline state if available
+		if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
+			if agentState, stateErr := e.cfg.StateManager.Get(e.cfg.TaskID); stateErr == nil {
+				agentState.InputTokens = e.inputTokens
+				agentState.OutputTokens = e.outputTokens
+				if e.totalCostUSD > 0 {
+					agentState.TotalCost = e.totalCostUSD
+				} else if e.cfg.AppConfig != nil {
+					pricing := e.cfg.AppConfig.GetPricing(agentState.Model)
+					agentState.TotalCost = pricing.CalculateCost(e.inputTokens, e.outputTokens)
+				}
+				_ = e.cfg.StateManager.MergeUpdate(agentState)
+			}
+		}
+		e.mu.Unlock()
+	}
+
+	return err
 }
 
 // loadTaskPrompt loads the prompt content for a task.
