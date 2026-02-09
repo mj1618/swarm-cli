@@ -76,11 +76,21 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
 
-		// Update state with current iteration
+		// Update state with current iteration and check for iteration limit changes
 		if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
 			if agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
 				agentState.CurrentIter = i
 				_ = e.cfg.StateManager.MergeUpdate(agentState)
+
+				// Re-read state to pick up externally changed iteration limit
+				if updated, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
+					if updated.Iterations != 0 && updated.Iterations != iterations {
+						iterations = updated.Iterations
+						if i > iterations {
+							break
+						}
+					}
+				}
 			}
 		}
 

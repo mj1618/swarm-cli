@@ -643,6 +643,10 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		if err == nil && currentState != nil {
 			if currentState.Iterations != agentState.Iterations {
 				agentState.Iterations = currentState.Iterations
+				if i > agentState.Iterations {
+					fmt.Fprintf(out, "Iteration limit reduced to %d, stopping\n", agentState.Iterations)
+					return nil
+				}
 			}
 			if currentState.Model != agentState.Model {
 				agentState.Model = currentState.Model

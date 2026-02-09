@@ -249,13 +249,15 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 			agentState.InputTokens = stats.InputTokens
 			agentState.OutputTokens = stats.OutputTokens
 			agentState.CurrentTask = stats.CurrentTask
-			
-			// Calculate cost if config is available
-			if cfg.Config != nil {
+
+			// Use cost from CLI if available (accounts for cache pricing), otherwise calculate
+			if stats.TotalCostUSD > 0 {
+				agentState.TotalCost = stats.TotalCostUSD
+			} else if cfg.Config != nil {
 				pricing := cfg.Config.GetPricing(agentState.Model)
 				agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
 			}
-			
+
 			// Update state (will be throttled by the parser's update frequency)
 			_ = mgr.MergeUpdate(agentState)
 			stateMu.Unlock()
@@ -291,7 +293,9 @@ func RunLoop(cfg LoopConfig) (*LoopResult, error) {
 		if finalStats.CurrentTask != "" {
 			agentState.CurrentTask = finalStats.CurrentTask
 		}
-		if cfg.Config != nil {
+		if finalStats.TotalCostUSD > 0 {
+			agentState.TotalCost = finalStats.TotalCostUSD
+		} else if cfg.Config != nil {
 			pricing := cfg.Config.GetPricing(agentState.Model)
 			agentState.TotalCost = pricing.CalculateCost(agentState.InputTokens, agentState.OutputTokens)
 		}

@@ -187,15 +187,22 @@ func (r *Runner) extractUsageFromLine(line string) {
 
 	updated := false
 
-	// Extract usage from various possible locations
-	if event.Usage != nil {
-		inputTokens := event.Usage.InputTokens
+	// Find usage from the best available location:
+	// 1. Top-level usage (result events)
+	// 2. message.usage (assistant events)
+	usage := event.Usage
+	if usage == nil && event.Message != nil {
+		usage = event.Message.Usage
+	}
+
+	if usage != nil {
+		inputTokens := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 		if inputTokens == 0 {
-			inputTokens = event.Usage.PromptTokens
+			inputTokens = usage.PromptTokens
 		}
-		outputTokens := event.Usage.OutputTokens
+		outputTokens := usage.OutputTokens
 		if outputTokens == 0 {
-			outputTokens = event.Usage.CompletionTokens
+			outputTokens = usage.CompletionTokens
 		}
 		if inputTokens > 0 || outputTokens > 0 {
 			r.usageStats.InputTokens += inputTokens
@@ -204,13 +211,9 @@ func (r *Runner) extractUsageFromLine(line string) {
 		}
 	}
 
-	// Check for direct token fields
-	if event.InputTokens != nil && *event.InputTokens > 0 {
-		r.usageStats.InputTokens += *event.InputTokens
-		updated = true
-	}
-	if event.OutputTokens != nil && *event.OutputTokens > 0 {
-		r.usageStats.OutputTokens += *event.OutputTokens
+	// Capture total_cost_usd from result events (Claude CLI calculates this accurately)
+	if event.TotalCostUSD != nil && *event.TotalCostUSD > 0 {
+		r.usageStats.TotalCostUSD += *event.TotalCostUSD
 		updated = true
 	}
 

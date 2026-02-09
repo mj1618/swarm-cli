@@ -39,10 +39,9 @@ type LogEvent struct {
 	Result      string                 `json:"result"`
 	DurationMs  int64                  `json:"duration_ms"`
 	// Usage fields (may be present in API response events)
-	Usage       *Usage                 `json:"usage,omitempty"`
-	// Alternative usage locations in different API formats
-	InputTokens  *int64                `json:"input_tokens,omitempty"`
-	OutputTokens *int64                `json:"output_tokens,omitempty"`
+	Usage *Usage `json:"usage,omitempty"`
+	// Cost from result events (Claude CLI calculates this including cache pricing)
+	TotalCostUSD *float64 `json:"total_cost_usd,omitempty"`
 	// Claude Code stream-json fields for tool events
 	ToolName string                 `json:"tool_name,omitempty"`
 	Name     string                 `json:"name,omitempty"`
@@ -52,9 +51,11 @@ type LogEvent struct {
 
 // Usage represents token usage from an API response.
 type Usage struct {
-	InputTokens  int64 `json:"input_tokens"`
-	OutputTokens int64 `json:"output_tokens"`
-	TotalTokens  int64 `json:"total_tokens"`
+	InputTokens              int64 `json:"input_tokens"`
+	OutputTokens             int64 `json:"output_tokens"`
+	TotalTokens              int64 `json:"total_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 	// Alternative field names used by some APIs
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
@@ -64,6 +65,7 @@ type Usage struct {
 type UsageStats struct {
 	InputTokens  int64
 	OutputTokens int64
+	TotalCostUSD float64
 	CurrentTask  string
 }
 
@@ -71,6 +73,7 @@ type UsageStats struct {
 type Message struct {
 	Role    string        `json:"role"`
 	Content []ContentItem `json:"content"`
+	Usage   *Usage        `json:"usage,omitempty"`
 }
 
 // ContentItem represents a content item in a message.
@@ -134,15 +137,22 @@ func (sp *StreamingParser) extractUsage(line string) {
 
 	updated := false
 
-	// Extract usage from various possible locations
-	if event.Usage != nil {
-		inputTokens := event.Usage.InputTokens
+	// Find usage from the best available location:
+	// 1. Top-level usage (result events)
+	// 2. message.usage (assistant events)
+	usage := event.Usage
+	if usage == nil && event.Message != nil {
+		usage = event.Message.Usage
+	}
+
+	if usage != nil {
+		inputTokens := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
 		if inputTokens == 0 {
-			inputTokens = event.Usage.PromptTokens
+			inputTokens = usage.PromptTokens
 		}
-		outputTokens := event.Usage.OutputTokens
+		outputTokens := usage.OutputTokens
 		if outputTokens == 0 {
-			outputTokens = event.Usage.CompletionTokens
+			outputTokens = usage.CompletionTokens
 		}
 		if inputTokens > 0 || outputTokens > 0 {
 			sp.stats.InputTokens += inputTokens
@@ -151,13 +161,9 @@ func (sp *StreamingParser) extractUsage(line string) {
 		}
 	}
 
-	// Check for direct token fields
-	if event.InputTokens != nil && *event.InputTokens > 0 {
-		sp.stats.InputTokens += *event.InputTokens
-		updated = true
-	}
-	if event.OutputTokens != nil && *event.OutputTokens > 0 {
-		sp.stats.OutputTokens += *event.OutputTokens
+	// Capture total_cost_usd from result events (Claude CLI calculates this accurately)
+	if event.TotalCostUSD != nil && *event.TotalCostUSD > 0 {
+		sp.stats.TotalCostUSD += *event.TotalCostUSD
 		updated = true
 	}
 

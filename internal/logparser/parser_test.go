@@ -1047,13 +1047,13 @@ func TestStreamingParserRealtimeCallbackTiming(t *testing.T) {
 }
 
 func TestStreamingParserDirectTokenFields(t *testing.T) {
-	// Test that direct input_tokens/output_tokens fields (not nested in usage) are extracted
+	// Test that message.usage (assistant events) and top-level usage (result events) are extracted
 	var buf bytes.Buffer
 	sp := NewStreamingParser(&buf, nil)
 
 	lines := []string{
-		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}]}, "input_tokens": 500, "output_tokens": 200}`,
-		`{"type": "result", "subtype": "success", "result": "done", "input_tokens": 100, "output_tokens": 50}`,
+		`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}], "usage": {"input_tokens": 500, "output_tokens": 200}}}`,
+		`{"type": "result", "subtype": "success", "result": "done", "usage": {"input_tokens": 100, "output_tokens": 50}}`,
 	}
 
 	for _, line := range lines {
@@ -1063,10 +1063,42 @@ func TestStreamingParserDirectTokenFields(t *testing.T) {
 
 	stats := sp.Stats()
 	if stats.InputTokens != 600 {
-		t.Errorf("Expected 600 input tokens from direct fields, got %d", stats.InputTokens)
+		t.Errorf("Expected 600 input tokens, got %d", stats.InputTokens)
 	}
 	if stats.OutputTokens != 250 {
-		t.Errorf("Expected 250 output tokens from direct fields, got %d", stats.OutputTokens)
+		t.Errorf("Expected 250 output tokens, got %d", stats.OutputTokens)
+	}
+}
+
+func TestStreamingParserCacheTokenFields(t *testing.T) {
+	// Test that cache_read_input_tokens and cache_creation_input_tokens are included in input totals
+	var buf bytes.Buffer
+	sp := NewStreamingParser(&buf, nil)
+
+	sp.ProcessLine(`{"type": "assistant", "message": {"role": "assistant", "content": [{"type": "text", "text": "hi"}], "usage": {"input_tokens": 3, "output_tokens": 7, "cache_read_input_tokens": 13931, "cache_creation_input_tokens": 6152}}}`)
+	sp.Flush()
+
+	stats := sp.Stats()
+	expectedInput := int64(3 + 13931 + 6152)
+	if stats.InputTokens != expectedInput {
+		t.Errorf("Expected %d input tokens (including cache), got %d", expectedInput, stats.InputTokens)
+	}
+	if stats.OutputTokens != 7 {
+		t.Errorf("Expected 7 output tokens, got %d", stats.OutputTokens)
+	}
+}
+
+func TestStreamingParserTotalCostUSD(t *testing.T) {
+	// Test that total_cost_usd from result events is captured
+	var buf bytes.Buffer
+	sp := NewStreamingParser(&buf, nil)
+
+	sp.ProcessLine(`{"type": "result", "subtype": "success", "result": "done", "total_cost_usd": 0.0091211, "usage": {"input_tokens": 3, "output_tokens": 7, "cache_read_input_tokens": 13931}}`)
+	sp.Flush()
+
+	stats := sp.Stats()
+	if stats.TotalCostUSD != 0.0091211 {
+		t.Errorf("Expected TotalCostUSD 0.0091211, got %f", stats.TotalCostUSD)
 	}
 }
 
