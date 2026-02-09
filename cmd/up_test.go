@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -451,6 +452,364 @@ func TestBuildRunningNamesMap(t *testing.T) {
 				if !tt.expectedNames[name] {
 					t.Errorf("unexpected name %q in runningNames", name)
 				}
+			}
+		})
+	}
+}
+
+func TestIsPipelineInstance(t *testing.T) {
+	tests := []struct {
+		agentName    string
+		pipelineName string
+		want         bool
+	}{
+		// Exact single instance match
+		{"pipeline:dev", "dev", true},
+		// Parallel instances
+		{"pipeline:dev.1", "dev", true},
+		{"pipeline:dev.2", "dev", true},
+		{"pipeline:dev.10", "dev", true},
+		// Non-matches
+		{"pipeline:devops", "dev", false},       // different pipeline, not a .N suffix
+		{"pipeline:dev.abc", "dev", false},       // suffix is not a number
+		{"pipeline:dev.", "dev", false},           // empty suffix after dot
+		{"pipeline:other", "dev", false},          // completely different
+		{"frontend", "dev", false},                // not a pipeline agent
+		{"pipeline:dev.1.2", "dev", false},        // nested dots - suffix "1.2" is not a number
+		{"pipeline:my-pipeline", "my-pipeline", true},
+		{"pipeline:my-pipeline.3", "my-pipeline", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.agentName+"_"+tt.pipelineName, func(t *testing.T) {
+			got := isPipelineInstance(tt.agentName, tt.pipelineName)
+			if got != tt.want {
+				t.Errorf("isPipelineInstance(%q, %q) = %v, want %v", tt.agentName, tt.pipelineName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsTaskInstance(t *testing.T) {
+	tests := []struct {
+		agentName string
+		baseName  string
+		want      bool
+	}{
+		// Exact single instance match
+		{"frontend", "frontend", true},
+		// Parallel instances
+		{"frontend.1", "frontend", true},
+		{"frontend.2", "frontend", true},
+		{"frontend.10", "frontend", true},
+		// Non-matches
+		{"frontend-v2", "frontend", false},    // not a .N suffix
+		{"frontend.abc", "frontend", false},   // suffix is not a number
+		{"frontend.", "frontend", false},       // empty suffix after dot
+		{"backend", "frontend", false},         // completely different
+		{"frontend.1.2", "frontend", false},    // nested dots
+		// Custom name scenarios
+		{"my-agent", "my-agent", true},
+		{"my-agent.3", "my-agent", true},
+		{"my-agent.0", "my-agent", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.agentName+"_"+tt.baseName, func(t *testing.T) {
+			got := isTaskInstance(tt.agentName, tt.baseName)
+			if got != tt.want {
+				t.Errorf("isTaskInstance(%q, %q) = %v, want %v", tt.agentName, tt.baseName, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestParallelismScaleDownDesiredNames(t *testing.T) {
+	// Tests that the desired name computation logic works correctly
+	// for different parallelism values, matching the logic in runTasksDetached.
+
+	tests := []struct {
+		name         string
+		taskName     string
+		taskCustom   string // Task.Name field
+		parallelism  int
+		wantDesired  map[string]bool
+	}{
+		{
+			name:        "parallelism 1, no custom name",
+			taskName:    "frontend",
+			parallelism: 1,
+			wantDesired: map[string]bool{"frontend": true},
+		},
+		{
+			name:        "parallelism 1, custom name",
+			taskName:    "frontend",
+			taskCustom:  "my-frontend",
+			parallelism: 1,
+			wantDesired: map[string]bool{"my-frontend": true},
+		},
+		{
+			name:        "parallelism 3, no custom name",
+			taskName:    "frontend",
+			parallelism: 3,
+			wantDesired: map[string]bool{
+				"frontend.1": true,
+				"frontend.2": true,
+				"frontend.3": true,
+			},
+		},
+		{
+			name:        "parallelism 3, custom name",
+			taskName:    "frontend",
+			taskCustom:  "my-frontend",
+			parallelism: 3,
+			wantDesired: map[string]bool{
+				"my-frontend.1": true,
+				"my-frontend.2": true,
+				"my-frontend.3": true,
+			},
+		},
+		{
+			name:        "parallelism 2 reduced from 3",
+			taskName:    "worker",
+			parallelism: 2,
+			wantDesired: map[string]bool{
+				"worker.1": true,
+				"worker.2": true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := compose.Task{
+				PromptString: "test",
+				Parallelism:  tt.parallelism,
+				Name:         tt.taskCustom,
+			}
+
+			baseName := tt.taskName
+			if task.Name != "" {
+				baseName = task.Name
+			}
+			p := task.EffectiveParallelism()
+
+			desiredNames := make(map[string]bool)
+			if p == 1 {
+				desiredNames[task.EffectiveName(tt.taskName)] = true
+			} else {
+				for j := 1; j <= p; j++ {
+					if task.Name != "" {
+						desiredNames[fmt.Sprintf("%s.%d", task.Name, j)] = true
+					} else {
+						desiredNames[fmt.Sprintf("%s.%d", tt.taskName, j)] = true
+					}
+				}
+			}
+
+			// Verify desired names match expected
+			if len(desiredNames) != len(tt.wantDesired) {
+				t.Errorf("desiredNames length = %d, want %d", len(desiredNames), len(tt.wantDesired))
+			}
+			for name := range tt.wantDesired {
+				if !desiredNames[name] {
+					t.Errorf("expected %q in desiredNames", name)
+				}
+			}
+
+			// Verify isTaskInstance matches all desired names
+			for name := range desiredNames {
+				if !isTaskInstance(name, baseName) {
+					t.Errorf("isTaskInstance(%q, %q) = false, want true", name, baseName)
+				}
+			}
+		})
+	}
+}
+
+func TestPipelineParallelismDesiredNames(t *testing.T) {
+	// Tests that pipeline desired name computation works correctly.
+
+	tests := []struct {
+		name         string
+		pipelineName string
+		parallelism  int
+		wantDesired  map[string]bool
+	}{
+		{
+			name:         "parallelism 1",
+			pipelineName: "dev",
+			parallelism:  1,
+			wantDesired:  map[string]bool{"pipeline:dev": true},
+		},
+		{
+			name:         "parallelism 3",
+			pipelineName: "dev",
+			parallelism:  3,
+			wantDesired: map[string]bool{
+				"pipeline:dev.1": true,
+				"pipeline:dev.2": true,
+				"pipeline:dev.3": true,
+			},
+		},
+		{
+			name:         "parallelism 2 reduced from 3",
+			pipelineName: "dev",
+			parallelism:  2,
+			wantDesired: map[string]bool{
+				"pipeline:dev.1": true,
+				"pipeline:dev.2": true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			desiredNames := make(map[string]bool)
+			for i := 1; i <= tt.parallelism; i++ {
+				instanceName := tt.pipelineName
+				if tt.parallelism > 1 {
+					instanceName = fmt.Sprintf("%s.%d", tt.pipelineName, i)
+				}
+				desiredNames[fmt.Sprintf("pipeline:%s", instanceName)] = true
+			}
+
+			if len(desiredNames) != len(tt.wantDesired) {
+				t.Errorf("desiredNames length = %d, want %d", len(desiredNames), len(tt.wantDesired))
+			}
+			for name := range tt.wantDesired {
+				if !desiredNames[name] {
+					t.Errorf("expected %q in desiredNames", name)
+				}
+			}
+
+			// Verify isPipelineInstance matches all desired names
+			for name := range desiredNames {
+				if !isPipelineInstance(name, tt.pipelineName) {
+					t.Errorf("isPipelineInstance(%q, %q) = false, want true", name, tt.pipelineName)
+				}
+			}
+		})
+	}
+}
+
+func TestScaleDownExcessDetection(t *testing.T) {
+	// Tests that excess instance detection correctly identifies
+	// which instances should be killed when parallelism is reduced.
+
+	tests := []struct {
+		name            string
+		pipelineName    string
+		runningNames    []string // names of currently running agents
+		newParallelism  int
+		wantKilled      []string // names that should be killed
+		wantKept        []string // names that should be kept
+	}{
+		{
+			name:           "scale down pipeline from 3 to 2",
+			pipelineName:   "dev",
+			runningNames:   []string{"pipeline:dev.1", "pipeline:dev.2", "pipeline:dev.3"},
+			newParallelism: 2,
+			wantKilled:     []string{"pipeline:dev.3"},
+			wantKept:       []string{"pipeline:dev.1", "pipeline:dev.2"},
+		},
+		{
+			name:           "scale down pipeline from 3 to 1",
+			pipelineName:   "dev",
+			runningNames:   []string{"pipeline:dev.1", "pipeline:dev.2", "pipeline:dev.3"},
+			newParallelism: 1,
+			wantKilled:     []string{"pipeline:dev.1", "pipeline:dev.2", "pipeline:dev.3"},
+			wantKept:       []string{},
+		},
+		{
+			name:           "scale up pipeline from 2 to 3 - no kills",
+			pipelineName:   "dev",
+			runningNames:   []string{"pipeline:dev.1", "pipeline:dev.2"},
+			newParallelism: 3,
+			wantKilled:     []string{},
+			wantKept:       []string{"pipeline:dev.1", "pipeline:dev.2"},
+		},
+		{
+			name:           "transition from single to parallel",
+			pipelineName:   "dev",
+			runningNames:   []string{"pipeline:dev"},
+			newParallelism: 3,
+			wantKilled:     []string{"pipeline:dev"},
+			wantKept:       []string{},
+		},
+		{
+			name:           "transition from parallel to single",
+			pipelineName:   "dev",
+			runningNames:   []string{"pipeline:dev.1", "pipeline:dev.2"},
+			newParallelism: 1,
+			wantKilled:     []string{"pipeline:dev.1", "pipeline:dev.2"},
+			wantKept:       []string{},
+		},
+		{
+			name:           "no running instances - nothing to kill",
+			pipelineName:   "dev",
+			runningNames:   []string{},
+			newParallelism: 2,
+			wantKilled:     []string{},
+			wantKept:       []string{},
+		},
+		{
+			name:           "unrelated agents not affected",
+			pipelineName:   "dev",
+			runningNames:   []string{"pipeline:dev.1", "pipeline:dev.2", "pipeline:other.1", "frontend"},
+			newParallelism: 1,
+			wantKilled:     []string{"pipeline:dev.1", "pipeline:dev.2"},
+			wantKept:       []string{"pipeline:other.1", "frontend"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Compute desired names
+			desiredNames := make(map[string]bool)
+			for i := 1; i <= tt.newParallelism; i++ {
+				instanceName := tt.pipelineName
+				if tt.newParallelism > 1 {
+					instanceName = fmt.Sprintf("%s.%d", tt.pipelineName, i)
+				}
+				desiredNames[fmt.Sprintf("pipeline:%s", instanceName)] = true
+			}
+
+			// Simulate the kill logic
+			var killed []string
+			var kept []string
+			for _, name := range tt.runningNames {
+				if !isPipelineInstance(name, tt.pipelineName) {
+					kept = append(kept, name)
+					continue
+				}
+				if desiredNames[name] {
+					kept = append(kept, name)
+					continue
+				}
+				killed = append(killed, name)
+			}
+
+			// Verify killed
+			if len(killed) != len(tt.wantKilled) {
+				t.Errorf("killed = %v (len %d), want %v (len %d)", killed, len(killed), tt.wantKilled, len(tt.wantKilled))
+			}
+			for _, name := range tt.wantKilled {
+				found := false
+				for _, k := range killed {
+					if k == name {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected %q to be killed", name)
+				}
+			}
+
+			// Verify kept
+			if len(kept) != len(tt.wantKept) {
+				t.Errorf("kept = %v (len %d), want %v (len %d)", kept, len(kept), tt.wantKept, len(tt.wantKept))
 			}
 		})
 	}

@@ -11,6 +11,7 @@ import (
 	"github.com/mj1618/swarm-cli/internal/agent"
 	"github.com/mj1618/swarm-cli/internal/compose"
 	"github.com/mj1618/swarm-cli/internal/config"
+	"github.com/mj1618/swarm-cli/internal/logparser"
 	"github.com/mj1618/swarm-cli/internal/output"
 	"github.com/mj1618/swarm-cli/internal/prompt"
 	"github.com/mj1618/swarm-cli/internal/state"
@@ -44,11 +45,12 @@ type ExecutorConfig struct {
 type Executor struct {
 	cfg ExecutorConfig
 
-	// Cumulative usage stats across all tasks (protected by mu)
+	// Cumulative usage stats across all completed tasks (protected by mu)
 	mu           sync.Mutex
 	inputTokens  int64
 	outputTokens int64
 	totalCostUSD float64
+	taskStats    map[string]logparser.UsageStats // running tasks' current stats
 }
 
 // NewExecutor creates a new pipeline executor.
@@ -56,7 +58,10 @@ func NewExecutor(cfg ExecutorConfig) *Executor {
 	if cfg.Output == nil {
 		cfg.Output = os.Stdout
 	}
-	return &Executor{cfg: cfg}
+	return &Executor{
+		cfg:       cfg,
+		taskStats: make(map[string]logparser.UsageStats),
+	}
 }
 
 // RunPipeline runs a pipeline with the given tasks for the specified iterations.
@@ -274,33 +279,60 @@ func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, it
 	}
 
 	runner := agent.NewRunner(cfg)
+
+	// Set up real-time usage callback
+	runner.SetUsageCallback(func(stats logparser.UsageStats) {
+		e.mu.Lock()
+		e.taskStats[taskName] = stats
+		e.persistUsageState()
+		e.mu.Unlock()
+	})
+
 	err = runner.Run(out)
 
-	// Accumulate usage stats from this task into pipeline totals
+	// Move this task's final stats from running to completed
 	stats := runner.UsageStats()
-	if stats.InputTokens > 0 || stats.OutputTokens > 0 || stats.TotalCostUSD > 0 {
-		e.mu.Lock()
-		e.inputTokens += stats.InputTokens
-		e.outputTokens += stats.OutputTokens
-		e.totalCostUSD += stats.TotalCostUSD
-		// Update pipeline state if available
-		if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
-			if agentState, stateErr := e.cfg.StateManager.Get(e.cfg.TaskID); stateErr == nil {
-				agentState.InputTokens = e.inputTokens
-				agentState.OutputTokens = e.outputTokens
-				if e.totalCostUSD > 0 {
-					agentState.TotalCost = e.totalCostUSD
-				} else if e.cfg.AppConfig != nil {
-					pricing := e.cfg.AppConfig.GetPricing(agentState.Model)
-					agentState.TotalCost = pricing.CalculateCost(e.inputTokens, e.outputTokens)
-				}
-				_ = e.cfg.StateManager.MergeUpdate(agentState)
-			}
-		}
-		e.mu.Unlock()
-	}
+	e.mu.Lock()
+	delete(e.taskStats, taskName)
+	e.inputTokens += stats.InputTokens
+	e.outputTokens += stats.OutputTokens
+	e.totalCostUSD += stats.TotalCostUSD
+	e.persistUsageState()
+	e.mu.Unlock()
 
 	return err
+}
+
+// persistUsageState writes the current total usage (completed + running tasks) to pipeline state.
+// Must be called with e.mu held.
+func (e *Executor) persistUsageState() {
+	if e.cfg.StateManager == nil || e.cfg.TaskID == "" {
+		return
+	}
+	agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID)
+	if err != nil {
+		return
+	}
+
+	// Sum completed + all running tasks
+	totalInput := e.inputTokens
+	totalOutput := e.outputTokens
+	totalCost := e.totalCostUSD
+	for _, s := range e.taskStats {
+		totalInput += s.InputTokens
+		totalOutput += s.OutputTokens
+		totalCost += s.TotalCostUSD
+	}
+
+	agentState.InputTokens = totalInput
+	agentState.OutputTokens = totalOutput
+	if totalCost > 0 {
+		agentState.TotalCost = totalCost
+	} else if e.cfg.AppConfig != nil {
+		pricing := e.cfg.AppConfig.GetPricing(agentState.Model)
+		agentState.TotalCost = pricing.CalculateCost(totalInput, totalOutput)
+	}
+	_ = e.cfg.StateManager.MergeUpdate(agentState)
 }
 
 // loadTaskPrompt loads the prompt content for a task.

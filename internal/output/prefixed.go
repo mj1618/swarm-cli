@@ -29,6 +29,7 @@ type PrefixedWriter struct {
 	prefix string
 	color  *color.Color
 	mu     *sync.Mutex // shared mutex for synchronized writes
+	bufMu  sync.Mutex  // per-writer mutex for buffer operations
 	buf    bytes.Buffer
 }
 
@@ -44,8 +45,12 @@ func NewPrefixedWriter(out io.Writer, prefix string, c *color.Color, mu *sync.Mu
 }
 
 // Write implements io.Writer. It buffers input and writes complete lines with prefix.
+// Thread-safe: protected by bufMu so multiple goroutines can safely write to the same writer.
 func (w *PrefixedWriter) Write(p []byte) (n int, err error) {
 	n = len(p) // We always "consume" all bytes from caller's perspective
+
+	w.bufMu.Lock()
+	defer w.bufMu.Unlock()
 
 	w.buf.Write(p)
 
@@ -57,7 +62,7 @@ func (w *PrefixedWriter) Write(p []byte) (n int, err error) {
 			w.buf.Write(line)
 			break
 		}
-		// Write the complete line with prefix
+		// Write the complete line with prefix (acquires shared mu)
 		w.writeLine(line)
 	}
 
@@ -76,18 +81,22 @@ func (w *PrefixedWriter) writeLine(line []byte) {
 }
 
 // Flush writes any remaining buffered content (partial line without newline).
+// Thread-safe: protected by bufMu for buffer access and shared mu for output.
 func (w *PrefixedWriter) Flush() {
+	w.bufMu.Lock()
+	defer w.bufMu.Unlock()
+
 	if w.buf.Len() == 0 {
 		return
 	}
 
 	w.mu.Lock()
-	defer w.mu.Unlock()
-
 	// Write remaining content with prefix and add newline
 	w.color.Fprintf(w.out, "%s | ", w.prefix)
 	w.out.Write(w.buf.Bytes())
 	w.out.Write([]byte("\n"))
+	w.mu.Unlock()
+
 	w.buf.Reset()
 }
 

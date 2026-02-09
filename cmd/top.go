@@ -368,13 +368,13 @@ func (m topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.pauseSelected()
 		case "r":
 			return m, m.resumeSelected()
-		case "+":
+		case "+", "=":
 			return m, m.increaseIterations()
 		case "-":
 			return m, m.decreaseIterations()
-		case "K":
+		case "K", "shift+k":
 			return m, m.killSelected()
-		case "L":
+		case "L", "shift+l":
 			return m, m.viewLogs()
 		case "l":
 			m.showLogs = !m.showLogs
@@ -385,7 +385,7 @@ func (m topModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "enter", "a":
 			return m, m.attachSelected()
-		case "A":
+		case "A", "shift+a":
 			m.showAll = !m.showAll
 			return m, m.refreshAgentsCmd()
 		case "g":
@@ -828,7 +828,7 @@ func (m topModel) renderHelp() string {
 	if m.showLogs {
 		logsToggle = "[l] hide logs"
 	}
-	return dimStyle.Render(fmt.Sprintf("Keys: [↑/↓] select  [p]ause  [r]esume  [+/-] iter  [K]ill  [a]ttach  %s  [A]ll  [g]lobal  [q]uit", logsToggle))
+	return dimStyle.Render(fmt.Sprintf("Keys: [↑/↓] select  [p]ause  [r]esume  [=/-] iter  [K]ill  [a]ttach  %s  [A]ll  [g]lobal  [q]uit", logsToggle))
 }
 
 // Action commands

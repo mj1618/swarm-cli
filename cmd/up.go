@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	"github.com/mj1618/swarm-cli/internal/detach"
 	"github.com/mj1618/swarm-cli/internal/logparser"
 	"github.com/mj1618/swarm-cli/internal/output"
+	"github.com/mj1618/swarm-cli/internal/process"
 	"github.com/mj1618/swarm-cli/internal/prompt"
 	"github.com/mj1618/swarm-cli/internal/scope"
 	"github.com/mj1618/swarm-cli/internal/state"
@@ -172,6 +174,8 @@ func init() {
 }
 
 // runPipeline runs a named pipeline using the DAG executor.
+// When parallelism > 1 (and not running as a detached child), it spawns
+// multiple concurrent instances of the pipeline.
 func runPipeline(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir string) error {
 	// Get the pipeline definition
 	pipeline, err := cf.GetPipeline(pipelineName)
@@ -187,13 +191,59 @@ func runPipeline(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir s
 		return fmt.Errorf("%w\nNo pipelines defined in compose file", err)
 	}
 
-	fmt.Printf("Running pipeline %q from %s\n", pipelineName, upFile)
+	parallelism := pipeline.EffectiveParallelism()
 
+	// Detached children are already a single instance — don't re-expand
+	if parallelism <= 1 || upInternalDetached {
+		fmt.Printf("Running pipeline %q from %s\n", pipelineName, upFile)
+		return runSinglePipelineInstance(cf, pipelineName, *pipeline, promptsDir, workingDir, os.Stdout)
+	}
+
+	// Multiple parallel instances
+	fmt.Printf("Running pipeline %q from %s (parallelism: %d)\n", pipelineName, upFile, parallelism)
+
+	var instanceNames []string
+	for i := 1; i <= parallelism; i++ {
+		instanceNames = append(instanceNames, fmt.Sprintf("%s.%d", pipelineName, i))
+	}
+
+	writers := output.NewWriterGroup(os.Stdout, instanceNames)
+	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var errors []error
+
+	for i := 1; i <= parallelism; i++ {
+		instanceName := fmt.Sprintf("%s.%d", pipelineName, i)
+		writer := writers.Get(instanceName)
+
+		wg.Add(1)
+		go func(name string, out *output.PrefixedWriter) {
+			defer wg.Done()
+			defer out.Flush()
+
+			if err := runSinglePipelineInstance(cf, name, *pipeline, promptsDir, workingDir, out); err != nil {
+				mu.Lock()
+				errors = append(errors, fmt.Errorf("%s: %w", name, err))
+				mu.Unlock()
+			}
+		}(instanceName, writer)
+	}
+
+	wg.Wait()
+
+	if len(errors) > 0 {
+		return fmt.Errorf("%d pipeline instance(s) failed", len(errors))
+	}
+	return nil
+}
+
+// runSinglePipelineInstance runs a single instance of a pipeline using the DAG executor.
+func runSinglePipelineInstance(cf *compose.ComposeFile, name string, pipeline compose.Pipeline, promptsDir, workingDir string, out io.Writer) error {
 	execCfg := dag.ExecutorConfig{
 		AppConfig:  appConfig,
 		PromptsDir: promptsDir,
 		WorkingDir: workingDir,
-		Output:     os.Stdout,
+		Output:     out,
 	}
 
 	// If running as a detached child, set up state tracking
@@ -209,10 +259,13 @@ func runPipeline(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir s
 	executor := dag.NewExecutor(execCfg)
 
 	// Run the pipeline
-	return executor.RunPipeline(*pipeline, cf.Tasks)
+	return executor.RunPipeline(pipeline, cf.Tasks)
 }
 
 // runPipelineDetached spawns a pipeline as a detached background process.
+// When parallelism > 1, spawns multiple independent detached processes.
+// On re-run, skips already-running instances and kills excess instances
+// when parallelism has been reduced.
 func runPipelineDetached(cf *compose.ComposeFile, pipelineName, promptsDir, workingDir string) error {
 	// Verify the pipeline exists
 	pipeline, err := cf.GetPipeline(pipelineName)
@@ -220,58 +273,108 @@ func runPipelineDetached(cf *compose.ComposeFile, pipelineName, promptsDir, work
 		return err
 	}
 
-	taskID := state.GenerateID()
-
-	logFile, err := detach.LogFilePath(taskID)
-	if err != nil {
-		return fmt.Errorf("failed to create log file: %w", err)
-	}
-
-	// Build args for the detached process
-	detachedArgs := []string{"up", "--_internal-detached", "--_internal-task-id", taskID, "--pipeline", pipelineName}
-	if globalFlag {
-		detachedArgs = append(detachedArgs, "--global")
-	}
-	if upFile != compose.DefaultPath() {
-		detachedArgs = append(detachedArgs, "--file", upFile)
-	}
-
-	// Register state before starting the process
-	effectiveIterations := pipeline.Iterations
-	if effectiveIterations == 0 {
-		effectiveIterations = 1
-	}
+	parallelism := pipeline.EffectiveParallelism()
 
 	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize state manager: %w", err)
 	}
 
-	agentState := &state.AgentState{
-		ID:          taskID,
-		Name:        fmt.Sprintf("pipeline:%s", pipelineName),
-		Prompt:      fmt.Sprintf("pipeline:%s", pipelineName),
-		Model:       appConfig.Model,
-		StartedAt:   time.Now(),
-		Iterations:  effectiveIterations,
-		CurrentIter: 0,
-		Status:      "running",
-		LogFile:     logFile,
-		WorkingDir:  workingDir,
+	// Get running agents to check for already-running and excess instances
+	runningAgents, _ := mgr.List(true)
+	runningByName := make(map[string]*state.AgentState)
+	for _, a := range runningAgents {
+		runningByName[a.Name] = a
 	}
 
-	// Start detached process
-	pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
-	if err != nil {
-		return fmt.Errorf("failed to start detached process: %w", err)
+	// Compute desired instance names
+	desiredNames := make(map[string]bool)
+	for i := 1; i <= parallelism; i++ {
+		instanceName := pipelineName
+		if parallelism > 1 {
+			instanceName = fmt.Sprintf("%s.%d", pipelineName, i)
+		}
+		desiredNames[fmt.Sprintf("pipeline:%s", instanceName)] = true
 	}
 
-	agentState.PID = pid
-	if err := mgr.Register(agentState); err != nil {
-		return fmt.Errorf("failed to register state: %w", err)
+	// Kill excess instances (running instances of this pipeline not in desired set)
+	for _, a := range runningAgents {
+		if !isPipelineInstance(a.Name, pipelineName) {
+			continue
+		}
+		if desiredNames[a.Name] {
+			continue
+		}
+		fmt.Printf("Killing excess pipeline instance %q (ID: %s, PID: %d)\n", a.Name, a.ID, a.PID)
+		killAgentAndDescendants(mgr, a)
 	}
 
-	fmt.Printf("Started pipeline %q in background (ID: %s, PID: %d)\n", pipelineName, taskID, pid)
+	effectiveIterations := pipeline.EffectiveIterations()
+
+	var startedCount, skippedCount int
+	for i := 1; i <= parallelism; i++ {
+		instanceName := pipelineName
+		if parallelism > 1 {
+			instanceName = fmt.Sprintf("%s.%d", pipelineName, i)
+		}
+
+		agentName := fmt.Sprintf("pipeline:%s", instanceName)
+
+		// Skip if already running
+		if _, running := runningByName[agentName]; running {
+			fmt.Printf("Pipeline %q already running, skipping\n", instanceName)
+			skippedCount++
+			continue
+		}
+
+		taskID := state.GenerateID()
+
+		logFile, err := detach.LogFilePath(taskID)
+		if err != nil {
+			return fmt.Errorf("failed to create log file: %w", err)
+		}
+
+		// Build args for the detached process
+		detachedArgs := []string{"up", "--_internal-detached", "--_internal-task-id", taskID, "--pipeline", pipelineName}
+		if globalFlag {
+			detachedArgs = append(detachedArgs, "--global")
+		}
+		if upFile != compose.DefaultPath() {
+			detachedArgs = append(detachedArgs, "--file", upFile)
+		}
+
+		agentState := &state.AgentState{
+			ID:          taskID,
+			Name:        agentName,
+			Prompt:      fmt.Sprintf("pipeline:%s", pipelineName),
+			Model:       appConfig.Model,
+			StartedAt:   time.Now(),
+			Iterations:  effectiveIterations,
+			CurrentIter: 0,
+			Status:      "running",
+			LogFile:     logFile,
+			WorkingDir:  workingDir,
+		}
+
+		// Start detached process
+		pid, err := detach.StartDetached(detachedArgs, logFile, workingDir)
+		if err != nil {
+			return fmt.Errorf("failed to start detached process for %s: %w", instanceName, err)
+		}
+
+		agentState.PID = pid
+		if err := mgr.Register(agentState); err != nil {
+			return fmt.Errorf("failed to register state for %s: %w", instanceName, err)
+		}
+
+		fmt.Printf("Started pipeline %q in background (ID: %s, PID: %d)\n", instanceName, taskID, pid)
+		startedCount++
+	}
+
+	if skippedCount > 0 {
+		fmt.Printf("Skipped %d already-running pipeline instance(s)\n", skippedCount)
+	}
+
 	return nil
 }
 
@@ -323,18 +426,9 @@ func runAllPipelinesAndStandaloneTasks(cf *compose.ComposeFile, promptsDir, work
 	} else {
 		// Foreground mode: run pipelines sequentially
 		for _, pipelineName := range pipelineNames {
-			pipeline := cf.Pipelines[pipelineName]
-
 			fmt.Printf("=== Pipeline: %s ===\n", pipelineName)
 
-			executor := dag.NewExecutor(dag.ExecutorConfig{
-				AppConfig:  appConfig,
-				PromptsDir: promptsDir,
-				WorkingDir: workingDir,
-				Output:     os.Stdout,
-			})
-
-			if err := executor.RunPipeline(pipeline, cf.Tasks); err != nil {
+			if err := runPipeline(cf, pipelineName, promptsDir, workingDir); err != nil {
 				return fmt.Errorf("pipeline %q failed: %w", pipelineName, err)
 			}
 		}
@@ -353,6 +447,8 @@ func runAllPipelinesAndStandaloneTasks(cf *compose.ComposeFile, promptsDir, work
 }
 
 // runTasksDetached spawns all tasks as detached agents and returns immediately.
+// On re-run, skips already-running instances and kills excess instances
+// when parallelism has been reduced.
 func runTasksDetached(taskNames []string, tasks map[string]compose.Task, promptsDir, workingDir string) error {
 	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
 	if err != nil {
@@ -366,12 +462,71 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 		runningNames[a.Name] = true
 	}
 
+	// Scale-down: kill excess instances for tasks whose parallelism has been reduced
+	for _, taskName := range taskNames {
+		task := tasks[taskName]
+		baseName := taskName
+		if task.Name != "" {
+			baseName = task.Name
+		}
+		p := task.EffectiveParallelism()
+
+		// Compute desired names for this task
+		desiredNames := make(map[string]bool)
+		if p == 1 {
+			desiredNames[task.EffectiveName(taskName)] = true
+		} else {
+			for j := 1; j <= p; j++ {
+				if task.Name != "" {
+					desiredNames[fmt.Sprintf("%s.%d", task.Name, j)] = true
+				} else {
+					desiredNames[fmt.Sprintf("%s.%d", taskName, j)] = true
+				}
+			}
+		}
+
+		// Find and kill excess instances
+		for _, a := range runningAgents {
+			if !isTaskInstance(a.Name, baseName) {
+				continue
+			}
+			if desiredNames[a.Name] {
+				continue
+			}
+			fmt.Printf("  [%s] Killing excess instance (ID: %s, PID: %d)\n", a.Name, a.ID, a.PID)
+			killAgentAndDescendants(mgr, a)
+			delete(runningNames, a.Name)
+		}
+	}
+
+	// Expand tasks with parallelism > 1 into multiple instances
+	var expandedNames []string
+	expandedTasks := make(map[string]compose.Task)
+	for _, taskName := range taskNames {
+		task := tasks[taskName]
+		p := task.EffectiveParallelism()
+		if p == 1 {
+			expandedNames = append(expandedNames, taskName)
+			expandedTasks[taskName] = task
+		} else {
+			for j := 1; j <= p; j++ {
+				instanceName := fmt.Sprintf("%s.%d", taskName, j)
+				expandedNames = append(expandedNames, instanceName)
+				expandedTask := task
+				if task.Name != "" {
+					expandedTask.Name = fmt.Sprintf("%s.%d", task.Name, j)
+				}
+				expandedTasks[instanceName] = expandedTask
+			}
+		}
+	}
+
 	var startedTasks []string
 	var skippedTasks []string
 	var failedTasks []string
 
-	for _, taskName := range taskNames {
-		task := tasks[taskName]
+	for _, taskName := range expandedNames {
+		task := expandedTasks[taskName]
 
 		// Check if task is already running
 		effectiveName := task.EffectiveName(taskName)
@@ -490,7 +645,7 @@ func runTasksDetached(taskNames []string, tasks map[string]compose.Task, prompts
 
 // runTasksForeground runs all tasks in parallel and waits for them to complete.
 func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promptsDir, workingDir string) error {
-	// Initialize state manager to check for already-running tasks
+	// Initialize state manager (shared across all parallel tasks)
 	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
 	if err != nil {
 		return fmt.Errorf("failed to initialize state manager: %w", err)
@@ -503,12 +658,35 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 		runningNames[a.Name] = true
 	}
 
-	// Collect tasks that will actually run (not skipped)
+	// Expand tasks with parallelism > 1 into multiple instances BEFORE checking
+	// for already-running tasks, so individual instances can be skipped independently
+	var expandedNames []string
+	expandedTasks := make(map[string]compose.Task)
+	for _, taskName := range taskNames {
+		task := tasks[taskName]
+		p := task.EffectiveParallelism()
+		if p == 1 {
+			expandedNames = append(expandedNames, taskName)
+			expandedTasks[taskName] = task
+		} else {
+			for j := 1; j <= p; j++ {
+				instanceName := fmt.Sprintf("%s.%d", taskName, j)
+				expandedNames = append(expandedNames, instanceName)
+				expandedTask := task
+				if task.Name != "" {
+					expandedTask.Name = fmt.Sprintf("%s.%d", task.Name, j)
+				}
+				expandedTasks[instanceName] = expandedTask
+			}
+		}
+	}
+
+	// Check for already-running tasks on expanded instance names
 	var tasksToRun []string
 	var skippedTasks []string
 
-	for _, taskName := range taskNames {
-		task := tasks[taskName]
+	for _, taskName := range expandedNames {
+		task := expandedTasks[taskName]
 		effectiveName := task.EffectiveName(taskName)
 		if runningNames[effectiveName] {
 			fmt.Printf("  [%s] Already running, skipping\n", taskName)
@@ -533,7 +711,7 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 	var failedTasks []string
 
 	for _, taskName := range tasksToRun {
-		task := tasks[taskName]
+		task := expandedTasks[taskName]
 		writer := writers.Get(taskName)
 
 		wg.Add(1)
@@ -542,7 +720,7 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 			defer wg.Done()
 			defer out.Flush()
 
-			if err := runSingleTask(name, t, promptsDir, workingDir, out); err != nil {
+			if err := runSingleTask(name, t, promptsDir, workingDir, out, mgr); err != nil {
 				mu.Lock()
 				failedTasks = append(failedTasks, name)
 				mu.Unlock()
@@ -567,7 +745,8 @@ func runTasksForeground(taskNames []string, tasks map[string]compose.Task, promp
 
 // runSingleTask runs a single task in the foreground.
 // The out parameter is used for all task output (supports prefixed writers for parallel execution).
-func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir string, out io.Writer) error {
+// If mgr is non-nil, it is reused for state management instead of creating a new one.
+func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir string, out io.Writer, mgr *state.Manager) error {
 	// Generate task ID
 	taskID := state.GenerateID()
 
@@ -615,9 +794,11 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 	var cumulativeCostUSD float64
 
 	// Multi-iteration mode with state management
-	mgr, err := state.NewManagerWithScope(GetScope(), workingDir)
-	if err != nil {
-		return fmt.Errorf("failed to initialize state manager: %w", err)
+	if mgr == nil {
+		mgr, err = state.NewManagerWithScope(GetScope(), workingDir)
+		if err != nil {
+			return fmt.Errorf("failed to initialize state manager: %w", err)
+		}
 	}
 
 	agentState := &state.AgentState{
@@ -717,6 +898,62 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 
 	fmt.Fprintf(out, "Completed (%d iterations)\n", agentState.Iterations)
 	return nil
+}
+
+// isPipelineInstance returns true if agentName is an instance of the given pipeline.
+// Matches "pipeline:name" (single instance) and "pipeline:name.N" (parallel instances).
+func isPipelineInstance(agentName, pipelineName string) bool {
+	base := fmt.Sprintf("pipeline:%s", pipelineName)
+	if agentName == base {
+		return true
+	}
+	prefix := base + "."
+	if strings.HasPrefix(agentName, prefix) {
+		_, err := strconv.Atoi(agentName[len(prefix):])
+		return err == nil
+	}
+	return false
+}
+
+// isTaskInstance returns true if agentName is an instance of the given task base name.
+// Matches "baseName" (single instance) and "baseName.N" (parallel instances).
+func isTaskInstance(agentName, baseName string) bool {
+	if agentName == baseName {
+		return true
+	}
+	prefix := baseName + "."
+	if strings.HasPrefix(agentName, prefix) {
+		_, err := strconv.Atoi(agentName[len(prefix):])
+		return err == nil
+	}
+	return false
+}
+
+// killAgentAndDescendants kills a running agent and all its running descendants.
+func killAgentAndDescendants(mgr *state.Manager, a *state.AgentState) {
+	// Kill descendants first
+	descendants, err := mgr.GetDescendants(a.ID)
+	if err == nil {
+		for _, d := range descendants {
+			if d.Status == "running" {
+				_ = mgr.SetTerminateMode(d.ID, "immediate")
+				_ = process.ForceKill(d.PID)
+				now := time.Now()
+				d.Status = "terminated"
+				d.ExitReason = "killed"
+				d.TerminatedAt = &now
+				_ = mgr.Update(d)
+			}
+		}
+	}
+
+	_ = mgr.SetTerminateMode(a.ID, "immediate")
+	_ = process.ForceKill(a.PID)
+	now := time.Now()
+	a.Status = "terminated"
+	a.ExitReason = "killed"
+	a.TerminatedAt = &now
+	_ = mgr.Update(a)
 }
 
 // loadTaskPrompt loads the prompt content for a task.

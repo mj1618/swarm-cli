@@ -1180,3 +1180,270 @@ func TestGetStandaloneTasks(t *testing.T) {
 		})
 	}
 }
+
+// Tests for parallelism
+
+func TestTaskEffectiveParallelism(t *testing.T) {
+	tests := []struct {
+		name        string
+		parallelism int
+		want        int
+	}{
+		{"zero returns 1", 0, 1},
+		{"negative returns 1", -1, 1},
+		{"one returns 1", 1, 1},
+		{"positive value returned", 5, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := Task{Prompt: "test", Parallelism: tt.parallelism}
+			if got := task.EffectiveParallelism(); got != tt.want {
+				t.Errorf("EffectiveParallelism() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPipelineEffectiveParallelism(t *testing.T) {
+	tests := []struct {
+		name        string
+		parallelism int
+		want        int
+	}{
+		{"zero returns 1", 0, 1},
+		{"negative returns 1", -1, 1},
+		{"one returns 1", 1, 1},
+		{"positive value returned", 3, 3},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			p := Pipeline{Parallelism: tt.parallelism}
+			if got := p.EffectiveParallelism(); got != tt.want {
+				t.Errorf("EffectiveParallelism() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidate_TaskNegativeParallelism(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a", Parallelism: -1},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for negative task parallelism")
+	}
+	if !strings.Contains(err.Error(), "parallelism cannot be negative") {
+		t.Errorf("error should mention parallelism, got: %v", err)
+	}
+}
+
+func TestValidate_PipelineNegativeParallelism(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+		},
+		Pipelines: map[string]Pipeline{
+			"test": {Parallelism: -1, Tasks: []string{"a"}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for negative pipeline parallelism")
+	}
+	if !strings.Contains(err.Error(), "parallelism cannot be negative") {
+		t.Errorf("error should mention parallelism, got: %v", err)
+	}
+}
+
+func TestLoadWithParallelism(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatalf("failed to create temp dir: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  coder:
+    prompt: coder
+    iterations: 5
+    parallelism: 3
+
+pipelines:
+  main:
+    iterations: 10
+    parallelism: 2
+    tasks: [coder]
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write test file: %v", err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	task := cf.Tasks["coder"]
+	if task.Parallelism != 3 {
+		t.Errorf("task parallelism = %d, want 3", task.Parallelism)
+	}
+	if task.EffectiveParallelism() != 3 {
+		t.Errorf("task EffectiveParallelism() = %d, want 3", task.EffectiveParallelism())
+	}
+
+	pipeline, err := cf.GetPipeline("main")
+	if err != nil {
+		t.Fatalf("GetPipeline() error = %v", err)
+	}
+	if pipeline.Parallelism != 2 {
+		t.Errorf("pipeline parallelism = %d, want 2", pipeline.Parallelism)
+	}
+	if pipeline.EffectiveParallelism() != 2 {
+		t.Errorf("pipeline EffectiveParallelism() = %d, want 2", pipeline.EffectiveParallelism())
+	}
+}
+
+func TestValidate_TaskParallelismNameCollision(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"worker":   {Prompt: "a", Parallelism: 2},
+			"worker.1": {Prompt: "b"},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for task parallelism name collision")
+	}
+	if !strings.Contains(err.Error(), "would collide") {
+		t.Errorf("error should mention collision, got: %v", err)
+	}
+}
+
+func TestValidate_PipelineParallelismNameCollision(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a"},
+		},
+		Pipelines: map[string]Pipeline{
+			"main":   {Parallelism: 2, Tasks: []string{"a"}},
+			"main.1": {Tasks: []string{"a"}},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for pipeline parallelism name collision")
+	}
+	if !strings.Contains(err.Error(), "would collide") {
+		t.Errorf("error should mention collision, got: %v", err)
+	}
+}
+
+func TestValidate_TaskParallelismNoCollision(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"worker":  {Prompt: "a", Parallelism: 2},
+			"builder": {Prompt: "b"},
+		},
+	}
+
+	if err := cf.Validate(); err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestWarnings_TaskParallelismInPipeline(t *testing.T) {
+	tests := []struct {
+		name         string
+		cf           *ComposeFile
+		wantWarnings int
+		wantContains string
+	}{
+		{
+			name: "task with parallelism in pipeline emits warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"worker": {Prompt: "a", Parallelism: 3},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"worker"}},
+				},
+			},
+			wantWarnings: 1,
+			wantContains: "parallelism",
+		},
+		{
+			name: "task without parallelism in pipeline emits no warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"worker": {Prompt: "a"},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"worker"}},
+				},
+			},
+			wantWarnings: 0,
+		},
+		{
+			name: "task with parallelism=1 in pipeline emits no warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"worker": {Prompt: "a", Parallelism: 1},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"worker"}},
+				},
+			},
+			wantWarnings: 0,
+		},
+		{
+			name: "task with parallelism NOT in pipeline emits no warning",
+			cf: &ComposeFile{
+				Tasks: map[string]Task{
+					"worker":     {Prompt: "a", Parallelism: 3},
+					"standalone": {Prompt: "b"},
+				},
+				Pipelines: map[string]Pipeline{
+					"main": {Tasks: []string{"standalone"}},
+				},
+			},
+			wantWarnings: 0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			warnings := tt.cf.Warnings()
+			if len(warnings) != tt.wantWarnings {
+				t.Errorf("Warnings() returned %d warnings, want %d: %v", len(warnings), tt.wantWarnings, warnings)
+			}
+			if tt.wantWarnings > 0 && tt.wantContains != "" {
+				found := false
+				for _, w := range warnings {
+					if strings.Contains(w, tt.wantContains) {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("expected a warning containing %q, got: %v", tt.wantContains, warnings)
+				}
+			}
+		})
+	}
+}

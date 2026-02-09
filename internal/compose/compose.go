@@ -69,6 +69,9 @@ type Pipeline struct {
 	// Iterations is the number of times to run the entire DAG
 	Iterations int `yaml:"iterations"`
 
+	// Parallelism is the number of concurrent instances to run (default 1)
+	Parallelism int `yaml:"parallelism"`
+
 	// Tasks is an optional list of task names to include in this pipeline.
 	// If empty, all tasks from the compose file are included.
 	Tasks []string `yaml:"tasks"`
@@ -80,6 +83,14 @@ func (p *Pipeline) EffectiveIterations() int {
 		return 1
 	}
 	return p.Iterations
+}
+
+// EffectiveParallelism returns the parallelism to use, defaulting to 1.
+func (p *Pipeline) EffectiveParallelism() int {
+	if p.Parallelism <= 0 {
+		return 1
+	}
+	return p.Parallelism
 }
 
 // ComposeFile represents the structure of a swarm compose file.
@@ -110,6 +121,9 @@ type Task struct {
 
 	// Iterations is the number of iterations to run (optional, default 1)
 	Iterations int `yaml:"iterations"`
+
+	// Parallelism is the number of concurrent instances to run (default 1)
+	Parallelism int `yaml:"parallelism"`
 
 	// Name is a custom name for the agent (optional, defaults to task name)
 	Name string `yaml:"name"`
@@ -176,6 +190,32 @@ func (cf *ComposeFile) Validate() error {
 		}
 	}
 
+	// Check for name collisions between parallelism-expanded instances and existing task names
+	for name, task := range cf.Tasks {
+		p := task.EffectiveParallelism()
+		if p > 1 {
+			for j := 1; j <= p; j++ {
+				instanceName := fmt.Sprintf("%s.%d", name, j)
+				if _, exists := cf.Tasks[instanceName]; exists {
+					return fmt.Errorf("task %q with parallelism %d would collide with existing task %q", name, p, instanceName)
+				}
+			}
+		}
+	}
+
+	// Check for name collisions between parallelism-expanded pipeline instances and existing pipeline names
+	for name, pipeline := range cf.Pipelines {
+		p := pipeline.EffectiveParallelism()
+		if p > 1 {
+			for j := 1; j <= p; j++ {
+				instanceName := fmt.Sprintf("%s.%d", name, j)
+				if _, exists := cf.Pipelines[instanceName]; exists {
+					return fmt.Errorf("pipeline %q with parallelism %d would collide with existing pipeline %q", name, p, instanceName)
+				}
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -204,6 +244,10 @@ func (t *Task) Validate(name string) error {
 		return fmt.Errorf("task %q: iterations cannot be negative", name)
 	}
 
+	if t.Parallelism < 0 {
+		return fmt.Errorf("task %q: parallelism cannot be negative", name)
+	}
+
 	// Validate dependency conditions
 	for i, dep := range t.DependsOn {
 		if dep.Task == "" {
@@ -222,6 +266,10 @@ func (t *Task) Validate(name string) error {
 func (p *Pipeline) Validate(name string, tasks map[string]Task) error {
 	if p.Iterations < 0 {
 		return fmt.Errorf("pipeline %q: iterations cannot be negative", name)
+	}
+
+	if p.Parallelism < 0 {
+		return fmt.Errorf("pipeline %q: parallelism cannot be negative", name)
 	}
 
 	// Validate that all specified tasks exist
@@ -289,6 +337,14 @@ func (t *Task) EffectiveIterations() int {
 		return 1
 	}
 	return t.Iterations
+}
+
+// EffectiveParallelism returns the parallelism to use for this task, defaulting to 1.
+func (t *Task) EffectiveParallelism() int {
+	if t.Parallelism <= 0 {
+		return 1
+	}
+	return t.Parallelism
 }
 
 // HasDependencies returns true if any task has dependencies defined.
@@ -365,6 +421,18 @@ func (cf *ComposeFile) Warnings() []string {
 				"tasks %v have depends_on but no pipeline is defined — these tasks will not run. Define a pipelines section to run them in DAG order.",
 				orphanedTasks,
 			))
+		}
+	}
+
+	// Check for tasks with parallelism > 1 inside a pipeline (task parallelism is ignored in pipeline execution)
+	for pipelineName, pipeline := range cf.Pipelines {
+		for _, taskName := range pipeline.GetPipelineTasks(cf.Tasks) {
+			if task, ok := cf.Tasks[taskName]; ok && task.EffectiveParallelism() > 1 {
+				warnings = append(warnings, fmt.Sprintf(
+					"task %q has parallelism %d but is in pipeline %q — task-level parallelism is ignored inside pipelines (use pipeline-level parallelism instead)",
+					taskName, task.Parallelism, pipelineName,
+				))
+			}
 		}
 	}
 
