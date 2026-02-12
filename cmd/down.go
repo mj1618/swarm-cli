@@ -70,23 +70,23 @@ started from the specified compose file are affected.`,
 			return fmt.Errorf("failed to get working directory: %w", err)
 		}
 
-		// Build set of effective task names
-		effectiveNames := make(map[string]bool)
+		// Build lists of task base names and pipeline names to match against.
+		// We use pattern matching (not exact lookup) so that parallel instances
+		// like "pipeline:name.1" and "taskname.2" are correctly matched.
+		var taskBaseNames []string
 		for taskName, task := range tasks {
-			effectiveNames[task.EffectiveName(taskName)] = true
+			taskBaseNames = append(taskBaseNames, task.EffectiveName(taskName))
 		}
 
-		// Also include pipeline names (pipelines are registered as "pipeline:<name>")
+		var pipelineNames []string
 		if len(args) == 0 {
 			// No specific tasks requested — kill all pipelines from the compose file
 			for pipelineName := range cf.Pipelines {
-				effectiveNames[fmt.Sprintf("pipeline:%s", pipelineName)] = true
+				pipelineNames = append(pipelineNames, pipelineName)
 			}
 		} else {
 			// Include explicitly requested pipelines
-			for _, name := range pipelineArgs {
-				effectiveNames[fmt.Sprintf("pipeline:%s", name)] = true
-			}
+			pipelineNames = append(pipelineNames, pipelineArgs...)
 		}
 
 		// Create state manager with scope
@@ -101,12 +101,28 @@ started from the specified compose file are affected.`,
 			return fmt.Errorf("failed to list agents: %w", err)
 		}
 
-		// Filter for running agents that match our compose file tasks
+		// Filter for running agents that match our compose file tasks or pipelines.
+		// Uses pattern matching to handle parallel instances (e.g. "name.1", "pipeline:name.2").
 		var matchingAgents []*state.AgentState
 		for _, agent := range allAgents {
-			if agent.Status == "running" && agent.WorkingDir == workingDir && effectiveNames[agent.Name] {
-				matchingAgents = append(matchingAgents, agent)
+			if agent.Status != "running" || agent.WorkingDir != workingDir {
+				continue
 			}
+			// Check if this agent matches any pipeline name (handles .N suffixes)
+			for _, pn := range pipelineNames {
+				if isPipelineInstance(agent.Name, pn) {
+					matchingAgents = append(matchingAgents, agent)
+					goto nextAgent
+				}
+			}
+			// Check if this agent matches any task base name (handles .N suffixes)
+			for _, tn := range taskBaseNames {
+				if isTaskInstance(agent.Name, tn) {
+					matchingAgents = append(matchingAgents, agent)
+					goto nextAgent
+				}
+			}
+		nextAgent:
 		}
 
 		if len(matchingAgents) == 0 {

@@ -40,4 +40,5 @@ Thumbs.db
 
 examples/
 
-/update.sh
+/update-remote.sh
+/update-local.sh

@@ -3,10 +3,16 @@ package cmd
 import (
 	"bufio"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
+	"unicode"
 
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/fatih/color"
 	"github.com/mj1618/swarm-cli/internal/agent"
 	"github.com/spf13/cobra"
 )
@@ -59,10 +65,9 @@ var initCmd = &cobra.Command{
 
 This creates the swarm/ directory structure with:
   - swarm/PLAN.md - your project plan that all agents will reference
-  - swarm/swarm.yaml - pipeline configuration with tasks and dependencies
-  - swarm/prompts/*.md - prompt files for each pipeline task
+  - swarm/swarm.yaml - pipeline configuration with tasks, dependencies, and inline prompts
 
-An AI agent generates the pipeline configuration and prompts based on your
+An AI agent generates the pipeline configuration with inline prompts based on your
 chosen template and plan. Each template follows a planner/doer pattern:
   - Planner reviews PLAN.md and current project state, writes bite-sized tasks
   - Doer agents pick up tasks and execute them to completion
@@ -88,52 +93,83 @@ func init() {
 	initCmd.Flags().StringVarP(&initModel, "model", "m", "", "Model to use for generating the project (overrides config)")
 }
 
+// Reusable color styles for the init command
+var (
+	initBold      = color.New(color.Bold)
+	initCyan      = color.New(color.FgCyan)
+	initCyanBold  = color.New(color.FgCyan, color.Bold)
+	initGreen     = color.New(color.FgGreen)
+	initGreenBold = color.New(color.FgGreen, color.Bold)
+	initYellow    = color.New(color.FgYellow)
+	initRed       = color.New(color.FgRed)
+	initFaint     = color.New(color.Faint)
+	initWhiteBold = color.New(color.FgWhite, color.Bold)
+)
+
+func printInitHeader() {
+	fmt.Println()
+	initCyanBold.Println("  ╭──────────────────────────────────────╮")
+	initCyanBold.Print("  │  ")
+	initWhiteBold.Print("swarm init")
+	initFaint.Print("  — project setup wizard")
+	initCyanBold.Println("  │")
+	initCyanBold.Println("  ╰──────────────────────────────────────╯")
+	fmt.Println()
+}
+
+func printStepHeader(step, total int, title string) {
+	initCyan.Printf("  (%d/%d) ", step, total)
+	initBold.Println(title)
+	fmt.Println()
+}
+
 func runInit(cmd *cobra.Command, args []string) error {
+	totalSteps := 3
+
+	printInitHeader()
+
 	// Check for existing swarm/ directory
 	swarmDir := "swarm"
 	if info, err := os.Stat(swarmDir); err == nil && info.IsDir() {
 		// Check if swarm.yaml already exists
 		if _, err := os.Stat(filepath.Join(swarmDir, "swarm.yaml")); err == nil {
-			fmt.Println("Warning: swarm/swarm.yaml already exists. Existing files may be overwritten.")
+			initYellow.Print("  ⚠ ")
+			fmt.Print("swarm/swarm.yaml already exists. Existing files may be overwritten.\n")
 			reader := bufio.NewReader(os.Stdin)
-			fmt.Print("Continue? [y/N] ")
+			initFaint.Print("    Continue? ")
+			initBold.Print("[y/N] ")
 			answer, _ := reader.ReadString('\n')
 			if strings.TrimSpace(strings.ToLower(answer)) != "y" {
-				fmt.Println("Aborted.")
+				initFaint.Println("    Aborted.")
 				return nil
 			}
 			fmt.Println()
 		}
 	}
 
-	// Select template
+	// Step 1: Select template
+	printStepHeader(1, totalSteps, "Choose a template")
 	selectedTemplate, err := selectTemplate()
 	if err != nil {
 		return err
 	}
 
-	// Get plan
+	// Step 2: Get plan
+	printStepHeader(2, totalSteps, "Describe your project")
 	plan, err := getProjectPlan()
 	if err != nil {
 		return err
 	}
-
-	// Create directories
-	for _, dir := range []string{"swarm", "swarm/prompts"} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory %s: %w", dir, err)
-		}
+	if plan == "" {
+		return nil // User aborted
 	}
 
-	// Write PLAN.md
-	planContent := "# Project Plan\n\n" + plan + "\n"
-	planPath := filepath.Join("swarm", "PLAN.md")
-	if err := os.WriteFile(planPath, []byte(planContent), 0644); err != nil {
-		return fmt.Errorf("failed to write PLAN.md: %w", err)
+	// Create swarm directory
+	if err := os.MkdirAll("swarm", 0755); err != nil {
+		return fmt.Errorf("failed to create directory swarm: %w", err)
 	}
-	fmt.Printf("Created %s\n", planPath)
 
-	// Build generation prompt
+	// Build generation prompt (agent will create both PLAN.md and swarm.yaml)
 	genPrompt := buildGenerationPrompt(selectedTemplate, plan)
 
 	// Determine model
@@ -142,9 +178,10 @@ func runInit(cmd *cobra.Command, args []string) error {
 		effectiveModel = initModel
 	}
 
-	fmt.Printf("\nGenerating project files using %s model...\n\n", effectiveModel)
+	// Step 3: Generate
+	printStepHeader(3, totalSteps, "Generate project")
 
-	// Run agent to generate files
+	// Run agent to generate files with a spinner
 	cfg := agent.Config{
 		Model:   effectiveModel,
 		Prompt:  genPrompt,
@@ -152,23 +189,52 @@ func runInit(cmd *cobra.Command, args []string) error {
 	}
 
 	runner := agent.NewRunner(cfg)
-	if err := runner.Run(os.Stdout); err != nil {
+
+	spin := newSpinner(fmt.Sprintf("Generating project files using %s", initBold.Sprint(effectiveModel)))
+
+	err = runner.Run(io.Discard)
+	spin.Stop()
+
+	if err != nil {
 		fmt.Println()
-		fmt.Println("Warning: agent failed to generate project files.")
-		fmt.Println("You can manually create swarm/swarm.yaml and swarm/prompts/*.md")
-		fmt.Printf("Error: %v\n", err)
+		initRed.Print("  ✗ ")
+		fmt.Println("Agent failed to generate project files.")
+		initFaint.Println("    You can manually create swarm/swarm.yaml with inline prompt-string values")
+		initFaint.Printf("    Error: %v\n", err)
 		return nil
 	}
 
+	// Success
 	fmt.Println()
-	fmt.Println("Project initialized! Next steps:")
-	fmt.Println("  1. Review swarm/PLAN.md and edit if needed")
-	fmt.Println("  2. Review swarm/swarm.yaml pipeline configuration")
-	fmt.Println("  3. Review swarm/prompts/*.md prompt files")
-	fmt.Println("  4. Run 'swarm up' to start the pipeline")
-	fmt.Println("  5. Run 'swarm up -d' to run in the background")
+	initGreenBold.Println("  ✓ Project initialized!")
+	fmt.Println()
+	initBold.Println("  Next steps")
+	initFaint.Println("  ──────────")
+	fmt.Println()
+	initCyan.Print("    1. ")
+	fmt.Print("Review ")
+	initBold.Print("swarm/PLAN.md")
+	fmt.Println(" and edit if needed")
+	initCyan.Print("    2. ")
+	fmt.Print("Review ")
+	initBold.Print("swarm/swarm.yaml")
+	fmt.Println(" pipeline configuration and inline prompts")
+	initCyan.Print("    3. ")
+	fmt.Print("Run ")
+	initCyanBold.Print("swarm up -d")
+	fmt.Println(" to start the pipeline")
+	fmt.Println()
 
 	return nil
+}
+
+// Template icons for visual differentiation
+var templateIcons = map[string]string{
+	"research":      "🔍",
+	"application":   "⚡",
+	"book":          "📖",
+	"data-analysis": "📊",
+	"refactoring":   "🔧",
 }
 
 func selectTemplate() (*templateOption, error) {
@@ -186,15 +252,21 @@ func selectTemplate() (*templateOption, error) {
 	}
 
 	// Interactive selection
-	fmt.Println("Select a project template:")
-	fmt.Println()
 	for i, t := range templateOptions {
-		fmt.Printf("  %d. %s\n     %s\n\n", i+1, t.Name, t.Description)
+		icon := templateIcons[t.Key]
+		initCyanBold.Printf("    %d ", i+1)
+		fmt.Printf("%s  ", icon)
+		initBold.Println(t.Name)
+		initFaint.Printf("         %s\n", t.Description)
+		fmt.Println()
 	}
 
 	reader := bufio.NewReader(os.Stdin)
 	for {
-		fmt.Print("Enter your choice (1-5): ")
+		initCyan.Print("  → ")
+		fmt.Print("Enter your choice ")
+		initFaint.Print("(1-5)")
+		fmt.Print(": ")
 		input, err := reader.ReadString('\n')
 		if err != nil {
 			return nil, fmt.Errorf("failed to read input: %w", err)
@@ -205,7 +277,11 @@ func selectTemplate() (*templateOption, error) {
 		if _, err := fmt.Sscanf(input, "%d", &selection); err == nil {
 			if selection >= 1 && selection <= len(templateOptions) {
 				selected := &templateOptions[selection-1]
-				fmt.Printf("\nSelected: %s\n\n", selected.Name)
+				icon := templateIcons[selected.Key]
+				fmt.Println()
+				initGreen.Print("  ✓ ")
+				fmt.Printf("%s  %s\n", icon, selected.Name)
+				fmt.Println()
 				return selected, nil
 			}
 		}
@@ -213,12 +289,16 @@ func selectTemplate() (*templateOption, error) {
 		// Try matching by key name
 		for i := range templateOptions {
 			if strings.EqualFold(templateOptions[i].Key, input) {
-				fmt.Printf("\nSelected: %s\n\n", templateOptions[i].Name)
+				icon := templateIcons[templateOptions[i].Key]
+				fmt.Println()
+				initGreen.Print("  ✓ ")
+				fmt.Printf("%s  %s\n", icon, templateOptions[i].Name)
+				fmt.Println()
 				return &templateOptions[i], nil
 			}
 		}
 
-		fmt.Println("Invalid selection. Please try again.")
+		initRed.Println("    Invalid selection. Please try again.")
 	}
 }
 
@@ -243,36 +323,268 @@ func getProjectPlan() (string, error) {
 		return initPlan, nil
 	}
 
-	// Interactive plan input
-	fmt.Println("Describe your project plan. This will be saved to swarm/PLAN.md and")
-	fmt.Println("referenced by all agents throughout the project.")
-	fmt.Println()
-	fmt.Println("Enter your plan (press Enter on an empty line to finish):")
+	// Interactive plan input using bubbletea for proper key handling
+	fmt.Print("  Describe your project and an AI agent will expand it into a detailed plan\n")
+	fmt.Print("  in ")
+	initBold.Print("swarm/PLAN.md")
+	fmt.Println(" that all agents will reference throughout the project.")
 	fmt.Println()
 
-	reader := bufio.NewReader(os.Stdin)
-	var lines []string
-	for {
-		line, err := reader.ReadString('\n')
-		if err != nil {
-			break
-		}
-		trimmed := strings.TrimRight(line, "\r\n")
-		if trimmed == "" && len(lines) > 0 {
-			break
-		}
-		if trimmed != "" || len(lines) > 0 {
-			lines = append(lines, trimmed)
-		}
+	p := tea.NewProgram(initialPlanInputModel())
+	result, err := p.Run()
+	if err != nil {
+		return "", fmt.Errorf("input error: %w", err)
 	}
 
-	plan := strings.TrimSpace(strings.Join(lines, "\n"))
+	final := result.(planInputModel)
+	if final.aborted {
+		fmt.Println()
+		initFaint.Println("    Aborted.")
+		return "", nil
+	}
+
+	plan := strings.TrimSpace(strings.Join(final.lines, "\n"))
 	if plan == "" {
 		return "", fmt.Errorf("plan cannot be empty")
 	}
 
 	fmt.Println()
+	initGreen.Print("  ✓ ")
+	lineCount := len(strings.Split(plan, "\n"))
+	if lineCount == 1 {
+		initFaint.Println("Plan captured (1 line)")
+	} else {
+		initFaint.Printf("Plan captured (%d lines)\n", lineCount)
+	}
+	fmt.Println()
 	return plan, nil
+}
+
+// planInputModel is a bubbletea model for multiline plan text input.
+// Enter submits the plan, Shift+Enter (or Alt+Enter) inserts a newline.
+type planInputModel struct {
+	lines   []string // lines of text
+	row     int      // current line (0-based)
+	col     int      // current column in runes (0-based)
+	done    bool
+	aborted bool
+}
+
+func initialPlanInputModel() planInputModel {
+	return planInputModel{
+		lines: []string{""},
+	}
+}
+
+func (m planInputModel) Init() tea.Cmd {
+	return nil
+}
+
+func (m planInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		s := msg.String()
+		switch s {
+		case "enter":
+			content := strings.TrimSpace(strings.Join(m.lines, "\n"))
+			if content == "" {
+				return m, nil
+			}
+			m.done = true
+			return m, tea.Quit
+		case "shift+enter", "alt+enter":
+			// Insert newline: split current line at cursor
+			runes := []rune(m.lines[m.row])
+			before := string(runes[:m.col])
+			after := string(runes[m.col:])
+			newLines := make([]string, 0, len(m.lines)+1)
+			newLines = append(newLines, m.lines[:m.row]...)
+			newLines = append(newLines, before)
+			newLines = append(newLines, after)
+			newLines = append(newLines, m.lines[m.row+1:]...)
+			m.lines = newLines
+			m.row++
+			m.col = 0
+		case "ctrl+c":
+			m.aborted = true
+			return m, tea.Quit
+		case "backspace", "ctrl+h":
+			if m.col > 0 {
+				runes := []rune(m.lines[m.row])
+				m.lines[m.row] = string(append(runes[:m.col-1], runes[m.col:]...))
+				m.col--
+			} else if m.row > 0 {
+				// Join with previous line
+				prevLen := len([]rune(m.lines[m.row-1]))
+				m.lines[m.row-1] += m.lines[m.row]
+				m.lines = append(m.lines[:m.row], m.lines[m.row+1:]...)
+				m.row--
+				m.col = prevLen
+			}
+		case "delete":
+			runes := []rune(m.lines[m.row])
+			if m.col < len(runes) {
+				m.lines[m.row] = string(append(runes[:m.col], runes[m.col+1:]...))
+			} else if m.row < len(m.lines)-1 {
+				// Join with next line
+				m.lines[m.row] += m.lines[m.row+1]
+				m.lines = append(m.lines[:m.row+1], m.lines[m.row+2:]...)
+			}
+		case "left":
+			if m.col > 0 {
+				m.col--
+			} else if m.row > 0 {
+				m.row--
+				m.col = len([]rune(m.lines[m.row]))
+			}
+		case "right":
+			if m.col < len([]rune(m.lines[m.row])) {
+				m.col++
+			} else if m.row < len(m.lines)-1 {
+				m.row++
+				m.col = 0
+			}
+		case "up":
+			if m.row > 0 {
+				m.row--
+				if lineLen := len([]rune(m.lines[m.row])); m.col > lineLen {
+					m.col = lineLen
+				}
+			}
+		case "down":
+			if m.row < len(m.lines)-1 {
+				m.row++
+				if lineLen := len([]rune(m.lines[m.row])); m.col > lineLen {
+					m.col = lineLen
+				}
+			}
+		case "home", "ctrl+a":
+			m.col = 0
+		case "end", "ctrl+e":
+			m.col = len([]rune(m.lines[m.row]))
+		default:
+			// Insert printable characters
+			runes := []rune(s)
+			if len(runes) == 1 && unicode.IsPrint(runes[0]) {
+				lineRunes := []rune(m.lines[m.row])
+				newRunes := make([]rune, len(lineRunes)+1)
+				copy(newRunes, lineRunes[:m.col])
+				newRunes[m.col] = runes[0]
+				copy(newRunes[m.col+1:], lineRunes[m.col:])
+				m.lines[m.row] = string(newRunes)
+				m.col++
+			}
+		}
+	}
+	return m, nil
+}
+
+func (m planInputModel) View() string {
+	if m.done {
+		// Final view: show entered text without cursor or hint
+		var sb strings.Builder
+		for i, line := range m.lines {
+			if i == 0 {
+				sb.WriteString("  \033[36m→\033[0m ")
+			} else {
+				sb.WriteString("    ")
+			}
+			sb.WriteString(line)
+			sb.WriteString("\n")
+		}
+		return sb.String()
+	}
+	if m.aborted {
+		return ""
+	}
+
+	var sb strings.Builder
+
+	// Hint line
+	sb.WriteString("  \033[2mEnter to submit · Shift+Enter for new line\033[0m\n\n")
+
+	// Text area with cursor
+	for i, line := range m.lines {
+		if i == 0 {
+			sb.WriteString("  \033[36m→\033[0m ")
+		} else {
+			sb.WriteString("    ")
+		}
+
+		runes := []rune(line)
+		if i == m.row {
+			// Render line with block cursor at current position
+			for j, r := range runes {
+				if j == m.col {
+					sb.WriteString("\033[7m")
+					sb.WriteRune(r)
+					sb.WriteString("\033[0m")
+				} else {
+					sb.WriteRune(r)
+				}
+			}
+			if m.col >= len(runes) {
+				// Cursor at end of line
+				sb.WriteString("\033[7m \033[0m")
+			}
+		} else {
+			sb.WriteString(line)
+		}
+		sb.WriteString("\n")
+	}
+
+	return sb.String()
+}
+
+// spinner shows an animated indicator with elapsed time while work is in progress.
+type spinner struct {
+	message string
+	start   time.Time
+	done    chan struct{}
+	wg      sync.WaitGroup
+}
+
+func newSpinner(message string) *spinner {
+	s := &spinner{
+		message: message,
+		start:   time.Now(),
+		done:    make(chan struct{}),
+	}
+	s.wg.Add(1)
+	go s.run()
+	return s
+}
+
+func (s *spinner) run() {
+	defer s.wg.Done()
+	frames := []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
+	cyan := color.New(color.FgCyan)
+	faint := color.New(color.Faint)
+	i := 0
+	ticker := time.NewTicker(80 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-s.done:
+			// Clear the spinner line
+			fmt.Print("\r\033[K")
+			return
+		case <-ticker.C:
+			elapsed := time.Since(s.start).Truncate(time.Second)
+			fmt.Print("\r\033[K")
+			fmt.Print("  ")
+			cyan.Print(frames[i%len(frames)])
+			fmt.Printf(" %s ", s.message)
+			faint.Printf("(%s)", elapsed)
+			i++
+		}
+	}
+}
+
+func (s *spinner) Stop() {
+	close(s.done)
+	s.wg.Wait()
 }
 
 func buildGenerationPrompt(tmpl *templateOption, plan string) string {
@@ -280,11 +592,11 @@ func buildGenerationPrompt(tmpl *templateOption, plan string) string {
 
 	sb.WriteString(`# Initialize Swarm Project
 
-You are setting up a swarm-cli project. Your job is to create the pipeline configuration and prompt files that will orchestrate AI agents to accomplish the user's plan iteratively.
+You are setting up a swarm-cli project. Your job is to create a detailed project plan and the pipeline configuration that will orchestrate AI agents to accomplish the user's goals iteratively.
 
-## User's Project Plan
+## User's Input
 
-The user has already saved this plan to ` + "`swarm/PLAN.md`" + `:
+The user described their project as follows:
 
 `)
 	sb.WriteString("```\n")
@@ -296,22 +608,46 @@ The user has already saved this plan to ` + "`swarm/PLAN.md`" + `:
 
 	sb.WriteString(`## What You Need to Create
 
-Create the following files. Use the appropriate file-writing tools to create each file.
+Create two files using the appropriate file-writing tool:
+1. ` + "`swarm/PLAN.md`" + ` — A detailed project plan
+2. ` + "`swarm/swarm.yaml`" + ` — Pipeline configuration
 
-### 1. ` + "`swarm/swarm.yaml`" + ` — Pipeline Configuration
+### ` + "`swarm/PLAN.md`" + ` — Detailed Project Plan
 
-This defines the tasks and pipeline. Here is the format:
+Take the user's input above and expand it into a comprehensive, well-structured project plan. This file is the single source of truth that ALL agents will reference throughout the project lifecycle.
+
+The plan should include:
+- **Project Overview**: A clear summary of what is being built/done and why
+- **Goals & Success Criteria**: What does "done" look like? How will we know the project succeeded?
+- **Scope**: What is in scope and what is explicitly out of scope
+- **Architecture / Approach**: High-level technical or structural decisions (e.g., tech stack, content structure, research methodology — whatever fits the project type)
+- **Milestones / Phases**: Break the work into logical phases or milestones, ordered by priority
+- **Detailed Requirements**: Specific, actionable requirements grouped by area (features, chapters, research questions, etc.)
+- **Constraints & Assumptions**: Any known limitations, dependencies, or assumptions
+
+Write this in Markdown. Be thorough and specific — the agents executing this plan need enough detail to make good decisions autonomously. Expand on the user's input with sensible defaults and best practices where they were vague, but stay true to their intent. If the user provided very little detail, use your best judgment to flesh out a reasonable plan for the chosen template type.
+
+### ` + "`swarm/swarm.yaml`" + ` — Pipeline Configuration
+
+This defines the tasks and pipeline. Prompts are inlined directly as ` + "`prompt-string`" + ` values. Here is the format:
 
 ` + "```yaml" + `
 version: "1"
 tasks:
   planner:
-    prompt: planner                    # references swarm/prompts/planner.md
+    prompt-string: |
+      # Planner
+      Your detailed prompt instructions go here...
+      Multi-line prompts are supported using YAML block scalars.
   doer-name:
-    prompt: doer-name                  # references swarm/prompts/doer-name.md
+    prompt-string: |
+      # Doer
+      Your detailed prompt instructions go here...
     depends_on: [planner]              # runs after planner completes
   reviewer-name:
-    prompt: reviewer-name              # references swarm/prompts/reviewer-name.md
+    prompt-string: |
+      # Reviewer
+      Your detailed prompt instructions go here...
     depends_on: [doer-name]            # runs after doer completes
 
 pipelines:
@@ -322,16 +658,17 @@ pipelines:
 ` + "```" + `
 
 Rules:
-- The ` + "`prompt`" + ` field references a markdown file in ` + "`swarm/prompts/`" + ` by name (without .md extension)
+- Use ` + "`prompt-string`" + ` with YAML block scalar (` + "`|`" + `) to inline multi-line prompts directly in the YAML file
+- Do NOT create separate prompt files — everything goes in swarm.yaml
 - Use ` + "`depends_on`" + ` to define execution order — downstream tasks wait for upstream tasks
 - Set ` + "`parallelism: 1`" + ` explicitly so users can see where to change it
 - Choose an appropriate number of iterations (10-20 is typical)
 - Design 2-5 tasks that make sense for this template type
 - Name tasks descriptively for the template (e.g. "researcher" not just "doer")
 
-### 2. ` + "`swarm/prompts/<task-name>.md`" + ` — One Per Task
+### Prompt Content Guidelines
 
-Each task needs a corresponding prompt file in ` + "`swarm/prompts/`" + `. These markdown files tell the agent exactly what to do.
+Each task's ` + "`prompt-string`" + ` tells the agent exactly what to do.
 
 #### How the runtime works:
 
@@ -345,6 +682,26 @@ Between tasks, you can reference another task's output using:
 
 For example, if the planner writes its output, the doer prompt can include ` + "`{{output:planner}}`" + ` to read it.
 
+#### Task File Lifecycle (CRITICAL):
+
+All pipelines MUST use this task file lifecycle for coordination between planner and doer agents:
+
+1. **Planner creates** a task file in SWARM_STATE_DIR named: ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + `
+   - The timestamp is the current time when the planner creates the task
+   - ` + "`{taskName}`" + ` is a short kebab-case name describing the task (e.g. ` + "`implement-auth`" + `, ` + "`write-chapter-3`" + `, ` + "`analyze-dataset`" + `)
+   - The file contents are the full task description and instructions
+   - Example: ` + "`2026-02-12-14-30-00-implement-user-auth.todo.md`" + `
+
+2. **Doer picks up** the task by renaming ` + "`.todo.md`" + ` → ` + "`.processing.md`" + ` in SWARM_STATE_DIR
+   - Find the ` + "`.todo.md`" + ` file in SWARM_STATE_DIR
+   - Rename it (e.g. ` + "`2026-02-12-14-30-00-implement-user-auth.processing.md`" + `)
+   - This signals that work is in progress
+
+3. **Doer completes** the task by moving the file to ` + "`swarm/done/`" + ` and renaming ` + "`.processing.md`" + ` → ` + "`.done.md`" + `
+   - Create the ` + "`swarm/done/`" + ` directory if it doesn't exist
+   - Move the file (e.g. ` + "`swarm/done/2026-02-12-14-30-00-implement-user-auth.done.md`" + `)
+   - Append a summary of what was accomplished to the end of the file before moving it
+
 #### The Planner/Doer Pattern (CRITICAL):
 
 The entire pipeline revolves around this pattern:
@@ -352,20 +709,24 @@ The entire pipeline revolves around this pattern:
 **Planner** (first task in each iteration):
 1. Read ` + "`swarm/PLAN.md`" + ` for the overall project plan
 2. Review the current state of the project directory — what files exist, what's been done already
-3. Determine what single piece of work should be done next
-4. Write a specific, bite-sized task description — something an agent can complete in one session
-5. The task must be actionable and concrete, not vague
-6. Each iteration the planner MUST identify DIFFERENT work (check what's already been done to avoid repetition)
+3. Review ` + "`swarm/done/`" + ` to see all previously completed tasks (` + "`.done.md`" + ` files) and avoid repeating work
+4. Check SWARM_STATE_DIR for any existing ` + "`.todo.md`" + ` or ` + "`.processing.md`" + ` files to avoid conflicts
+5. Determine what single piece of work should be done next
+6. Write a specific, bite-sized task as a ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` file in SWARM_STATE_DIR (following the Task File Lifecycle above)
+7. The task must be actionable and concrete, not vague
+8. Each iteration the planner MUST identify DIFFERENT work (check ` + "`swarm/done/`" + ` to see what's already been completed)
 
 **Doer(s)** (middle tasks):
 1. Read ` + "`swarm/PLAN.md`" + ` for context on the overall project
-2. Read the planner's task via ` + "`{{output:planner}}`" + `
-3. Execute the task to completion — actually create/modify files, write content, etc.
-4. Be thorough but focused — complete the single assigned task, don't try to do everything at once
+2. Find the ` + "`.todo.md`" + ` file in SWARM_STATE_DIR and read it for the task assignment
+3. Rename the ` + "`.todo.md`" + ` file to ` + "`.processing.md`" + ` to signal work has started
+4. Execute the task to completion — actually create/modify files, write content, etc.
+5. Be thorough but focused — complete the single assigned task, don't try to do everything at once
+6. When done, move the ` + "`.processing.md`" + ` file to ` + "`swarm/done/`" + ` and rename to ` + "`.done.md`" + ` (append a completion summary first)
 
 **Reviewer** (optional final task):
 1. Read ` + "`swarm/PLAN.md`" + ` for context
-2. Read the doer's output via ` + "`{{output:doer-name}}`" + `
+2. Read the most recent ` + "`.done.md`" + ` file in ` + "`swarm/done/`" + ` to review what the doer accomplished
 3. Review the work for quality, correctness, and completeness
 4. Report any issues that should be addressed in the next iteration
 
@@ -378,17 +739,23 @@ The entire pipeline revolves around this pattern:
 - Instruct planners to always check current project state before planning (to avoid repeating work)
 - Keep planner output bite-sized: each task should be completable in a single agent session
 - Tell doer agents to actually create/modify project files, not just describe what to do
+- **CRITICAL**: All prompts MUST follow the Task File Lifecycle:
+  - Planners MUST write tasks as ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` in SWARM_STATE_DIR
+  - Doers MUST rename ` + "`.todo.md`" + ` → ` + "`.processing.md`" + ` when starting work
+  - Doers MUST move completed tasks to ` + "`swarm/done/`" + ` as ` + "`.done.md`" + ` when finished
+  - Planners MUST check ` + "`swarm/done/`" + ` to avoid repeating completed work
+- Instruct doer prompts to create ` + "`swarm/done/`" + ` directory if it doesn't exist before moving files
 
 ## Generate the files now
 
-Based on the "` + tmpl.Name + `" template and the user's plan above, create:
+Based on the "` + tmpl.Name + `" template and the user's input above, create these two files:
 
-1. ` + "`swarm/swarm.yaml`" + ` with an appropriate pipeline (2-5 tasks, sensible dependencies, explicit parallelism: 1)
-2. ` + "`swarm/prompts/<task>.md`" + ` for each task in the pipeline
+1. ` + "`swarm/PLAN.md`" + ` — a detailed, expanded project plan (see guidelines above)
+2. ` + "`swarm/swarm.yaml`" + ` with an appropriate pipeline (2-5 tasks, sensible dependencies, explicit parallelism: 1, and all prompts inlined as prompt-string values)
 
-Make the prompts specific and tailored to the user's plan. The pipeline should be practical and effective for this kind of work. Don't be generic — reference the specific goals from the user's plan in your prompts.
+Create PLAN.md FIRST, then create swarm.yaml. The prompts in swarm.yaml should reference PLAN.md and be specific and tailored to the user's plan. The pipeline should be practical and effective for this kind of work. Don't be generic — reference the specific goals from the user's plan in your prompts.
 
-IMPORTANT: Only create the files listed above. Do not create any other files, do not modify PLAN.md (it already exists), and do not run any commands. Just create swarm/swarm.yaml and the prompt files.
+IMPORTANT: Only create swarm/PLAN.md and swarm/swarm.yaml. Do not create any other files (no prompt files, no additional directories), and do not run any commands. Everything pipeline-related goes into the single swarm/swarm.yaml file using prompt-string for each task.
 `)
 
 	return sb.String()

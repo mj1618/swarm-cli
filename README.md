@@ -1,53 +1,21 @@
 # Swarm CLI
 
-A command-line tool for running and managing AI agents. Swarm CLI allows you to run agents for single or multiple iterations, with full control over running agents including the ability to modify settings on-the-fly.
-
-**Getting started?** Check out [swarm-starter](https://github.com/mj1618/swarm-starter) for ready-to-use example prompts and compose files.
+A command-line tool for orchestrating AI agents. Initialize a project, describe what you want to build, and let a swarm of agents iterate on it autonomously.
 
 ![Swarm CLI - Starting and listing agents](images/screenshot-1.png)
 
 ```bash
-# Run with a named prompt (from ./swarm/prompts/my-task.md)
-swarm run -p my-task
+# Initialize a project — pick a template, describe your plan
+swarm init
 
-# Run with a direct string
-swarm run -s "Add unit tests for the auth module"
+# Start the pipeline in the background
+swarm up -d
 
-# Run with a file path
-swarm run -f /path/to/prompt.md
+# Monitor agents in real-time
+swarm top
 
-# Run for multiple iterations
-swarm run -p my-task -n 10
-
-# Run with a specific model
-swarm run -p my-task -m claude-sonnet-4-20250514
-
-# Run in detached mode (background)
-swarm run -p my-task -n 20 -d
-
-# Run with a custom name for easier reference
-swarm run -p my-task -n 50 --name my-agent
-
-# List running agents
-swarm list
-
-# View details of a specific agent
-swarm inspect abc123
-
-# Update iterations on a running agent
-swarm update abc123 -n 50
-
-# Terminate an agent
-swarm kill abc123
-
-# Set your agent backend (cursor or claude-code)
-swarm config set-backend claude-code
-
-# Set the default model for claude-code backend
-swarm config set-model opus
-
-# Set the default model for cursor backend
-swarm config set-model opus-4.5-thinking
+# Shut everything down when you're done
+swarm kill-all
 ```
 
 ## Table of Contents
