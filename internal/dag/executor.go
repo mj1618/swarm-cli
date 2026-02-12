@@ -78,10 +78,18 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 	iterations := pipeline.EffectiveIterations()
 	fmt.Fprintf(e.cfg.Output, "Running pipeline with %d iteration(s) and %d task(s)\n", iterations, len(taskNames))
 
+	terminated := false
+
 	// Run each iteration
 	for i := 1; i <= iterations; i++ {
-		// Create a unique output directory per iteration for inter-agent communication
-		runID := state.GenerateID()
+		// Check for pause/terminate between iterations
+		if e.checkPipelineControl() {
+			terminated = true
+			break
+		}
+
+		// Create a unique, time-sortable output directory per iteration
+		runID := time.Now().Format("20060102-150405") + "-" + state.GenerateID()
 		outputDir := filepath.Join(e.cfg.WorkingDir, "swarm", "outputs", runID)
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %w", err)
@@ -107,8 +115,13 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 
 		fmt.Fprintf(e.cfg.Output, "\n=== Pipeline Iteration %d/%d ===\n", i, iterations)
 
-		if err := e.runDAG(graph, taskNames, i, iterations, outputDir); err != nil {
+		dagTerminated, err := e.runDAG(graph, taskNames, i, iterations, outputDir)
+		if err != nil {
 			return fmt.Errorf("iteration %d failed: %w", i, err)
+		}
+		if dagTerminated {
+			terminated = true
+			break
 		}
 
 		fmt.Fprintf(e.cfg.Output, "--- Iteration %d complete ---\n", i)
@@ -118,19 +131,88 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 	if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
 		if agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
 			agentState.Status = "terminated"
-			agentState.ExitReason = "completed"
 			now := time.Now()
 			agentState.TerminatedAt = &now
+			if terminated {
+				agentState.ExitReason = "killed"
+			} else {
+				agentState.ExitReason = "completed"
+			}
 			_ = e.cfg.StateManager.MergeUpdate(agentState)
 		}
 	}
 
-	fmt.Fprintf(e.cfg.Output, "\nPipeline completed successfully (%d iterations)\n", iterations)
+	if terminated {
+		fmt.Fprintf(e.cfg.Output, "\nPipeline terminated\n")
+	} else {
+		fmt.Fprintf(e.cfg.Output, "\nPipeline completed successfully (%d iterations)\n", iterations)
+	}
 	return nil
 }
 
+// checkPipelineControl checks for pause/terminate signals from state.
+// If paused, it blocks until resumed or terminated.
+// Returns true if the pipeline should be terminated.
+func (e *Executor) checkPipelineControl() bool {
+	if e.cfg.StateManager == nil || e.cfg.TaskID == "" {
+		return false
+	}
+
+	agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID)
+	if err != nil {
+		return false
+	}
+
+	// Check for termination
+	if agentState.TerminateMode == "immediate" {
+		fmt.Fprintf(e.cfg.Output, "\n[swarm] Received termination signal\n")
+		return true
+	}
+
+	if !agentState.Paused {
+		return false
+	}
+
+	// Enter pause state — set PausedAt to acknowledge
+	fmt.Fprintf(e.cfg.Output, "\n[swarm] Pipeline paused, waiting for resume...\n")
+	now := time.Now()
+	agentState.PausedAt = &now
+	_ = e.cfg.StateManager.MergeUpdate(agentState)
+
+	// Sleep loop until resumed or terminated
+	for {
+		time.Sleep(1 * time.Second)
+		agentState, err = e.cfg.StateManager.Get(e.cfg.TaskID)
+		if err != nil {
+			break
+		}
+
+		// Allow termination while paused
+		if agentState.TerminateMode == "immediate" {
+			fmt.Fprintf(e.cfg.Output, "\n[swarm] Received termination signal\n")
+			return true
+		}
+
+		// Check for resume
+		if !agentState.Paused {
+			break
+		}
+	}
+
+	// Resumed — clear PausedAt
+	fmt.Fprintf(e.cfg.Output, "\n[swarm] Pipeline resumed\n")
+	agentState, err = e.cfg.StateManager.Get(e.cfg.TaskID)
+	if err == nil {
+		agentState.PausedAt = nil
+		_ = e.cfg.StateManager.MergeUpdate(agentState)
+	}
+
+	return false
+}
+
 // runDAG executes a single DAG iteration.
-func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration, totalIterations int, outputDir string) error {
+// Returns (terminated, error) where terminated is true if a terminate signal was received.
+func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration, totalIterations int, outputDir string) (bool, error) {
 	// Initialize state tracker
 	states := NewStateTracker(taskNames)
 
@@ -138,6 +220,11 @@ func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration, totalIter
 	writers := output.NewWriterGroup(e.cfg.Output, taskNames)
 
 	for {
+		// Check for pause/terminate before scheduling new tasks
+		if e.checkPipelineControl() {
+			return true, nil
+		}
+
 		// Get current states
 		currentStates := states.GetAll()
 
@@ -156,7 +243,7 @@ func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration, totalIter
 			// If there are pending tasks but none ready, there might be a deadlock
 			summary := states.GetSummary()
 			if summary.Pending > 0 {
-				return fmt.Errorf("deadlock: %d pending task(s) but none ready", summary.Pending)
+				return false, fmt.Errorf("deadlock: %d pending task(s) but none ready", summary.Pending)
 			}
 			break
 		}
@@ -173,7 +260,7 @@ func (e *Executor) runDAG(graph *Graph, taskNames []string, iteration, totalIter
 	fmt.Fprintf(e.cfg.Output, "Tasks: %d succeeded, %d failed, %d skipped\n",
 		summary.Succeeded, summary.Failed, summary.Skipped)
 
-	return nil
+	return false, nil
 }
 
 // skipBlockedTasks marks tasks as skipped if their dependency conditions can't be met.
@@ -199,10 +286,15 @@ func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *State
 	var mu sync.Mutex
 	var errors []error
 
-	for _, taskName := range taskNames {
+	for i, taskName := range taskNames {
 		task, ok := graph.GetTask(taskName)
 		if !ok {
 			continue
+		}
+
+		// Stagger parallel task starts by 5 seconds to avoid resource contention
+		if i > 0 {
+			time.Sleep(5 * time.Second)
 		}
 
 		writer := writers.Get(taskName)

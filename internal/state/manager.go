@@ -298,7 +298,7 @@ func mergeControlFields(existing, agent *AgentState) {
 
 	// Paused: preserve disk value - this is set by `swarm pause`
 	agent.Paused = existing.Paused
-	agent.PausedAt = existing.PausedAt
+	// PausedAt is NOT preserved - it's set by the runner/executor to acknowledge pause
 }
 
 // SetIterations atomically updates the Iterations field for an agent.
@@ -390,12 +390,11 @@ func (m *Manager) SetPaused(id string, paused bool) error {
 	}
 
 	agent.Paused = paused
-	if paused {
-		now := time.Now()
-		agent.PausedAt = &now
-	} else {
+	if !paused {
 		agent.PausedAt = nil
 	}
+	// When paused=true, leave PausedAt as-is (nil if not yet acknowledged).
+	// The runner/executor will set PausedAt when it actually enters the pause state.
 	return m.save(state)
 }
 
