@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawn } from 'child_process'
@@ -36,8 +36,115 @@ function createWindow() {
   })
 }
 
+function buildAppMenu() {
+  const isMac = process.platform === 'darwin'
+
+  const sendToRenderer = (channel: string) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send(channel)
+    }
+  }
+
+  const template: Electron.MenuItemConstructorOptions[] = [
+    // macOS app menu
+    ...(isMac
+      ? [
+          {
+            label: app.name,
+            submenu: [
+              { role: 'about' as const },
+              { type: 'separator' as const },
+              {
+                label: 'Settings...',
+                accelerator: 'CmdOrCtrl+,',
+                click: () => sendToRenderer('menu:settings'),
+              },
+              { type: 'separator' as const },
+              { role: 'services' as const },
+              { type: 'separator' as const },
+              { role: 'hide' as const },
+              { role: 'hideOthers' as const },
+              { role: 'unhide' as const },
+              { type: 'separator' as const },
+              { role: 'quit' as const },
+            ],
+          } satisfies Electron.MenuItemConstructorOptions,
+        ]
+      : []),
+    // File menu
+    {
+      label: 'File',
+      submenu: [
+        {
+          label: 'Open Project',
+          accelerator: 'CmdOrCtrl+O',
+          click: () => sendToRenderer('menu:open-project'),
+        },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
+    // Edit menu
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        { role: 'selectAll' },
+      ],
+    },
+    // View menu
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Toggle Console',
+          accelerator: 'CmdOrCtrl+J',
+          click: () => sendToRenderer('menu:toggle-console'),
+        },
+        {
+          label: 'Command Palette',
+          accelerator: 'CmdOrCtrl+K',
+          click: () => sendToRenderer('menu:command-palette'),
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'toggleDevTools' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' },
+      ],
+    },
+    // Window menu
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac
+          ? [
+              { type: 'separator' as const },
+              { role: 'front' as const },
+            ]
+          : [{ role: 'close' as const }]),
+      ],
+    },
+  ]
+
+  const menu = Menu.buildFromTemplate(template)
+  Menu.setApplicationMenu(menu)
+}
+
 app.whenReady().then(() => {
   createWindow()
+  buildAppMenu()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -58,7 +165,7 @@ ipcMain.handle('swarm:list', async () => {
 })
 
 ipcMain.handle('swarm:run', async (_event, args: string[]) => {
-  return runSwarmCommand(['run', ...args])
+  return runSwarmCommand(args)
 })
 
 ipcMain.handle('swarm:kill', async (_event, agentId: string) => {
@@ -66,11 +173,11 @@ ipcMain.handle('swarm:kill', async (_event, agentId: string) => {
 })
 
 ipcMain.handle('swarm:pause', async (_event, agentId: string) => {
-  return runSwarmCommand(['pause', agentId])
+  return runSwarmCommand(['stop', agentId])
 })
 
 ipcMain.handle('swarm:resume', async (_event, agentId: string) => {
-  return runSwarmCommand(['resume', agentId])
+  return runSwarmCommand(['start', agentId])
 })
 
 ipcMain.handle('swarm:logs', async (_event, agentId: string) => {
