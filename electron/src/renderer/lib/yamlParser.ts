@@ -68,7 +68,20 @@ export function parseComposeFile(content: string): ComposeFile {
   return yaml.load(content) as ComposeFile
 }
 
-export function composeToFlow(compose: ComposeFile): { nodes: Node<TaskNodeData>[]; edges: Edge[] } {
+export function serializeCompose(compose: ComposeFile): string {
+  return yaml.dump(compose, {
+    lineWidth: -1,
+    noRefs: true,
+    quotingType: '"',
+    forceQuotes: false,
+    sortKeys: false,
+  })
+}
+
+export function composeToFlow(
+  compose: ComposeFile,
+  savedPositions?: Record<string, { x: number; y: number }>,
+): { nodes: Node<TaskNodeData>[]; edges: Edge[] } {
   const g = new dagre.graphlib.Graph()
   g.setGraph({ rankdir: 'TB', nodesep: 60, ranksep: 80 })
   g.setDefaultEdgeLabel(() => ({}))
@@ -107,14 +120,15 @@ export function composeToFlow(compose: ComposeFile): { nodes: Node<TaskNodeData>
   // Run dagre layout
   dagre.layout(g)
 
-  // Create positioned nodes
+  // Create positioned nodes — use saved positions when available, else dagre
   const nodes: Node<TaskNodeData>[] = taskNames.map((name) => {
-    const pos = g.node(name)
+    const dagrePos = g.node(name)
+    const saved = savedPositions?.[name]
     const task = tasks[name]
     return {
       id: name,
       type: 'taskNode',
-      position: { x: pos.x - NODE_WIDTH / 2, y: pos.y - NODE_HEIGHT / 2 },
+      position: saved ?? { x: dagrePos.x - NODE_WIDTH / 2, y: dagrePos.y - NODE_HEIGHT / 2 },
       data: {
         label: name,
         promptSource: getPromptSource(task),

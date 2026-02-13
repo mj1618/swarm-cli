@@ -6,11 +6,24 @@ import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
-import type { TaskDef } from './lib/yamlParser'
+import { serializeCompose } from './lib/yamlParser'
+import type { ComposeFile, TaskDef } from './lib/yamlParser'
 
 function isYamlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase()
   return ext === 'yaml' || ext === 'yml'
+}
+
+function getPositionsKey(filePath: string | null): string {
+  return `swarm-dag-positions:${filePath ?? 'swarm/swarm.yaml'}`
+}
+
+function loadPositions(filePath: string | null): Record<string, { x: number; y: number }> {
+  try {
+    const raw = localStorage.getItem(getPositionsKey(filePath))
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return {}
 }
 
 function App() {
@@ -21,11 +34,58 @@ function App() {
   const [selectedYamlContent, setSelectedYamlContent] = useState<string | null>(null)
   const [selectedYamlLoading, setSelectedYamlLoading] = useState(false)
   const [selectedYamlError, setSelectedYamlError] = useState<string | null>(null)
-  const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef } | null>(null)
+  const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef; compose: ComposeFile } | null>(null)
 
-  const handleSelectTask = useCallback((task: { name: string; def: TaskDef }) => {
+  const activeYamlPath = selectedFile && isYamlFile(selectedFile) ? selectedFile : null
+  const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
+    loadPositions(activeYamlPath),
+  )
+
+  // Reload saved positions when the active YAML file changes
+  useEffect(() => {
+    setNodePositions(loadPositions(activeYamlPath))
+  }, [activeYamlPath])
+
+  const handlePositionsChange = useCallback(
+    (positions: Record<string, { x: number; y: number }>) => {
+      setNodePositions(positions)
+      localStorage.setItem(getPositionsKey(activeYamlPath), JSON.stringify(positions))
+    },
+    [activeYamlPath],
+  )
+
+  const handleResetLayout = useCallback(() => {
+    setNodePositions({})
+    localStorage.removeItem(getPositionsKey(activeYamlPath))
+  }, [activeYamlPath])
+
+  const selectedIsYaml = selectedFile ? isYamlFile(selectedFile) : false
+
+  const handleSelectTask = useCallback((task: { name: string; def: TaskDef; compose: ComposeFile }) => {
     setSelectedTask(task)
   }, [])
+
+  const handleSaveTask = useCallback(async (taskName: string, updatedDef: TaskDef) => {
+    if (!selectedTask) return
+    const compose = { ...selectedTask.compose }
+    compose.tasks = { ...compose.tasks, [taskName]: updatedDef }
+    const yamlStr = serializeCompose(compose)
+    const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+    const result = await window.fs.writefile(filePath, yamlStr)
+    if (result.error) {
+      console.error('Failed to save:', result.error)
+      return
+    }
+    // Reload YAML content to refresh the DAG
+    if (selectedIsYaml && selectedFile) {
+      const reloaded = await window.fs.readfile(selectedFile)
+      if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+    } else {
+      const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+      if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+    }
+    setSelectedTask(null)
+  }, [selectedTask, selectedIsYaml, selectedFile])
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedTask(null)
@@ -85,8 +145,6 @@ function App() {
     return () => { cancelled = true }
   }, [selectedFile])
 
-  const selectedIsYaml = selectedFile ? isYamlFile(selectedFile) : false
-
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
     return selectedFile.split('/').pop() || 'DAG Editor'
@@ -121,6 +179,9 @@ function App() {
                   loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
                   error={selectedIsYaml ? selectedYamlError : defaultYamlError}
                   onSelectTask={handleSelectTask}
+                  savedPositions={nodePositions}
+                  onPositionsChange={handlePositionsChange}
+                  onResetLayout={handleResetLayout}
                 />
               </ReactFlowProvider>
             </>
@@ -131,7 +192,8 @@ function App() {
         {selectedTask ? (
           <TaskDrawer
             taskName={selectedTask.name}
-            taskDef={selectedTask.def}
+            compose={selectedTask.compose}
+            onSave={handleSaveTask}
             onClose={handleCloseDrawer}
           />
         ) : (

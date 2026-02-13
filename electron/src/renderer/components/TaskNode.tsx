@@ -9,7 +9,11 @@ export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
     <div className={`bg-card border rounded-lg shadow-lg min-w-[180px] overflow-hidden cursor-pointer transition-colors ${
       selected ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/50'
     }`}>
-      <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-1.5 !rounded-sm !border-0" />
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!bg-primary !w-3 !h-1.5 !rounded-sm !border-0 hover:!bg-green-400 hover:!w-4 hover:!h-2 !transition-all"
+      />
 
       <div className="px-3 py-2 border-b border-border bg-primary/10">
         <span className="text-sm font-semibold text-card-foreground">{data.label}</span>
@@ -30,7 +34,11 @@ export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
         )}
       </div>
 
-      <Handle type="source" position={Position.Bottom} className="!bg-primary !w-3 !h-1.5 !rounded-sm !border-0" />
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!bg-primary !w-3 !h-1.5 !rounded-sm !border-0 hover:!bg-green-400 hover:!w-4 hover:!h-2 !transition-all"
+      />
     </div>
   )
 }

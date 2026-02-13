@@ -65,6 +65,34 @@ export function applyTaskEdits(compose: ComposeFile, taskName: string, form: Tas
   return updated
 }
 
+export function addDependency(
+  compose: ComposeFile,
+  targetTask: string,
+  sourceTask: string,
+  condition: string,
+): ComposeFile {
+  const updated = structuredClone(compose)
+  const task = updated.tasks[targetTask]
+  if (!task) return updated
+
+  if (!task.depends_on) task.depends_on = []
+
+  // Prevent duplicates (same source task)
+  const existing = task.depends_on.find(dep =>
+    typeof dep === 'string' ? dep === sourceTask : dep.task === sourceTask
+  )
+  if (existing) return updated
+
+  // Use simple string form for "success" (default), object form otherwise
+  if (condition === 'success') {
+    task.depends_on.push(sourceTask)
+  } else {
+    task.depends_on.push({ task: sourceTask, condition: condition as TaskDependency['condition'] })
+  }
+
+  return updated
+}
+
 export function serializeCompose(compose: ComposeFile): string {
   return yaml.dump(compose, {
     indent: 2,

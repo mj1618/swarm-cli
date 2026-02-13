@@ -1,62 +1,72 @@
 # Task: Task Configuration Drawer
 
-**Phase:** 3 — Interactive Editing (first sub-task)
+**Phase:** 3 — Interactive Editing
+**Priority:** High (first item in Phase 3)
 
 ## Goal
 
-Add a slide-out configuration drawer that opens when a user clicks on a task node in the DAG canvas. The drawer displays the task's full configuration (prompt source, model, prefix, suffix, dependencies) in a read-only view. This is the foundation for Phase 3's interactive editing — later iterations will make the fields editable and write changes back to `swarm.yaml`.
+Add a slide-out drawer component that appears when a user clicks on a task node in the DAG canvas. The drawer displays the task's full configuration and allows editing fields. Changes are written back to the `swarm.yaml` file.
+
+This is the foundational piece for Phase 3 — interactive editing must start with a way to view and modify task properties before drag-and-drop creation or visual dependency wiring.
 
 ## Files
 
 ### Create
-- `electron/src/renderer/components/TaskDrawer.tsx` — A slide-out panel that appears on the right side (overlaying or pushing the Agent Panel). Displays:
-  - Task name (header)
-  - Prompt source: shows which of `prompt`, `prompt-file`, or `prompt-string` is set, with the value
-  - Model: the model override if set, or "inherited" if not
-  - Prefix: the prefix text if set
-  - Suffix: the suffix text if set
-  - Dependencies: list of `depends_on` entries with task name and condition
-  - A close button (X) in the top-right corner
+- `electron/src/renderer/components/TaskDrawer.tsx` — Slide-out drawer panel with form fields for task configuration:
+  - Task name (read-only header)
+  - Prompt source: radio group selecting between `prompt` (from prompts/), `prompt-file` (file path), or `prompt-string` (inline textarea)
+  - Model: dropdown with options `inherit`, `opus`, `sonnet`, `haiku`
+  - Prefix: textarea
+  - Suffix: textarea
+  - Dependencies: list of `{task, condition}` pairs with condition dropdowns (`success | failure | any | always`)
 
 ### Modify
-- `electron/src/renderer/components/DagCanvas.tsx` — Make task nodes clickable. When a node is clicked, call a callback (`onSelectTask`) with the task name and its `TaskDef` data.
-- `electron/src/renderer/components/TaskNode.tsx` — Update node data type to include the full `TaskDef` so the drawer has access to all task fields (not just `label`, `promptSource`, `model`).
-- `electron/src/renderer/lib/yamlParser.ts` — Extend `TaskNodeData` to include the full `TaskDef` (or pass it through as `taskDef` property). Update `composeToFlow` to include the full task definition in each node's data.
-- `electron/src/renderer/App.tsx` — Add state for `selectedTask: { name: string, def: TaskDef } | null`. Pass `onSelectTask` callback down to `DagCanvas`. Render `<TaskDrawer>` when a task is selected, positioned over or adjacent to the Agent Panel.
+- `electron/src/renderer/components/DagCanvas.tsx` — Add `onNodeClick` handler that opens the TaskDrawer with the clicked task's data
+- `electron/src/renderer/components/TaskNode.tsx` — Make nodes visually indicate they are clickable (cursor pointer, hover effect)
+- `electron/src/renderer/App.tsx` — Add state for selected task and drawer visibility; render TaskDrawer component
+- `electron/src/renderer/lib/yamlParser.ts` — Export a `serializeCompose()` function that converts the in-memory task graph back to valid YAML
+- `electron/src/main/index.ts` — Add `fs:writefile` IPC handler (scoped to swarm/ directory) so the renderer can save changes
+- `electron/src/preload/index.ts` — Expose `fs.writeFile` via context bridge
 
 ## Dependencies
 
-- DAG canvas with React Flow (completed — Phase 2)
-- YAML parser with TaskDef types (completed)
+- Phase 1 complete (file tree, YAML viewer, agent panel) ✅
+- Phase 2 complete (DAG canvas with ReactFlow, task nodes, edges) ✅
+- DAG canvas and yamlParser already parse swarm.yaml into nodes — this task adds the reverse: editing and writing back
 
 ## Acceptance Criteria
 
 1. Clicking a task node in the DAG canvas opens a slide-out drawer on the right side
-2. The drawer displays: task name, prompt source (type + value), model (or "inherited"), prefix, suffix, and dependencies list
-3. Each dependency shows the task name and condition (success/failure/any/always)
-4. Clicking the close button (or clicking outside the drawer) dismisses it
-5. Clicking a different task node switches the drawer to show that task's config
-6. The drawer does not break the existing Agent Panel layout — it either overlays it or temporarily replaces it
-7. The app builds successfully (`npm run build` in electron/)
+2. The drawer displays all current task properties (prompt source, model, prefix, suffix, dependencies)
+3. Each field is editable with appropriate form controls (dropdowns, textareas, radio buttons)
+4. A "Save" button serializes the updated task config back to valid `swarm.yaml` and writes it via IPC
+5. The DAG canvas re-renders after save to reflect changes
+6. A "Close" / "Cancel" button dismisses the drawer without saving
+7. The drawer has smooth slide-in/slide-out animation
+8. The `fs:writefile` IPC handler validates the path is within the swarm/ directory
 
 ## Notes
 
-- The Task Configuration Panel spec from ELECTRON_PLAN.md shows the target design (search for "Task Configuration Panel (Right Drawer)"). For this task, implement it as read-only — editable fields come in a follow-up task.
-- The `TaskDef` interface already exists in `yamlParser.ts` — reuse it rather than creating a new type.
-- The `TaskNodeData` currently only has `label`, `promptSource`, and `model`. Extend it to carry the full `TaskDef` so the drawer has all the data it needs without re-parsing.
-- For the drawer animation, a simple CSS transition (`transform: translateX`) sliding in from the right is sufficient. No need for a full animation library.
-- Use the same Tailwind dark theme classes as the rest of the app (`bg-card`, `text-card-foreground`, `border-border`).
-- React Flow supports `onNodeClick` — use this on the `<ReactFlow>` component to detect task node clicks.
+- Reference the Task Configuration Panel design in ELECTRON_PLAN.md (lines 113-138)
+- The drawer should overlay the right side of the DAG canvas, not replace the Agent Panel
+- Use Tailwind for styling, consistent with existing dark theme (`bg-[hsl(222,84%,5%)]` palette)
+- The yamlParser.ts `serializeCompose()` should use `js-yaml`'s `dump()` to produce clean YAML
+- Condition dropdown values: `success`, `failure`, `any`, `always` — matching `internal/compose/` Go types
+- Keep the drawer width around 320-360px to match the design spec
+- Consider using `position: fixed` or `absolute` with z-index to overlay properly
 
 ## Completion Notes
 
-Implemented by agent 4d916b14 on iteration 3.
+Implemented the Task Configuration Drawer (Phase 3 - Interactive Editing):
 
-### Changes Made
-- **`yamlParser.ts`**: Added `taskDef: TaskDef` field to `TaskNodeData` interface; updated `composeToFlow` to pass full task definition in node data
-- **`DagCanvas.tsx`**: Added `onSelectTask` callback prop; wired `onNodeClick` handler on `<ReactFlow>` to emit task selection events; enabled `elementsSelectable`
-- **`TaskNode.tsx`**: Added cursor pointer, hover highlight (`border-primary/50`), and selected state styling (`border-primary ring-2 ring-primary/30`) using the `selected` prop from React Flow
-- **`TaskDrawer.tsx`** (new): Read-only slide-out drawer displaying task name, prompt source (type + value), model (or "inherited"), prefix, suffix, and dependencies with color-coded condition badges. Dismissible via close button, click-outside, or Escape key
-- **`App.tsx`**: Added `selectedTask` state; passes `onSelectTask` to `DagCanvas`; conditionally renders `TaskDrawer` in place of `AgentPanel` when a task is selected
-
-All acceptance criteria met. Build passes cleanly.
+- **TaskDrawer.tsx**: Converted from read-only view to full editable form with:
+  - Prompt source selector (prompt/prompt-file/prompt-string) with appropriate input controls
+  - For `prompt` type: dropdown populated from `fs:listprompts` IPC for available prompt files
+  - Model dropdown (inherit/opus/sonnet/haiku)
+  - Prefix and suffix textareas
+  - Dependencies editor with task and condition dropdowns, add/remove controls
+  - Save and Cancel buttons with loading state
+  - Escape key to close, slide-in animation
+- **yamlParser.ts**: Added `serializeCompose()` using `js-yaml` `dump()` to convert compose back to YAML
+- **App.tsx**: Implemented `handleSaveTask` that serializes updated task config, writes via IPC, and reloads YAML to refresh the DAG
+- Pre-existing infrastructure (fs:writefile IPC, preload bridge, onNodeClick, TaskNode hover effects) was already in place from earlier iterations
