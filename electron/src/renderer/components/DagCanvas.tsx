@@ -629,7 +629,8 @@ export default function DagCanvas({
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
     // Only clear when leaving the container (not entering a child)
-    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as globalThis.Node)) {
+    // Note: e.relatedTarget is null when dragging outside the window
+    if (e.currentTarget === e.target || !e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as globalThis.Node)) {
       setIsDragOver(false)
     }
   }, [])
