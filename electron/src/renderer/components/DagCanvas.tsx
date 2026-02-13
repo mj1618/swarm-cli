@@ -7,20 +7,29 @@ import {
   BackgroundVariant,
   Panel,
   applyNodeChanges,
+  useReactFlow,
 } from '@xyflow/react'
-import type { Node, Edge, NodeChange } from '@xyflow/react'
+import type { Node, Edge, NodeChange, Connection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import TaskNode from './TaskNode'
+import ConnectionDialog from './ConnectionDialog'
 import { composeToFlow, parseComposeFile } from '../lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskNodeData } from '../lib/yamlParser'
 
 const nodeTypes = { taskNode: TaskNode }
+
+interface PendingConnection {
+  source: string
+  target: string
+  position: { x: number; y: number }
+}
 
 interface DagCanvasProps {
   yamlContent: string | null
   loading: boolean
   error: string | null
   onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
+  onAddDependency?: (dep: { source: string; target: string; condition: string }) => void
   savedPositions?: Record<string, { x: number; y: number }>
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
   onResetLayout?: () => void
@@ -31,6 +40,7 @@ export default function DagCanvas({
   loading,
   error,
   onSelectTask,
+  onAddDependency,
   savedPositions,
   onPositionsChange,
   onResetLayout,

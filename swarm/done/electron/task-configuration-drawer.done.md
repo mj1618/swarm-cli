@@ -59,14 +59,20 @@ This is the foundational piece for Phase 3 — interactive editing must start wi
 
 Implemented the Task Configuration Drawer (Phase 3 - Interactive Editing):
 
-- **TaskDrawer.tsx**: Converted from read-only view to full editable form with:
-  - Prompt source selector (prompt/prompt-file/prompt-string) with appropriate input controls
+- **TaskDrawer.tsx**: Full editable form with:
+  - Prompt source selector (prompt/prompt-file/prompt-string) with tab-style toggle buttons
   - For `prompt` type: dropdown populated from `fs:listprompts` IPC for available prompt files
   - Model dropdown (inherit/opus/sonnet/haiku)
   - Prefix and suffix textareas
   - Dependencies editor with task and condition dropdowns, add/remove controls
   - Save and Cancel buttons with loading state
   - Escape key to close, slide-in animation
-- **yamlParser.ts**: Added `serializeCompose()` using `js-yaml` `dump()` to convert compose back to YAML
-- **App.tsx**: Implemented `handleSaveTask` that serializes updated task config, writes via IPC, and reloads YAML to refresh the DAG
-- Pre-existing infrastructure (fs:writefile IPC, preload bridge, onNodeClick, TaskNode hover effects) was already in place from earlier iterations
+  - Accepts `compose: ComposeFile` prop to derive task names and task definition
+- **yamlParser.ts**: Added `serializeCompose()` using `js-yaml` `dump()` to convert compose back to YAML; `composeToFlow` now includes `taskDef` in node data and supports `savedPositions`
+- **yamlWriter.ts**: Created with `applyTaskEdits()` and `serializeCompose()` utilities
+- **App.tsx**: Implemented `handleSaveTask` that serializes updated task config, writes via IPC, and reloads YAML to refresh the DAG; passes `compose` object to TaskDrawer
+- **DagCanvas.tsx**: Passes full `ComposeFile` in `onSelectTask` callback; supports node dragging with position persistence
+- **TaskNode.tsx**: Shows selected state with ring highlight; hover effects for interactive handles
+- **main/index.ts**: Added `fs:writefile` (scoped to swarm/ dir) and `fs:listprompts` IPC handlers
+- **preload/index.ts**: Exposed `writefile` and `listprompts` in context bridge with updated `FsAPI` type
+- **vite-env.d.ts**: Updated Window type with new IPC methods
