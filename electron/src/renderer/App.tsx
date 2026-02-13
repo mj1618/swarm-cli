@@ -7,6 +7,7 @@ import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
 import CommandPalette from './components/CommandPalette'
+import SettingsPanel from './components/SettingsPanel'
 import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
@@ -42,6 +43,7 @@ function App() {
   const [selectedYamlError, setSelectedYamlError] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef; compose: ComposeFile } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [agents, setAgents] = useState<AgentState[]>([])
   const { toasts, addToast, removeToast } = useToasts()
   const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
@@ -318,6 +320,12 @@ function App() {
       description: 'Reload agent state',
       action: () => { window.state.read().then(r => { if (!r.error) setAgents(r.agents) }) },
     })
+    cmds.push({
+      id: 'open-settings',
+      name: 'Open settings',
+      description: 'Open the settings panel',
+      action: () => setSettingsOpen(true),
+    })
 
     // Dynamic: per-agent commands
     agents.filter(a => a.status === 'running').forEach(a => {
@@ -370,9 +378,14 @@ function App() {
           <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} />
         </div>
 
-        {/* Center - File viewer or DAG canvas */}
+        {/* Center - Settings panel, File viewer, or DAG canvas */}
         <div className="flex-1 flex flex-col min-w-0">
-          {selectedFile && !selectedIsYaml ? (
+          {settingsOpen ? (
+            <SettingsPanel
+              onClose={() => setSettingsOpen(false)}
+              onToast={addToast}
+            />
+          ) : selectedFile && !selectedIsYaml ? (
             <FileViewer filePath={selectedFile} />
           ) : (
             <>

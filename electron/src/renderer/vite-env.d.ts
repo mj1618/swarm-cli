@@ -26,4 +26,8 @@ interface Window {
     unwatch: () => Promise<void>
     onChanged: (callback: (data: { event: string; path: string }) => void) => () => void
   }
+  settings: {
+    read: () => Promise<{ config: { backend: string; model: string; statePath: string; logsDir: string }; error?: string }>
+    write: (updates: { backend?: string; model?: string }) => Promise<{ error?: string }>
+  }
 }

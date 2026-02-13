@@ -327,6 +327,54 @@ ipcMain.handle('logs:unwatch', async () => {
   }
 })
 
+// Settings IPC handlers — read/write swarm config from swarm/.swarm.toml
+const configFilePath = path.join(swarmRoot, '.swarm.toml')
+
+export interface SwarmConfig {
+  backend: string
+  model: string
+  statePath: string
+  logsDir: string
+}
+
+ipcMain.handle('settings:read', async (): Promise<{ config: SwarmConfig; error?: string }> => {
+  const defaults: SwarmConfig = {
+    backend: 'claude-code',
+    model: 'opus',
+    statePath: path.join(os.homedir(), '.swarm', 'state.json'),
+    logsDir: path.join(os.homedir(), 'swarm', 'logs'),
+  }
+  try {
+    const content = await fs.readFile(configFilePath, 'utf-8')
+    const backendMatch = content.match(/^backend\s*=\s*"([^"]*)"$/m)
+    const modelMatch = content.match(/^model\s*=\s*"([^"]*)"$/m)
+    if (backendMatch) defaults.backend = backendMatch[1]
+    if (modelMatch) defaults.model = modelMatch[1]
+    return { config: defaults }
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return { config: defaults }
+    }
+    return { config: defaults, error: err.message }
+  }
+})
+
+ipcMain.handle('settings:write', async (_event, updates: { backend?: string; model?: string }): Promise<{ error?: string }> => {
+  try {
+    let content = await fs.readFile(configFilePath, 'utf-8')
+    if (updates.backend !== undefined) {
+      content = content.replace(/^(backend\s*=\s*)"[^"]*"/m, `$1"${updates.backend}"`)
+    }
+    if (updates.model !== undefined) {
+      content = content.replace(/^(model\s*=\s*)"[^"]*"/m, `$1"${updates.model}"`)
+    }
+    await fs.writeFile(configFilePath, content, 'utf-8')
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
 app.on('before-quit', () => {
   if (swarmWatcher) {
     swarmWatcher.close()

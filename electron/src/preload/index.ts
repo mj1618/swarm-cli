@@ -33,6 +33,11 @@ contextBridge.exposeInMainWorld('logs', {
   },
 })
 
+contextBridge.exposeInMainWorld('settings', {
+  read: () => ipcRenderer.invoke('settings:read'),
+  write: (updates: { backend?: string; model?: string }) => ipcRenderer.invoke('settings:write', updates),
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -89,6 +94,18 @@ export type FsAPI = {
   onChanged: (callback: (data: { event: string; path: string }) => void) => () => void
 }
 
+export interface SwarmConfig {
+  backend: string
+  model: string
+  statePath: string
+  logsDir: string
+}
+
+export type SettingsAPI = {
+  read: () => Promise<{ config: SwarmConfig; error?: string }>
+  write: (updates: { backend?: string; model?: string }) => Promise<{ error?: string }>
+}
+
 export type StateAPI = {
   read: () => Promise<{ agents: AgentState[]; error?: string }>
   watch: () => Promise<void>
@@ -130,5 +147,6 @@ declare global {
     fs: FsAPI
     state: StateAPI
     logs: LogsAPI
+    settings: SettingsAPI
   }
 }
