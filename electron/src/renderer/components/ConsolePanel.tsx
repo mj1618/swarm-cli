@@ -25,6 +25,7 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
   const [searchQuery, setSearchQuery] = useState('')
   const [filterMode, setFilterMode] = useState<FilterMode>('highlight')
   const [matchCount, setMatchCount] = useState(0)
+  const [autoScroll, setAutoScroll] = useState(true)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
 
@@ -168,6 +169,17 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
           >
             Filter
           </button>
+          <button
+            onClick={() => setAutoScroll(prev => !prev)}
+            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+              autoScroll
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title={autoScroll ? 'Auto-scroll enabled (click to disable)' : 'Auto-scroll disabled (click to enable)'}
+          >
+            {autoScroll ? '↓ Auto' : '↓ Manual'}
+          </button>
         </div>
         <button
           onClick={async () => {
@@ -211,6 +223,8 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
           searchQuery={searchQuery}
           filterMode={filterMode}
           onMatchCount={setMatchCount}
+          autoScroll={autoScroll}
+          onAutoScrollChange={setAutoScroll}
         />
       )}
     </div>

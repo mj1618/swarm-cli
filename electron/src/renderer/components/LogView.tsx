@@ -7,6 +7,8 @@ interface LogViewProps {
   searchQuery?: string
   filterMode?: 'highlight' | 'filter'
   onMatchCount?: (count: number) => void
+  autoScroll?: boolean
+  onAutoScrollChange?: (value: boolean) => void
 }
 
 const AGENT_COLORS = [
@@ -113,9 +115,13 @@ function renderLineContent(line: string, query: string): React.ReactNode {
   )
 }
 
-export default function LogView({ content, loading, error, searchQuery, filterMode = 'highlight', onMatchCount }: LogViewProps) {
+export default function LogView({ content, loading, error, searchQuery, filterMode = 'highlight', onMatchCount, autoScroll: autoScrollProp, onAutoScrollChange }: LogViewProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const [autoScroll, setAutoScroll] = useState(true)
+  const [internalAutoScroll, setInternalAutoScroll] = useState(true)
+  
+  // Use prop if provided, otherwise fall back to internal state
+  const autoScroll = autoScrollProp ?? internalAutoScroll
+  const setAutoScroll = onAutoScrollChange ?? setInternalAutoScroll
 
   const scrollToBottom = useCallback(() => {
     if (containerRef.current) {
