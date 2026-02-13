@@ -124,7 +124,8 @@ test.describe('Swarm Desktop - Core App Tests', () => {
   });
 
   test('main window has correct title containing Swarm Desktop', async () => {
-    const title = await window.title();
+    // Use evaluate instead of title() to avoid Electron Playwright issues
+    const title = await window.evaluate(() => document.title);
     expect(title).toMatch(/Swarm Desktop/i);
   });
 
