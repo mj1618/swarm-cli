@@ -45,6 +45,7 @@ interface DagCanvasProps {
   savedPositions?: Record<string, { x: number; y: number }>
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
   onResetLayout?: () => void
+  onFitViewReady?: (fitView: () => void) => void
 }
 
 function resolveAgentStatus(agent: AgentState): AgentDisplayStatus {
@@ -74,6 +75,7 @@ export default function DagCanvas({
   savedPositions,
   onPositionsChange,
   onResetLayout,
+  onFitViewReady,
 }: DagCanvasProps) {
   // Parse YAML and compute dagre layout (with saved positions applied)
   const { initialNodes, edges, parseError, compose, validation } = useMemo(() => {
@@ -233,7 +235,13 @@ export default function DagCanvas({
 
   // Connection dialog state
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
-  const { flowToScreenPosition, screenToFlowPosition } = useReactFlow()
+  const { flowToScreenPosition, screenToFlowPosition, fitView } = useReactFlow()
+
+  useEffect(() => {
+    if (onFitViewReady) {
+      onFitViewReady(() => fitView({ padding: 0.3 }))
+    }
+  }, [onFitViewReady, fitView])
 
   const handleConnect = useCallback(
     (connection: Connection) => {

@@ -65,6 +65,7 @@ function App() {
     const saved = localStorage.getItem('swarm-console-height')
     return saved ? parseInt(saved, 10) || DEFAULT_CONSOLE_HEIGHT : DEFAULT_CONSOLE_HEIGHT
   })
+  const fitViewRef = useRef<(() => void) | null>(null)
   const isDraggingConsole = useRef(false)
   const dragStartY = useRef(0)
   const dragStartHeight = useRef(0)
@@ -721,6 +722,12 @@ function App() {
       description: 'Show or hide the console panel (Cmd+J)',
       action: toggleConsole,
     })
+    cmds.push({
+      id: 'fit-dag',
+      name: 'Fit DAG to view',
+      description: 'Center and fit the DAG in the viewport',
+      action: () => { fitViewRef.current?.() },
+    })
 
     // Dynamic: per-agent commands
     agents.filter(a => a.status === 'running').forEach(a => {
@@ -816,6 +823,7 @@ function App() {
                   savedPositions={nodePositions}
                   onPositionsChange={handlePositionsChange}
                   onResetLayout={handleResetLayout}
+                  onFitViewReady={(fn) => { fitViewRef.current = fn }}
                 />
               </ReactFlowProvider>
             </>
