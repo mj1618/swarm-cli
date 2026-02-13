@@ -101,6 +101,7 @@ export default function CommandPalette({ open, onClose, commands }: CommandPalet
   return (
     <div
       ref={backdropRef}
+      data-testid="command-palette"
       className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/50"
       onClick={handleBackdropClick}
     >
@@ -112,6 +113,7 @@ export default function CommandPalette({ open, onClose, commands }: CommandPalet
           </svg>
           <input
             ref={inputRef}
+            data-testid="command-palette-input"
             type="text"
             value={query}
             onChange={e => setQuery(e.target.value)}
@@ -125,7 +127,7 @@ export default function CommandPalette({ open, onClose, commands }: CommandPalet
         </div>
 
         {/* Command list */}
-        <div ref={listRef} className="max-h-72 overflow-auto py-1">
+        <div ref={listRef} data-testid="command-palette-list" className="max-h-72 overflow-auto py-1">
           {filtered.length === 0 ? (
             <div className="px-3 py-6 text-sm text-muted-foreground text-center">
               No commands found
@@ -134,6 +136,7 @@ export default function CommandPalette({ open, onClose, commands }: CommandPalet
             filtered.map((cmd, i) => (
               <button
                 key={cmd.id}
+                data-testid="command-palette-item"
                 onClick={() => execute(cmd)}
                 onMouseEnter={() => setSelectedIndex(i)}
                 className={`w-full text-left px-3 py-2 flex items-center justify-between gap-2 transition-colors ${
