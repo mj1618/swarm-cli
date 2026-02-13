@@ -24,6 +24,7 @@ export default function PipelinePanel({ pipelineName, compose, onSave, onDelete,
     new Set(pipelineDef.tasks ?? []),
   )
   const [saving, setSaving] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
   // Reset form when pipeline changes
   useEffect(() => {
@@ -45,11 +46,17 @@ export default function PipelinePanel({ pipelineName, compose, onSave, onDelete,
   // Close on Escape
   useEffect(() => {
     function handleEscape(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
+      if (e.key === 'Escape') {
+        if (showDeleteConfirm) {
+          setShowDeleteConfirm(false)
+        } else {
+          onClose()
+        }
+      }
     }
     document.addEventListener('keydown', handleEscape)
     return () => document.removeEventListener('keydown', handleEscape)
-  }, [onClose])
+  }, [onClose, showDeleteConfirm])
 
   const validateName = useCallback((name: string): string | null => {
     if (!name) return 'Pipeline name is required'
@@ -101,8 +108,17 @@ export default function PipelinePanel({ pipelineName, compose, onSave, onDelete,
 
   const handleDelete = useCallback(() => {
     if (isCreating) return
+    setShowDeleteConfirm(true)
+  }, [isCreating])
+
+  const handleConfirmDelete = useCallback(() => {
     onDelete(pipelineName)
-  }, [isCreating, pipelineName, onDelete])
+    setShowDeleteConfirm(false)
+  }, [pipelineName, onDelete])
+
+  const handleCancelDelete = useCallback(() => {
+    setShowDeleteConfirm(false)
+  }, [])
 
   const inputClass = 'w-full bg-background border border-border rounded px-2 py-1.5 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-primary'
   const labelClass = 'text-xs font-semibold text-muted-foreground mb-1.5 block'
@@ -240,6 +256,33 @@ export default function PipelinePanel({ pipelineName, compose, onSave, onDelete,
           {saving ? 'Saving...' : 'Save'}
         </button>
       </div>
+
+      {/* Delete confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-lg max-w-sm mx-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Delete pipeline?</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Are you sure you want to delete the pipeline &ldquo;{pipelineName}&rdquo;?
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
+                onClick={handleCancelDelete}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                onClick={handleConfirmDelete}
+                autoFocus
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
