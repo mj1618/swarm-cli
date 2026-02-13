@@ -1,0 +1,45 @@
+name: Electron CI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'electron/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'electron/**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: electron
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Build Electron main process
+        run: npm run build:electron
