@@ -155,9 +155,15 @@ tasks:
       - What was reviewed
       - Overall assessment (approved / needs fixes)
       - Any follow-up tasks created
+
+      ## Git commit and push the changes
+      
+      Commit and push the changes to the remote repository.
+
     depends_on: [implementer]
 
 pipelines:
   main:
     iterations: 100
+    parallelism: 6
     tasks: [planner, implementer, reviewer]

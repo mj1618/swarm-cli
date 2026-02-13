@@ -54,3 +54,12 @@ body {
 ::-webkit-scrollbar-thumb:hover {
   background: hsl(var(--muted-foreground));
 }
+
+/* Title bar drag region */
+.drag-region {
+  -webkit-app-region: drag;
+}
+
+.drag-region button, .drag-region a {
+  -webkit-app-region: no-drag;
+}

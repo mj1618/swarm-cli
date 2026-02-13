@@ -1,5 +1,11 @@
 /// <reference types="vite/client" />
 
+interface DirEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+
 interface Window {
   swarm: {
     list: () => Promise<{ stdout: string; stderr: string; code: number }>
@@ -9,5 +15,13 @@ interface Window {
     resume: (agentId: string) => Promise<{ stdout: string; stderr: string; code: number }>
     logs: (agentId: string) => Promise<{ stdout: string; stderr: string; code: number }>
     inspect: (agentId: string) => Promise<{ stdout: string; stderr: string; code: number }>
+  }
+  fs: {
+    readdir: (dirPath: string) => Promise<{ entries: DirEntry[]; error?: string }>
+    readfile: (filePath: string) => Promise<{ content: string; error?: string }>
+    swarmRoot: () => Promise<string>
+    watch: () => Promise<void>
+    unwatch: () => Promise<void>
+    onChanged: (callback: (data: { event: string; path: string }) => void) => () => void
   }
 }

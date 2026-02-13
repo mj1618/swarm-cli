@@ -1,6 +1,8 @@
 import { app, BrowserWindow, ipcMain } from 'electron'
 import * as path from 'path'
-import { spawn, ChildProcess } from 'child_process'
+import * as fs from 'fs/promises'
+import { spawn } from 'child_process'
+import { watch, FSWatcher } from 'chokidar'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -76,6 +78,95 @@ ipcMain.handle('swarm:logs', async (_event, agentId: string) => {
 
 ipcMain.handle('swarm:inspect', async (_event, agentId: string) => {
   return runSwarmCommand(['inspect', agentId])
+})
+
+// Filesystem IPC handlers scoped to the swarm/ directory
+const workingDir = process.cwd()
+const swarmRoot = path.join(workingDir, 'swarm')
+
+function isWithinSwarmDir(targetPath: string): boolean {
+  const resolved = path.resolve(targetPath)
+  return resolved.startsWith(path.resolve(swarmRoot))
+}
+
+export interface DirEntry {
+  name: string
+  path: string
+  isDirectory: boolean
+}
+
+ipcMain.handle('fs:readdir', async (_event, dirPath: string): Promise<{ entries: DirEntry[]; error?: string }> => {
+  try {
+    const fullPath = path.resolve(dirPath)
+    if (!isWithinSwarmDir(fullPath)) {
+      return { entries: [], error: 'Access denied: path outside swarm/ directory' }
+    }
+    const items = await fs.readdir(fullPath, { withFileTypes: true })
+    const entries: DirEntry[] = items
+      .filter(item => !item.name.startsWith('.') && item.name !== 'node_modules')
+      .map(item => ({
+        name: item.name,
+        path: path.join(fullPath, item.name),
+        isDirectory: item.isDirectory(),
+      }))
+      .sort((a, b) => {
+        if (a.isDirectory !== b.isDirectory) return a.isDirectory ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+    return { entries }
+  } catch (err: any) {
+    return { entries: [], error: err.message }
+  }
+})
+
+ipcMain.handle('fs:readfile', async (_event, filePath: string): Promise<{ content: string; error?: string }> => {
+  try {
+    const fullPath = path.resolve(filePath)
+    if (!isWithinSwarmDir(fullPath)) {
+      return { content: '', error: 'Access denied: path outside swarm/ directory' }
+    }
+    const content = await fs.readFile(fullPath, 'utf-8')
+    return { content }
+  } catch (err: any) {
+    return { content: '', error: err.message }
+  }
+})
+
+ipcMain.handle('fs:swarmroot', async (): Promise<string> => {
+  return swarmRoot
+})
+
+// File watcher using chokidar
+let swarmWatcher: FSWatcher | null = null
+
+ipcMain.handle('fs:watch', async () => {
+  if (swarmWatcher) return
+
+  swarmWatcher = watch(swarmRoot, {
+    ignoreInitial: true,
+    depth: 10,
+    ignored: /(^|[\/\\])\../,
+  })
+
+  swarmWatcher.on('all', (event, filePath) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fs:changed', { event, path: filePath })
+    }
+  })
+})
+
+ipcMain.handle('fs:unwatch', async () => {
+  if (swarmWatcher) {
+    await swarmWatcher.close()
+    swarmWatcher = null
+  }
+})
+
+app.on('before-quit', () => {
+  if (swarmWatcher) {
+    swarmWatcher.close()
+    swarmWatcher = null
+  }
 })
 
 async function runSwarmCommand(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {

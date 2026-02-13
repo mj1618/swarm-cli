@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import FileTree from './components/FileTree'
 
 interface Agent {
   id: string
@@ -66,22 +67,7 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - File tree */}
         <div className="w-64 border-r border-border bg-secondary/30 flex flex-col">
-          <div className="p-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-foreground">Files</h2>
-          </div>
-          <div className="flex-1 p-2 text-sm text-muted-foreground">
-            <div className="p-2 hover:bg-accent rounded cursor-pointer">
-              📁 swarm/
-            </div>
-            <div className="pl-4">
-              <div className="p-2 hover:bg-accent rounded cursor-pointer">
-                📄 swarm.yaml
-              </div>
-              <div className="p-2 hover:bg-accent rounded cursor-pointer">
-                📁 prompts/
-              </div>
-            </div>
-          </div>
+          <FileTree />
         </div>
 
         {/* Center - DAG Editor placeholder */}
