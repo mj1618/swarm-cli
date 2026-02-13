@@ -476,6 +476,24 @@ function App() {
     return () => { cancelled = true }
   }, [selectedFile])
 
+  // Auto-reload YAML when externally modified (e.g. by an agent or text editor)
+  useEffect(() => {
+    const unsubscribe = window.fs.onChanged((data) => {
+      const activePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+      if (data.path === activePath || data.path.endsWith('/' + activePath) || activePath.endsWith('/' + data.path)) {
+        window.fs.readfile(activePath).then((result) => {
+          if (result.error) return
+          if (selectedIsYaml && selectedFile) {
+            setSelectedYamlContent(result.content)
+          } else {
+            setDefaultYamlContent(result.content)
+          }
+        })
+      }
+    })
+    return () => { unsubscribe() }
+  }, [selectedFile, selectedIsYaml])
+
   // Watch agent state for command palette dynamic commands
   useEffect(() => {
     window.state.read().then(result => {
