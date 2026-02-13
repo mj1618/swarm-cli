@@ -29,7 +29,7 @@ export interface ComposeFile {
   pipelines?: Record<string, PipelineDef>
 }
 
-export type AgentDisplayStatus = 'running' | 'paused' | 'succeeded' | 'failed'
+export type AgentDisplayStatus = 'pending' | 'running' | 'paused' | 'succeeded' | 'failed'
 
 export interface TaskNodeData {
   label: string

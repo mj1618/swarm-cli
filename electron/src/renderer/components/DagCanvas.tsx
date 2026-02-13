@@ -135,23 +135,55 @@ export default function DagCanvas({
 
   // Enrich nodes with agent status data
   const enrichedNodes = useMemo(() => {
-    if (!agents || agents.length === 0) return initialNodes
+    // Build a set of pipeline tasks for quick lookup
+    const pipelineTaskSet = pipelineTasks ? new Set(pipelineTasks) : null
+
+    // Determine if the pipeline is actively running:
+    // A pipeline is running when at least one agent with status 'running' matches a pipeline task
+    const isPipelineRunning = !!(
+      activePipeline &&
+      pipelineTaskSet &&
+      agents?.some(
+        (a) =>
+          a.status === 'running' &&
+          (pipelineTaskSet.has(a.name) ||
+            (a.labels?.task_id && pipelineTaskSet.has(a.labels.task_id)) ||
+            (a.current_task && pipelineTaskSet.has(a.current_task)))
+      )
+    )
+
     return initialNodes.map((node) => {
-      const agent = agents.find(
+      const agent = agents?.find(
         (a) => a.name === node.id || a.labels?.task_id === node.id || a.current_task === node.id,
       )
-      if (!agent) return node
-      return {
-        ...node,
-        data: {
-          ...node.data,
-          agentStatus: resolveAgentStatus(agent),
-          agentProgress: { current: agent.current_iteration, total: agent.iterations },
-          agentCost: agent.total_cost_usd,
-        },
+
+      // If the node has an agent, use the agent's status
+      if (agent) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            agentStatus: resolveAgentStatus(agent),
+            agentProgress: { current: agent.current_iteration, total: agent.iterations },
+            agentCost: agent.total_cost_usd,
+          },
+        }
       }
+
+      // If the pipeline is actively running and this task is part of it, show pending status
+      if (isPipelineRunning && pipelineTaskSet?.has(node.id)) {
+        return {
+          ...node,
+          data: {
+            ...node.data,
+            agentStatus: 'pending' as const,
+          },
+        }
+      }
+
+      return node
     })
-  }, [initialNodes, agents])
+  }, [initialNodes, agents, activePipeline, pipelineTasks])
 
   // Dim nodes not in the active pipeline
   const filteredNodes = useMemo(() => {

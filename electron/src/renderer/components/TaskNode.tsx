@@ -6,6 +6,8 @@ type TaskNodeType = Node<TaskNodeData, 'taskNode'>
 
 function StatusIndicator({ status }: { status: AgentDisplayStatus }) {
   switch (status) {
+    case 'pending':
+      return <span className="inline-block w-2 h-2 rounded-full bg-zinc-500" />
     case 'running':
       return <span className="inline-block w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
     case 'paused':
