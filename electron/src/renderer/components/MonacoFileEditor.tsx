@@ -85,6 +85,8 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const isDirtyRef = useRef(false)
+  const saveRef = useRef<() => void>(() => {})
 
   const language = getLanguage(filePath)
   const tabSize = getTabSize(language)
@@ -92,6 +94,7 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   const fileName = filePath.split('/').pop() || filePath
   const readOnly = isReadOnly(filePath)
   const isDirty = content !== null && savedContent !== null && content !== savedContent
+  isDirtyRef.current = isDirty
 
   // Load file content
   useEffect(() => {
@@ -123,9 +126,11 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   // Watch for external file changes
   useEffect(() => {
     const unsubscribe = window.fs.onChanged((data) => {
-      if (data.path.endsWith(filePath) || filePath.endsWith(data.path)) {
-        // Reload if not dirty
-        if (!isDirty) {
+      // Match by checking if either path ends with /filename
+      const changedName = data.path.split('/').pop()
+      const currentName = filePath.split('/').pop()
+      if (changedName && currentName && changedName === currentName) {
+        if (!isDirtyRef.current) {
           window.fs.readfile(filePath).then((result) => {
             if (!result.error) {
               setContent(result.content)
@@ -136,7 +141,7 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
       }
     })
     return unsubscribe
-  }, [filePath, isDirty])
+  }, [filePath])
 
   const handleSave = useCallback(async () => {
     if (content === null || readOnly) return
@@ -150,6 +155,7 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
     }
     setSaving(false)
   }, [content, filePath, readOnly])
+  saveRef.current = handleSave
 
   // Register Cmd+S / Ctrl+S
   const handleEditorMount: OnMount = useCallback((editor) => {
@@ -157,9 +163,9 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
     editor.addCommand(
       // Monaco KeyMod.CtrlCmd | Monaco KeyCode.KeyS
       2048 | 49, // CtrlCmd + KeyS
-      () => { handleSave() },
+      () => { saveRef.current() },
     )
-  }, [handleSave])
+  }, [])
 
   const handleChange = useCallback((value: string | undefined) => {
     if (value !== undefined) {
