@@ -36,6 +36,10 @@ function loadPositions(filePath: string | null): Record<string, { x: number; y: 
   return {}
 }
 
+const DEFAULT_CONSOLE_HEIGHT = 192
+const MIN_CONSOLE_HEIGHT = 100
+const COLLAPSED_CONSOLE_HEIGHT = 28
+
 function App() {
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [defaultYamlContent, setDefaultYamlContent] = useState<string | null>(null)
@@ -52,6 +56,18 @@ function App() {
   const [agents, setAgents] = useState<AgentState[]>([])
   const { toasts, addToast, removeToast } = useToasts()
   const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
+
+  // Console panel collapse/resize state
+  const [consoleCollapsed, setConsoleCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('swarm-console-collapsed') === 'true'
+  })
+  const [consoleHeight, setConsoleHeight] = useState<number>(() => {
+    const saved = localStorage.getItem('swarm-console-height')
+    return saved ? parseInt(saved, 10) || DEFAULT_CONSOLE_HEIGHT : DEFAULT_CONSOLE_HEIGHT
+  })
+  const isDraggingConsole = useRef(false)
+  const dragStartY = useRef(0)
+  const dragStartHeight = useRef(0)
 
   const activeYamlPath = selectedFile && isYamlFile(selectedFile) ? selectedFile : null
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
@@ -523,12 +539,67 @@ function App() {
     prevAgentsRef.current = newMap
   }, [agents, addToast])
 
-  // Cmd+K / Ctrl+K keyboard shortcut
+  // Console panel toggle
+  const toggleConsole = useCallback(() => {
+    setConsoleCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('swarm-console-collapsed', String(next))
+      return next
+    })
+  }, [])
+
+  // Persist console height to localStorage
+  const updateConsoleHeight = useCallback((h: number) => {
+    const maxH = Math.floor(window.innerHeight * 0.6)
+    const clamped = Math.max(MIN_CONSOLE_HEIGHT, Math.min(h, maxH))
+    setConsoleHeight(clamped)
+    localStorage.setItem('swarm-console-height', String(clamped))
+  }, [])
+
+  // Console resize drag handlers
+  const handleConsoleResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingConsole.current = true
+    dragStartY.current = e.clientY
+    dragStartHeight.current = consoleHeight
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+  }, [consoleHeight])
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (!isDraggingConsole.current) return
+      const delta = dragStartY.current - e.clientY
+      updateConsoleHeight(dragStartHeight.current + delta)
+    }
+    function onMouseUp() {
+      if (!isDraggingConsole.current) return
+      isDraggingConsole.current = false
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [updateConsoleHeight])
+
+  // Cmd+K / Ctrl+K and Cmd+J / Ctrl+J keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         setPaletteOpen(prev => !prev)
+      }
+      if ((e.metaKey || e.ctrlKey) && e.key === 'j') {
+        e.preventDefault()
+        setConsoleCollapsed(prev => {
+          const next = !prev
+          localStorage.setItem('swarm-console-collapsed', String(next))
+          return next
+        })
       }
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -644,6 +715,12 @@ function App() {
       description: 'Open the settings panel',
       action: () => setSettingsOpen(true),
     })
+    cmds.push({
+      id: 'toggle-console',
+      name: 'Toggle console',
+      description: 'Show or hide the console panel (Cmd+J)',
+      action: toggleConsole,
+    })
 
     // Dynamic: per-agent commands
     agents.filter(a => a.status === 'running').forEach(a => {
@@ -669,7 +746,7 @@ function App() {
     })
 
     return cmds
-  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask])
+  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask, toggleConsole])
 
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
@@ -768,9 +845,31 @@ function App() {
         )}
       </div>
 
-      {/* Bottom - Console */}
-      <div className="h-48 border-t border-border bg-background flex flex-col">
-        <ConsolePanel />
+      {/* Bottom - Console (collapsible & resizable) */}
+      <div
+        style={{ height: consoleCollapsed ? COLLAPSED_CONSOLE_HEIGHT : consoleHeight }}
+        className="border-t border-border bg-background flex flex-col shrink-0"
+      >
+        {/* Drag handle / header bar */}
+        <div
+          className="flex items-center h-7 px-2 shrink-0 select-none border-b border-border"
+          style={{ cursor: consoleCollapsed ? 'default' : 'row-resize' }}
+          onMouseDown={consoleCollapsed ? undefined : handleConsoleResizeStart}
+        >
+          <button
+            onClick={toggleConsole}
+            className="text-xs text-muted-foreground hover:text-foreground mr-1.5 leading-none"
+            title={consoleCollapsed ? 'Expand console' : 'Collapse console'}
+          >
+            {consoleCollapsed ? '\u25B6' : '\u25BC'}
+          </button>
+          <span className="text-xs text-muted-foreground font-medium">Console</span>
+        </div>
+        {!consoleCollapsed && (
+          <div className="flex-1 min-h-0">
+            <ConsolePanel />
+          </div>
+        )}
       </div>
 
       <ToastContainer toasts={toasts} onDismiss={removeToast} />
