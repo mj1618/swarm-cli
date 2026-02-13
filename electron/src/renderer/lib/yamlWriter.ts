@@ -135,3 +135,42 @@ export function deletePipeline(compose: ComposeFile, pipelineName: string): Comp
   return updated
 }
 
+export function deleteTask(compose: ComposeFile, taskName: string): ComposeFile {
+  const updated = structuredClone(compose)
+  delete updated.tasks[taskName]
+
+  // Remove references to this task from other tasks' depends_on
+  for (const task of Object.values(updated.tasks)) {
+    if (!task.depends_on) continue
+    task.depends_on = task.depends_on.filter(dep =>
+      typeof dep === 'string' ? dep !== taskName : dep.task !== taskName
+    )
+    if (task.depends_on.length === 0) delete task.depends_on
+  }
+
+  // Remove from pipeline task lists
+  if (updated.pipelines) {
+    for (const pipeline of Object.values(updated.pipelines)) {
+      if (pipeline.tasks) {
+        pipeline.tasks = pipeline.tasks.filter(t => t !== taskName)
+        if (pipeline.tasks.length === 0) delete pipeline.tasks
+      }
+    }
+  }
+
+  return updated
+}
+
+export function deleteEdge(compose: ComposeFile, sourceTask: string, targetTask: string): ComposeFile {
+  const updated = structuredClone(compose)
+  const task = updated.tasks[targetTask]
+  if (!task?.depends_on) return updated
+
+  task.depends_on = task.depends_on.filter(dep =>
+    typeof dep === 'string' ? dep !== sourceTask : dep.task !== sourceTask
+  )
+  if (task.depends_on.length === 0) delete task.depends_on
+
+  return updated
+}
+

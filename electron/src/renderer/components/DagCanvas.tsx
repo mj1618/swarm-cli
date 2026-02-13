@@ -1,4 +1,4 @@
-import { useMemo, useCallback, useState, useEffect } from 'react'
+import { useMemo, useCallback, useState, useEffect, useRef } from 'react'
 import {
   ReactFlow,
   Background,
@@ -7,9 +7,10 @@ import {
   BackgroundVariant,
   Panel,
   applyNodeChanges,
+  applyEdgeChanges,
   useReactFlow,
 } from '@xyflow/react'
-import type { Node, Edge, NodeChange, Connection } from '@xyflow/react'
+import type { Node, Edge, NodeChange, EdgeChange, Connection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import TaskNode from './TaskNode'
 import ConnectionDialog from './ConnectionDialog'
@@ -36,6 +37,8 @@ interface DagCanvasProps {
   pipelineTasks?: string[] | null
   onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
   onAddDependency?: (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => void
+  onDeleteTask?: (taskName: string) => void
+  onDeleteEdge?: (source: string, target: string) => void
   onCreateTask?: () => void
   onDropCreateTask?: (promptName: string, position: { x: number; y: number }) => void
   savedPositions?: Record<string, { x: number; y: number }>
@@ -62,6 +65,8 @@ export default function DagCanvas({
   pipelineTasks,
   onSelectTask,
   onAddDependency,
+  onDeleteTask,
+  onDeleteEdge,
   onCreateTask,
   onDropCreateTask,
   savedPositions,
@@ -96,17 +101,18 @@ export default function DagCanvas({
         },
       }))
 
-      // Override edge styles for cycle edges
+      // Override edge styles for cycle edges and make all edges selectable
       const edgesWithValidation = result.edges.map(edge => {
+        const base = { ...edge, selectable: true }
         if (validation.cycleEdges.has(edge.id)) {
           return {
-            ...edge,
+            ...base,
             style: { stroke: '#ef4444', strokeWidth: 2.5 },
-            labelStyle: { ...edge.labelStyle, fill: '#ef4444' },
+            labelStyle: { ...base.labelStyle, fill: '#ef4444' },
             animated: true,
           }
         }
-        return edge
+        return base
       })
 
       return {
@@ -157,13 +163,28 @@ export default function DagCanvas({
   // Drop target visual indicator
   const [isDragOver, setIsDragOver] = useState(false)
 
+  // Delete confirmation dialog state
+  const [deleteConfirm, setDeleteConfirm] = useState<{ taskName: string } | null>(null)
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{ taskName: string; x: number; y: number } | null>(null)
+  const contextMenuRef = useRef<HTMLDivElement>(null)
+
   // Local node state for drag interactions
   const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(filteredNodes)
+
+  // Local edge state for selection interactions
+  const [localEdges, setLocalEdges] = useState<Edge[]>(edges)
 
   // Sync local state when nodes change (YAML reload, positions reset, agent status, or pipeline filter)
   useEffect(() => {
     setNodes(filteredNodes)
   }, [filteredNodes])
+
+  // Sync local edges when edges change
+  useEffect(() => {
+    setLocalEdges(edges)
+  }, [edges])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<TaskNodeData>>[]) => {
@@ -244,6 +265,79 @@ export default function DagCanvas({
     setPendingConnection(null)
   }, [])
 
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange<Edge>[]) => {
+      setLocalEdges((prev) => applyEdgeChanges(changes, prev))
+    },
+    [],
+  )
+
+  // Keyboard handler for deleting selected nodes/edges
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return
+      // Don't intercept when typing in inputs
+      const tag = (e.target as HTMLElement)?.tagName
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      // Check for selected edges first
+      const selectedEdge = localEdges.find(edge => edge.selected)
+      if (selectedEdge && onDeleteEdge) {
+        e.preventDefault()
+        onDeleteEdge(selectedEdge.source, selectedEdge.target)
+        return
+      }
+
+      // Check for selected nodes
+      const selectedNode = nodes.find(node => node.selected)
+      if (selectedNode && onDeleteTask) {
+        e.preventDefault()
+        setDeleteConfirm({ taskName: selectedNode.id })
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [nodes, localEdges, onDeleteTask, onDeleteEdge])
+
+  // Close context menu on outside click
+  useEffect(() => {
+    if (!contextMenu) return
+    function handleClick(e: MouseEvent) {
+      if (contextMenuRef.current && !contextMenuRef.current.contains(e.target as globalThis.Node)) {
+        setContextMenu(null)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [contextMenu])
+
+  const handleNodeContextMenu = useCallback(
+    (event: React.MouseEvent, node: Node<TaskNodeData>) => {
+      event.preventDefault()
+      if (!onDeleteTask) return
+      setContextMenu({ taskName: node.id, x: event.clientX, y: event.clientY })
+    },
+    [onDeleteTask],
+  )
+
+  const handleConfirmDelete = useCallback(() => {
+    if (deleteConfirm && onDeleteTask) {
+      onDeleteTask(deleteConfirm.taskName)
+    }
+    setDeleteConfirm(null)
+  }, [deleteConfirm, onDeleteTask])
+
+  const handleCancelDelete = useCallback(() => {
+    setDeleteConfirm(null)
+  }, [])
+
+  const handleContextMenuDelete = useCallback(() => {
+    if (contextMenu) {
+      setDeleteConfirm({ taskName: contextMenu.taskName })
+      setContextMenu(null)
+    }
+  }, [contextMenu])
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -309,17 +403,21 @@ export default function DagCanvas({
     >
       <ReactFlow
         nodes={nodes}
-        edges={edges}
+        edges={localEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
         fitView
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={true}
         nodesConnectable={true}
         elementsSelectable={true}
+        edgesFocusable={true}
         onNodeClick={handleNodeClick}
+        onNodeContextMenu={handleNodeContextMenu}
         onConnect={handleConnect}
+        deleteKeyCode={null}
         colorMode="dark"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(240 5% 20%)" />
@@ -377,6 +475,49 @@ export default function DagCanvas({
           onSelect={handleConditionSelect}
           onCancel={handleConnectionCancel}
         />
+      )}
+
+      {/* Context menu */}
+      {contextMenu && (
+        <div
+          ref={contextMenuRef}
+          className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover py-1 shadow-md"
+          style={{ left: contextMenu.x, top: contextMenu.y }}
+        >
+          <button
+            className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-secondary/80 transition-colors"
+            onClick={handleContextMenuDelete}
+          >
+            Delete Task
+          </button>
+        </div>
+      )}
+
+      {/* Delete confirmation dialog */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-lg max-w-sm mx-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Delete task?</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Delete task &ldquo;{deleteConfirm.taskName}&rdquo;? This will also remove all its dependencies.
+            </p>
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
+                onClick={handleCancelDelete}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
+                onClick={handleConfirmDelete}
+                autoFocus
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )

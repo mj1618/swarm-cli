@@ -200,6 +200,71 @@ function App() {
     [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent],
   )
 
+  const handleDeleteTask = useCallback(
+    async (taskName: string) => {
+      const yamlContent = selectedIsYaml && selectedFile
+        ? selectedYamlContent
+        : defaultYamlContent
+      if (!yamlContent) return
+
+      const compose = parseComposeFile(yamlContent)
+      const updated = deleteTask(compose, taskName)
+      const yamlStr = serializeCompose(updated)
+
+      const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+      const result = await window.fs.writefile(filePath, yamlStr)
+      if (result.error) {
+        console.error('Failed to delete task:', result.error)
+        return
+      }
+
+      // Close drawer if the deleted task was selected
+      if (selectedTask?.name === taskName) setSelectedTask(null)
+
+      addToast('success', `Deleted task "${taskName}"`)
+
+      if (selectedIsYaml && selectedFile) {
+        const reloaded = await window.fs.readfile(selectedFile)
+        if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+      } else {
+        const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+        if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+      }
+    },
+    [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, selectedTask, addToast],
+  )
+
+  const handleDeleteEdge = useCallback(
+    async (source: string, target: string) => {
+      const yamlContent = selectedIsYaml && selectedFile
+        ? selectedYamlContent
+        : defaultYamlContent
+      if (!yamlContent) return
+
+      const compose = parseComposeFile(yamlContent)
+      const updated = deleteEdge(compose, source, target)
+      const yamlStr = serializeCompose(updated)
+
+      const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+      const result = await window.fs.writefile(filePath, yamlStr)
+      if (result.error) {
+        console.error('Failed to delete edge:', result.error)
+        return
+      }
+
+      addToast('success', `Removed dependency: ${source} → ${target}`)
+
+      if (selectedIsYaml && selectedFile) {
+        const reloaded = await window.fs.readfile(selectedFile)
+        if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+      } else {
+        const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+        if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+      }
+    },
+    [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, addToast],
+  )
+
   const handleUpdatePipeline = useCallback(
     async (pipelineName: string, updates: { iterations?: number; parallelism?: number }) => {
       const yamlContent = selectedIsYaml && selectedFile
@@ -622,6 +687,8 @@ function App() {
                   pipelineTasks={activePipeline ? currentCompose?.pipelines?.[activePipeline]?.tasks ?? null : null}
                   onSelectTask={handleSelectTask}
                   onAddDependency={handleAddDependency}
+                  onDeleteTask={handleDeleteTask}
+                  onDeleteEdge={handleDeleteEdge}
                   onCreateTask={handleCreateTask}
                   onDropCreateTask={handleDropCreateTask}
                   savedPositions={nodePositions}

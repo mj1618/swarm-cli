@@ -39,12 +39,13 @@ function conditionBadgeClass(condition: string): string {
 
 const MODELS = ['opus', 'sonnet', 'haiku']
 const CONDITIONS: TaskDependency['condition'][] = ['success', 'failure', 'any', 'always']
+const EMPTY_TASK: TaskDef = {}
 
 export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null)
   const nameInputRef = useRef<HTMLInputElement>(null)
   const isCreating = taskName === ''
-  const taskDef = compose.tasks[taskName] ?? {}
+  const taskDef = compose.tasks[taskName] ?? EMPTY_TASK
   const allTaskNames = Object.keys(compose.tasks)
   const [newName, setNewName] = useState('')
   const [nameError, setNameError] = useState<string | null>(null)
