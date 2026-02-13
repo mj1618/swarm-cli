@@ -133,6 +133,36 @@ ipcMain.handle('fs:readfile', async (_event, filePath: string): Promise<{ conten
   }
 })
 
+ipcMain.handle('fs:writefile', async (_event, filePath: string, content: string): Promise<{ error?: string }> => {
+  try {
+    const fullPath = path.resolve(filePath)
+    if (!isWithinSwarmDir(fullPath)) {
+      return { error: 'Access denied: path outside swarm/ directory' }
+    }
+    await fs.writeFile(fullPath, content, 'utf-8')
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('fs:listprompts', async (): Promise<{ prompts: string[]; error?: string }> => {
+  try {
+    const promptsDir = path.join(swarmRoot, 'prompts')
+    const items = await fs.readdir(promptsDir, { withFileTypes: true })
+    const prompts = items
+      .filter(item => item.isFile() && !item.name.startsWith('.'))
+      .map(item => item.name)
+      .sort()
+    return { prompts }
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return { prompts: [] }
+    }
+    return { prompts: [], error: err.message }
+  }
+})
+
 ipcMain.handle('fs:swarmroot', async (): Promise<string> => {
   return swarmRoot
 })

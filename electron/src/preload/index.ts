@@ -36,6 +36,8 @@ contextBridge.exposeInMainWorld('logs', {
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
+  writefile: (filePath: string, content: string) => ipcRenderer.invoke('fs:writefile', filePath, content),
+  listprompts: () => ipcRenderer.invoke('fs:listprompts'),
   swarmRoot: () => ipcRenderer.invoke('fs:swarmroot'),
   watch: () => ipcRenderer.invoke('fs:watch'),
   unwatch: () => ipcRenderer.invoke('fs:unwatch'),
@@ -79,6 +81,8 @@ export type LogsAPI = {
 export type FsAPI = {
   readdir: (dirPath: string) => Promise<{ entries: DirEntry[]; error?: string }>
   readfile: (filePath: string) => Promise<{ content: string; error?: string }>
+  writefile: (filePath: string, content: string) => Promise<{ error?: string }>
+  listprompts: () => Promise<{ prompts: string[]; error?: string }>
   swarmRoot: () => Promise<string>
   watch: () => Promise<void>
   unwatch: () => Promise<void>

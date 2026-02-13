@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useCallback } from 'react'
 import {
   ReactFlow,
   Background,
@@ -10,7 +10,7 @@ import type { Node, Edge } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
 import TaskNode from './TaskNode'
 import { composeToFlow, parseComposeFile } from '../lib/yamlParser'
-import type { ComposeFile, TaskNodeData } from '../lib/yamlParser'
+import type { ComposeFile, TaskDef, TaskNodeData } from '../lib/yamlParser'
 
 const nodeTypes = { taskNode: TaskNode }
 
@@ -18,9 +18,10 @@ interface DagCanvasProps {
   yamlContent: string | null
   loading: boolean
   error: string | null
+  onSelectTask?: (task: { name: string; def: TaskDef }) => void
 }
 
-export default function DagCanvas({ yamlContent, loading, error }: DagCanvasProps) {
+export default function DagCanvas({ yamlContent, loading, error, onSelectTask }: DagCanvasProps) {
   const { nodes, edges, parseError } = useMemo(() => {
     const empty = { nodes: [] as Node<TaskNodeData>[], edges: [] as Edge[], parseError: null as string | null }
     if (!yamlContent) return empty
@@ -55,6 +56,12 @@ export default function DagCanvas({ yamlContent, loading, error }: DagCanvasProp
     )
   }
 
+  const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node<TaskNodeData>) => {
+    if (onSelectTask) {
+      onSelectTask({ name: node.data.label, def: node.data.taskDef })
+    }
+  }, [onSelectTask])
+
   if (nodes.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -77,7 +84,8 @@ export default function DagCanvas({ yamlContent, loading, error }: DagCanvasProp
         proOptions={{ hideAttribution: true }}
         nodesDraggable={false}
         nodesConnectable={false}
-        elementsSelectable={false}
+        elementsSelectable={true}
+        onNodeClick={handleNodeClick}
         colorMode="dark"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(240 5% 20%)" />

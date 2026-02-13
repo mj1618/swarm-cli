@@ -33,6 +33,7 @@ export interface TaskNodeData {
   label: string
   promptSource: string
   model?: string
+  taskDef: TaskDef
   [key: string]: unknown
 }
 
@@ -118,6 +119,7 @@ export function composeToFlow(compose: ComposeFile): { nodes: Node<TaskNodeData>
         label: name,
         promptSource: getPromptSource(task),
         model: task.model,
+        taskDef: task,
       },
     }
   })

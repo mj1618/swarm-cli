@@ -4,9 +4,11 @@ import type { TaskNodeData } from '../lib/yamlParser'
 
 type TaskNodeType = Node<TaskNodeData, 'taskNode'>
 
-export default function TaskNode({ data }: NodeProps<TaskNodeType>) {
+export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
   return (
-    <div className="bg-card border border-border rounded-lg shadow-lg min-w-[180px] overflow-hidden">
+    <div className={`bg-card border rounded-lg shadow-lg min-w-[180px] overflow-hidden cursor-pointer transition-colors ${
+      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/50'
+    }`}>
       <Handle type="target" position={Position.Top} className="!bg-primary !w-3 !h-1.5 !rounded-sm !border-0" />
 
       <div className="px-3 py-2 border-b border-border bg-primary/10">

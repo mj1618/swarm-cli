@@ -19,6 +19,8 @@ interface Window {
   fs: {
     readdir: (dirPath: string) => Promise<{ entries: DirEntry[]; error?: string }>
     readfile: (filePath: string) => Promise<{ content: string; error?: string }>
+    writefile: (filePath: string, content: string) => Promise<{ error?: string }>
+    listprompts: () => Promise<{ prompts: string[]; error?: string }>
     swarmRoot: () => Promise<string>
     watch: () => Promise<void>
     unwatch: () => Promise<void>

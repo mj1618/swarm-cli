@@ -5,6 +5,8 @@ import FileViewer from './components/FileViewer'
 import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
+import TaskDrawer from './components/TaskDrawer'
+import type { TaskDef } from './lib/yamlParser'
 
 function isYamlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase()
@@ -19,6 +21,15 @@ function App() {
   const [selectedYamlContent, setSelectedYamlContent] = useState<string | null>(null)
   const [selectedYamlLoading, setSelectedYamlLoading] = useState(false)
   const [selectedYamlError, setSelectedYamlError] = useState<string | null>(null)
+  const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef } | null>(null)
+
+  const handleSelectTask = useCallback((task: { name: string; def: TaskDef }) => {
+    setSelectedTask(task)
+  }, [])
+
+  const handleCloseDrawer = useCallback(() => {
+    setSelectedTask(null)
+  }, [])
 
   const handleSelectFile = useCallback((filePath: string) => {
     setSelectedFile(filePath)
@@ -109,16 +120,25 @@ function App() {
                   yamlContent={selectedIsYaml ? selectedYamlContent : defaultYamlContent}
                   loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
                   error={selectedIsYaml ? selectedYamlError : defaultYamlError}
+                  onSelectTask={handleSelectTask}
                 />
               </ReactFlowProvider>
             </>
           )}
         </div>
 
-        {/* Right sidebar - Agent panel */}
-        <div className="w-72 border-l border-border bg-secondary/30 flex flex-col">
-          <AgentPanel />
-        </div>
+        {/* Right sidebar - Task drawer or Agent panel */}
+        {selectedTask ? (
+          <TaskDrawer
+            taskName={selectedTask.name}
+            taskDef={selectedTask.def}
+            onClose={handleCloseDrawer}
+          />
+        ) : (
+          <div className="w-72 border-l border-border bg-secondary/30 flex flex-col">
+            <AgentPanel />
+          </div>
+        )}
       </div>
 
       {/* Bottom - Console */}
