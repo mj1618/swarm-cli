@@ -96,14 +96,35 @@ function createWindow() {
   })
 }
 
-function buildAppMenu() {
-  const isMac = process.platform === 'darwin'
+async function rebuildAppMenu() {
+  await buildAppMenu()
+}
 
-  const sendToRenderer = (channel: string) => {
+async function buildAppMenu() {
+  const isMac = process.platform === 'darwin'
+  const recentProjects = await loadRecentProjects()
+
+  const sendToRenderer = (channel: string, data?: any) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
-      mainWindow.webContents.send(channel)
+      mainWindow.webContents.send(channel, data)
     }
   }
+
+  // Build Recent Projects submenu
+  const recentProjectsSubmenu: Electron.MenuItemConstructorOptions[] = recentProjects.length > 0
+    ? [
+        ...recentProjects.map((p, index) => ({
+          label: shortenPath(p),
+          accelerator: index < 9 ? `CmdOrCtrl+${index + 1}` : undefined,
+          click: () => sendToRenderer('menu:open-recent', p),
+        })),
+        { type: 'separator' as const },
+        {
+          label: 'Clear Recent Projects',
+          click: () => clearRecentProjects(),
+        },
+      ]
+    : [{ label: 'No Recent Projects', enabled: false }]
 
   const template: Electron.MenuItemConstructorOptions[] = [
     // macOS app menu
@@ -139,6 +160,10 @@ function buildAppMenu() {
           label: 'Open Project',
           accelerator: 'CmdOrCtrl+O',
           click: () => sendToRenderer('menu:open-project'),
+        },
+        {
+          label: 'Recent Projects',
+          submenu: recentProjectsSubmenu,
         },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
@@ -227,9 +252,9 @@ function buildAppMenu() {
   Menu.setApplicationMenu(menu)
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
   createWindow()
-  buildAppMenu()
+  await buildAppMenu()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -242,6 +267,19 @@ app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
   }
+})
+
+// IPC handlers for recent projects
+ipcMain.handle('recent:get', async (): Promise<string[]> => {
+  return loadRecentProjects()
+})
+
+ipcMain.handle('recent:add', async (_event, projectPath: string): Promise<string[]> => {
+  return addRecentProject(projectPath)
+})
+
+ipcMain.handle('recent:clear', async (): Promise<void> => {
+  return clearRecentProjects()
 })
 
 // IPC handlers for swarm CLI interaction
