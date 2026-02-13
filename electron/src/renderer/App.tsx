@@ -6,14 +6,16 @@ import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
+import PipelinePanel from './components/PipelinePanel'
+import PipelineConfigBar from './components/PipelineConfigBar'
 import CommandPalette from './components/CommandPalette'
 import SettingsPanel from './components/SettingsPanel'
 import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
-import type { ComposeFile, TaskDef, TaskDependency } from './lib/yamlParser'
-import { addDependency } from './lib/yamlWriter'
+import type { ComposeFile, TaskDef, TaskDependency, PipelineDef } from './lib/yamlParser'
+import { addDependency, applyPipelineEdits, deletePipeline } from './lib/yamlWriter'
 import type { AgentState } from '../preload/index'
 
 function isYamlFile(filePath: string): boolean {
@@ -44,6 +46,8 @@ function App() {
   const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef; compose: ComposeFile } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [activePipeline, setActivePipeline] = useState<string | null>(null)
+  const [selectedPipeline, setSelectedPipeline] = useState<{ name: string; compose: ComposeFile } | null>(null)
   const [agents, setAgents] = useState<AgentState[]>([])
   const { toasts, addToast, removeToast } = useToasts()
   const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
@@ -150,6 +154,111 @@ function App() {
     },
     [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent],
   )
+
+  const handleUpdatePipeline = useCallback(
+    async (pipelineName: string, updates: { iterations?: number; parallelism?: number }) => {
+      const yamlContent = selectedIsYaml && selectedFile
+        ? selectedYamlContent
+        : defaultYamlContent
+      if (!yamlContent) return
+
+      const compose = parseComposeFile(yamlContent)
+      const updated = applyPipelineEdits(compose, pipelineName, updates)
+      const yamlStr = serializeCompose(updated)
+
+      const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+      const result = await window.fs.writefile(filePath, yamlStr)
+      if (result.error) {
+        console.error('Failed to save pipeline settings:', result.error)
+        return
+      }
+
+      if (selectedIsYaml && selectedFile) {
+        const reloaded = await window.fs.readfile(selectedFile)
+        if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+      } else {
+        const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+        if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+      }
+    },
+    [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent],
+  )
+
+  const handleSavePipeline = useCallback(async (pipelineName: string, pipelineDef: PipelineDef) => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return
+
+    const compose = parseComposeFile(yamlContent)
+    const updated = applyPipelineEdits(compose, pipelineName, {
+      iterations: pipelineDef.iterations,
+      parallelism: pipelineDef.parallelism,
+      tasks: pipelineDef.tasks,
+    })
+    const yamlStr = serializeCompose(updated)
+
+    const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+    const result = await window.fs.writefile(filePath, yamlStr)
+    if (result.error) {
+      console.error('Failed to save pipeline:', result.error)
+      return
+    }
+
+    if (selectedIsYaml && selectedFile) {
+      const reloaded = await window.fs.readfile(selectedFile)
+      if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+    } else {
+      const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+      if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+    }
+    setSelectedPipeline(null)
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent])
+
+  const handleDeletePipeline = useCallback(async (pipelineName: string) => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return
+
+    const compose = parseComposeFile(yamlContent)
+    const updated = deletePipeline(compose, pipelineName)
+    const yamlStr = serializeCompose(updated)
+
+    const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+    const result = await window.fs.writefile(filePath, yamlStr)
+    if (result.error) {
+      console.error('Failed to delete pipeline:', result.error)
+      return
+    }
+
+    if (activePipeline === pipelineName) setActivePipeline(null)
+
+    if (selectedIsYaml && selectedFile) {
+      const reloaded = await window.fs.readfile(selectedFile)
+      if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+    } else {
+      const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+      if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+    }
+    setSelectedPipeline(null)
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, activePipeline])
+
+  const handleEditPipeline = useCallback((pipelineName: string) => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return
+    const compose = parseComposeFile(yamlContent)
+    setSelectedPipeline({ name: pipelineName, compose })
+    setSelectedTask(null)
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent])
+
+  const handleCreatePipeline = useCallback(() => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return
+    const compose = parseComposeFile(yamlContent)
+    setSelectedPipeline({ name: '', compose })
+    setSelectedTask(null)
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent])
+
+  const handleClosePipelinePanel = useCallback(() => {
+    setSelectedPipeline(null)
+  }, [])
 
   const handleSelectFile = useCallback((filePath: string) => {
     setSelectedFile(filePath)
@@ -264,15 +373,43 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  const currentCompose = useMemo(() => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return null
+    try {
+      return parseComposeFile(yamlContent)
+    } catch {
+      return null
+    }
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent])
+
   const paletteCommands = useMemo<Command[]>(() => {
     const cmds: Command[] = []
 
-    // Static commands
+    // Dynamic pipeline commands
+    const pipelineNames = currentCompose?.pipelines ? Object.keys(currentCompose.pipelines) : []
+    if (pipelineNames.length > 0) {
+      for (const name of pipelineNames) {
+        cmds.push({
+          id: `run-pipeline-${name}`,
+          name: `Run pipeline: ${name}`,
+          description: `Start the ${name} pipeline`,
+          action: () => { window.swarm.run(['pipeline', '--name', name]) },
+        })
+      }
+    } else {
+      cmds.push({
+        id: 'run-pipeline',
+        name: 'Run pipeline: main',
+        description: 'Start the main pipeline',
+        action: () => { window.swarm.run(['pipeline']) },
+      })
+    }
     cmds.push({
-      id: 'run-pipeline',
-      name: 'Run pipeline: main',
-      description: 'Start the main pipeline',
-      action: () => { window.swarm.run(['pipeline']) },
+      id: 'create-pipeline',
+      name: 'Create new pipeline',
+      description: 'Open pipeline panel to create a new pipeline',
+      action: handleCreatePipeline,
     })
     cmds.push({
       id: 'pause-all',
@@ -358,7 +495,7 @@ function App() {
     })
 
     return cmds
-  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout])
+  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline])
 
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
@@ -382,7 +519,7 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - File tree */}
         <div className="w-64 border-r border-border bg-secondary/30 flex flex-col">
-          <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} />
+          <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} onToast={addToast} />
         </div>
 
         {/* Center - Settings panel, File viewer, or DAG canvas */}
@@ -399,12 +536,24 @@ function App() {
               <div className="p-3 border-b border-border">
                 <h2 className="text-sm font-semibold text-foreground">{dagLabel}</h2>
               </div>
+              {currentCompose && (
+                <PipelineConfigBar
+                  compose={currentCompose}
+                  activePipeline={activePipeline}
+                  onSelectPipeline={setActivePipeline}
+                  onUpdatePipeline={handleUpdatePipeline}
+                  onEditPipeline={handleEditPipeline}
+                  onCreatePipeline={handleCreatePipeline}
+                />
+              )}
               <ReactFlowProvider>
                 <DagCanvas
                   yamlContent={selectedIsYaml ? selectedYamlContent : defaultYamlContent}
                   loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
                   error={selectedIsYaml ? selectedYamlError : defaultYamlError}
                   agents={agents}
+                  activePipeline={activePipeline}
+                  pipelineTasks={activePipeline && currentCompose?.pipelines?.[activePipeline]?.tasks || null}
                   onSelectTask={handleSelectTask}
                   onAddDependency={handleAddDependency}
                   onCreateTask={handleCreateTask}
@@ -417,13 +566,21 @@ function App() {
           )}
         </div>
 
-        {/* Right sidebar - Task drawer or Agent panel */}
+        {/* Right sidebar - Task drawer, Pipeline panel, or Agent panel */}
         {selectedTask ? (
           <TaskDrawer
             taskName={selectedTask.name}
             compose={selectedTask.compose}
             onSave={handleSaveTask}
             onClose={handleCloseDrawer}
+          />
+        ) : selectedPipeline ? (
+          <PipelinePanel
+            pipelineName={selectedPipeline.name}
+            compose={selectedPipeline.compose}
+            onSave={handleSavePipeline}
+            onDelete={handleDeletePipeline}
+            onClose={handleClosePipelinePanel}
           />
         ) : (
           <div className="w-72 border-l border-border bg-secondary/30 flex flex-col">
