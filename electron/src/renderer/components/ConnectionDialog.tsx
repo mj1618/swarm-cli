@@ -40,7 +40,7 @@ export default function ConnectionDialog({ sourceTask, targetTask, position, onS
   return (
     <div
       ref={ref}
-      className="absolute z-50 bg-card border border-border rounded-lg shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150"
+      className="fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.x, top: position.y, transform: 'translate(-50%, -50%)' }}
     >
       <p className="text-[10px] text-muted-foreground mb-2 text-center">

@@ -7,7 +7,7 @@ import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
-import type { ComposeFile, TaskDef } from './lib/yamlParser'
+import type { ComposeFile, TaskDef, TaskDependency } from './lib/yamlParser'
 import { addDependency } from './lib/yamlWriter'
 
 function isYamlFile(filePath: string): boolean {
@@ -103,7 +103,7 @@ function App() {
   }, [])
 
   const handleAddDependency = useCallback(
-    async (dep: { source: string; target: string; condition: string }) => {
+    async (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => {
       // Get current YAML content to parse fresh compose data
       const yamlContent = selectedIsYaml && selectedFile
         ? selectedYamlContent

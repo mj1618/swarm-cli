@@ -68,7 +68,7 @@ export function addDependency(
   compose: ComposeFile,
   targetTask: string,
   sourceTask: string,
-  condition: string,
+  condition: TaskDependency['condition'],
 ): ComposeFile {
   const updated = structuredClone(compose)
   const task = updated.tasks[targetTask]
@@ -86,7 +86,7 @@ export function addDependency(
   if (condition === 'success') {
     task.depends_on.push(sourceTask)
   } else {
-    task.depends_on.push({ task: sourceTask, condition: condition as TaskDependency['condition'] })
+    task.depends_on.push({ task: sourceTask, condition })
   }
 
   return updated
