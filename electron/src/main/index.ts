@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from 'electron'
+import { app, BrowserWindow, ipcMain, Notification } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawn } from 'child_process'
@@ -445,6 +445,22 @@ ipcMain.handle('settings:write', async (_event, updates: { backend?: string; mod
   }
 })
 
+// System notification IPC handler
+ipcMain.handle('notify:send', async (_event, payload: { title: string; body: string }) => {
+  if (!mainWindow || mainWindow.isDestroyed() || mainWindow.isFocused()) return
+  const notification = new Notification({
+    title: payload.title,
+    body: payload.body,
+  })
+  notification.on('click', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+  notification.show()
+})
+
 // Prompt resolution IPC handler — recursively expands {{include:path}} directives
 ipcMain.handle('prompt:resolve', async (_event, filePath: string): Promise<{ content: string; error?: string }> => {
   try {
@@ -477,6 +493,11 @@ async function resolveIncludes(content: string, baseDir: string, seen: Set<strin
     let resolvedPath = path.resolve(baseDir, includePath)
     if (!isWithinSwarmDir(resolvedPath)) {
       resolvedPath = path.resolve(swarmRoot, includePath)
+    }
+    if (!isWithinSwarmDir(resolvedPath)) {
+      parts.push(`[ERROR: include path outside swarm directory: ${includePath}]`)
+      lastIndex = match.index + match[0].length
+      continue
     }
 
     if (seen.has(resolvedPath)) {
