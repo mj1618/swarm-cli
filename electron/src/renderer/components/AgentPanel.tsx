@@ -30,10 +30,7 @@ export default function AgentPanel() {
     // Initial load
     loadAgents()
 
-    // Start watching the state file
-    window.state.watch()
-
-    // Listen for state changes
+    // Listen for state changes (App.tsx manages watch/unwatch lifecycle)
     const unsubscribe = window.state.onChanged((data) => {
       setAgents(data.agents)
       setError(null)
@@ -42,7 +39,6 @@ export default function AgentPanel() {
 
     return () => {
       unsubscribe()
-      window.state.unwatch()
     }
   }, [loadAgents])
 
@@ -64,13 +60,11 @@ export default function AgentPanel() {
     : null
 
   // If viewing a detail but agent disappeared from state, go back to list
-  if (selectedAgentId && !selectedAgent) {
-    // Use effect-safe approach: this will re-render once
-    if (agents.length > 0 || !loading) {
-      // Agent was removed from state — clear selection on next render
-      setTimeout(() => setSelectedAgentId(null), 0)
+  useEffect(() => {
+    if (selectedAgentId && !agents.find(a => a.id === selectedAgentId) && (agents.length > 0 || !loading)) {
+      setSelectedAgentId(null)
     }
-  }
+  }, [selectedAgentId, agents, loading])
 
   // Show detail view when an agent is selected
   if (selectedAgent) {

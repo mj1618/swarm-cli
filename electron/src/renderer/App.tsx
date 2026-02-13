@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react'
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import FileTree from './components/FileTree'
 import FileViewer from './components/FileViewer'
@@ -8,6 +8,8 @@ import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
 import CommandPalette from './components/CommandPalette'
 import type { Command } from './components/CommandPalette'
+import ToastContainer, { useToasts } from './components/ToastContainer'
+import type { ToastType } from './components/ToastContainer'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency } from './lib/yamlParser'
 import { addDependency } from './lib/yamlWriter'
@@ -41,6 +43,8 @@ function App() {
   const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef; compose: ComposeFile } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [agents, setAgents] = useState<AgentState[]>([])
+  const { toasts, addToast, removeToast } = useToasts()
+  const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
 
   const activeYamlPath = selectedFile && isYamlFile(selectedFile) ? selectedFile : null
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
@@ -207,6 +211,38 @@ function App() {
     }
   }, [])
 
+  // Detect agent state transitions and fire toasts
+  useEffect(() => {
+    const prevMap = prevAgentsRef.current
+    const newMap = new Map(agents.map(a => [a.id, a]))
+
+    for (const agent of agents) {
+      const prev = prevMap.get(agent.id)
+      const label = agent.name || agent.id.slice(0, 8)
+
+      if (!prev) {
+        if (agent.status === 'running') {
+          addToast('info', `${label} started`)
+        }
+      } else if (prev.status === 'running' && agent.status === 'terminated') {
+        let type: ToastType = 'success'
+        let msg = `${label} completed successfully`
+
+        if (agent.exit_reason === 'crashed') {
+          type = 'error'
+          msg = `${label} failed: crashed`
+        } else if (agent.exit_reason === 'killed') {
+          type = 'warning'
+          msg = `${label} was stopped`
+        }
+
+        addToast(type, msg)
+      }
+    }
+
+    prevAgentsRef.current = newMap
+  }, [agents, addToast])
+
   // Cmd+K / Ctrl+K keyboard shortcut
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -221,8 +257,6 @@ function App() {
 
   const paletteCommands = useMemo<Command[]>(() => {
     const cmds: Command[] = []
-    const isMac = navigator.platform.toUpperCase().includes('MAC')
-    const mod = isMac ? '⌘' : 'Ctrl+'
 
     // Static commands
     cmds.push({
@@ -282,7 +316,6 @@ function App() {
       id: 'refresh-agents',
       name: 'Refresh agents',
       description: 'Reload agent state',
-      shortcut: `${mod}K`,
       action: () => { window.state.read().then(r => { if (!r.error) setAgents(r.agents) }) },
     })
 
@@ -381,6 +414,8 @@ function App() {
       <div className="h-48 border-t border-border bg-background flex flex-col">
         <ConsolePanel />
       </div>
+
+      <ToastContainer toasts={toasts} onDismiss={removeToast} />
     </div>
   )
 }
