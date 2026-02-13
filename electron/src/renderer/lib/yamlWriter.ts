@@ -1,4 +1,4 @@
-import type { ComposeFile, TaskDef, TaskDependency } from './yamlParser'
+import type { ComposeFile, TaskDef, TaskDependency, PipelineDef } from './yamlParser'
 
 export interface TaskFormData {
   promptType: 'prompt' | 'prompt-file' | 'prompt-string'
@@ -89,6 +89,49 @@ export function addDependency(
     task.depends_on.push({ task: sourceTask, condition })
   }
 
+  return updated
+}
+
+export function applyPipelineEdits(
+  compose: ComposeFile,
+  pipelineName: string,
+  updates: { iterations?: number; parallelism?: number; tasks?: string[] },
+): ComposeFile {
+  const updated = structuredClone(compose)
+  if (!updated.pipelines) updated.pipelines = {}
+
+  const pipeline: PipelineDef = updated.pipelines[pipelineName] ?? {}
+
+  if (updates.iterations !== undefined && updates.iterations > 0) {
+    pipeline.iterations = updates.iterations
+  } else {
+    delete pipeline.iterations
+  }
+  if (updates.parallelism !== undefined && updates.parallelism > 0) {
+    pipeline.parallelism = updates.parallelism
+  } else {
+    delete pipeline.parallelism
+  }
+  if (updates.tasks !== undefined) {
+    if (updates.tasks.length > 0) {
+      pipeline.tasks = updates.tasks
+    } else {
+      delete pipeline.tasks
+    }
+  }
+
+  updated.pipelines[pipelineName] = pipeline
+  return updated
+}
+
+export function deletePipeline(compose: ComposeFile, pipelineName: string): ComposeFile {
+  const updated = structuredClone(compose)
+  if (updated.pipelines) {
+    delete updated.pipelines[pipelineName]
+    if (Object.keys(updated.pipelines).length === 0) {
+      delete updated.pipelines
+    }
+  }
   return updated
 }
 
