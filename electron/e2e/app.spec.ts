@@ -189,7 +189,7 @@ test.describe('Swarm Desktop - Main 3-Panel Layout', () => {
 });
 
 test.describe('Swarm Desktop - File Tree Panel', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('file tree shows "Files" heading', async () => {
     const heading = await window.locator('[data-testid="file-tree"] h2:has-text("Files")').first();
@@ -232,7 +232,7 @@ test.describe('Swarm Desktop - File Tree Panel', () => {
 });
 
 test.describe('Swarm Desktop - DAG Canvas', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('DAG canvas shows either tasks or empty state', async () => {
     const dagCanvas = await window.locator('[data-testid="dag-canvas"]');
@@ -281,7 +281,7 @@ test.describe('Swarm Desktop - DAG Canvas', () => {
 });
 
 test.describe('Swarm Desktop - Agent Panel', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('agent panel shows "Agents" heading', async () => {
     const heading = await window.locator('[data-testid="agent-panel"] h2:has-text("Agents")').first();
@@ -310,18 +310,12 @@ test.describe('Swarm Desktop - Agent Panel', () => {
   });
 
   test('agent panel shows "No agents" when no agents exist', async () => {
-    // Wait for agent panel to be visible and loaded
+    // Wait for agent panel to be visible
     const agentPanel = await window.locator('[data-testid="agent-panel"]');
     await expect(agentPanel).toBeVisible({ timeout: 10000 });
     
-    // Wait for agent panel content to be populated (either agents or "No agents" message)
-    await window.waitForFunction(
-      () => {
-        const panel = document.querySelector('[data-testid="agent-panel"]');
-        return panel && panel.textContent && panel.textContent.includes('Agents');
-      },
-      { timeout: 10000 }
-    );
+    // Give time for agent data to load
+    await window.waitForTimeout(1000);
     
     const textContent = await agentPanel.textContent();
     
@@ -335,7 +329,7 @@ test.describe('Swarm Desktop - Agent Panel', () => {
 });
 
 test.describe('Swarm Desktop - Console Panel', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('console panel is visible', async () => {
     const consolePanel = await window.locator('text=Console').first();
@@ -350,7 +344,7 @@ test.describe('Swarm Desktop - Console Panel', () => {
 });
 
 test.describe('Swarm Desktop - Sidebar Collapse/Expand', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('left sidebar has collapse button', async () => {
     // The left sidebar should have a collapse button with title containing "Collapse sidebar" or similar
@@ -368,7 +362,7 @@ test.describe('Swarm Desktop - Sidebar Collapse/Expand', () => {
 });
 
 test.describe('Swarm Desktop - Keyboard Shortcuts', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('Cmd+K opens command palette', async () => {
     // Send Cmd+K (or Ctrl+K on non-Mac)
