@@ -39,6 +39,7 @@ interface DagCanvasProps {
   onAddDependency?: (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => void
   onDeleteTask?: (taskName: string) => void
   onDeleteEdge?: (source: string, target: string) => void
+  onRunTask?: (taskName: string, taskDef: TaskDef) => void
   onCreateTask?: () => void
   onDropCreateTask?: (promptName: string, position: { x: number; y: number }) => void
   savedPositions?: Record<string, { x: number; y: number }>
@@ -67,6 +68,7 @@ export default function DagCanvas({
   onAddDependency,
   onDeleteTask,
   onDeleteEdge,
+  onRunTask,
   onCreateTask,
   onDropCreateTask,
   savedPositions,
@@ -185,6 +187,17 @@ export default function DagCanvas({
   useEffect(() => {
     setLocalEdges(edges)
   }, [edges])
+
+  // Apply visual highlight to selected edges
+  const styledEdges = useMemo(() => {
+    return localEdges.map(edge => {
+      if (!edge.selected) return edge
+      return {
+        ...edge,
+        style: { ...edge.style, strokeWidth: 4, filter: 'brightness(1.5)' },
+      }
+    })
+  }, [localEdges])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<TaskNodeData>>[]) => {
@@ -314,10 +327,10 @@ export default function DagCanvas({
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node<TaskNodeData>) => {
       event.preventDefault()
-      if (!onDeleteTask) return
+      if (!onDeleteTask && !onRunTask) return
       setContextMenu({ taskName: node.id, x: event.clientX, y: event.clientY })
     },
-    [onDeleteTask],
+    [onDeleteTask, onRunTask],
   )
 
   const handleConfirmDelete = useCallback(() => {
@@ -330,6 +343,16 @@ export default function DagCanvas({
   const handleCancelDelete = useCallback(() => {
     setDeleteConfirm(null)
   }, [])
+
+  const handleContextMenuRun = useCallback(() => {
+    if (contextMenu && onRunTask && compose) {
+      const taskDef = compose.tasks?.[contextMenu.taskName]
+      if (taskDef) {
+        onRunTask(contextMenu.taskName, taskDef)
+      }
+      setContextMenu(null)
+    }
+  }, [contextMenu, onRunTask, compose])
 
   const handleContextMenuDelete = useCallback(() => {
     if (contextMenu) {
@@ -403,7 +426,7 @@ export default function DagCanvas({
     >
       <ReactFlow
         nodes={nodes}
-        edges={localEdges}
+        edges={styledEdges}
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
@@ -484,12 +507,22 @@ export default function DagCanvas({
           className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover py-1 shadow-md"
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-secondary/80 transition-colors"
-            onClick={handleContextMenuDelete}
-          >
-            Delete Task
-          </button>
+          {onRunTask && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-secondary/80 transition-colors"
+              onClick={handleContextMenuRun}
+            >
+              Run Task
+            </button>
+          )}
+          {onDeleteTask && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-secondary/80 transition-colors"
+              onClick={handleContextMenuDelete}
+            >
+              Delete Task
+            </button>
+          )}
         </div>
       )}
 

@@ -359,6 +359,30 @@ function App() {
     }
   }, [addToast])
 
+  const handleRunTask = useCallback(async (taskName: string, taskDef: TaskDef) => {
+    const args: string[] = ['run']
+    if (taskDef['prompt-file']) {
+      args.push('-f', taskDef['prompt-file'])
+    } else if (taskDef['prompt-string']) {
+      args.push('-s', taskDef['prompt-string'])
+    } else if (taskDef.prompt) {
+      args.push('-p', taskDef.prompt)
+    } else {
+      addToast('error', `Task "${taskName}" has no prompt configured`)
+      return
+    }
+    if (taskDef.model) {
+      args.push('-m', taskDef.model)
+    }
+    args.push('-n', '1', '-d')
+    const result = await window.swarm.run(args)
+    if (result.code !== 0) {
+      addToast('error', `Failed to start task "${taskName}": ${result.stderr || 'unknown error'}`)
+    } else {
+      addToast('success', `Started agent for task "${taskName}"`)
+    }
+  }, [addToast])
+
   const handleEditPipeline = useCallback((pipelineName: string) => {
     const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
     if (!yamlContent) return
@@ -535,6 +559,18 @@ function App() {
         action: () => { window.swarm.run(['pipeline']) },
       })
     }
+    // Dynamic per-task run commands
+    const taskNames = currentCompose?.tasks ? Object.keys(currentCompose.tasks) : []
+    for (const name of taskNames) {
+      const taskDef = currentCompose!.tasks[name]
+      cmds.push({
+        id: `run-task-${name}`,
+        name: `Run task: ${name}`,
+        description: `Start a detached agent for task "${name}"`,
+        action: () => { handleRunTask(name, taskDef) },
+      })
+    }
+
     cmds.push({
       id: 'create-pipeline',
       name: 'Create new pipeline',
@@ -625,7 +661,7 @@ function App() {
     })
 
     return cmds
-  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline])
+  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask])
 
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
@@ -689,6 +725,7 @@ function App() {
                   onAddDependency={handleAddDependency}
                   onDeleteTask={handleDeleteTask}
                   onDeleteEdge={handleDeleteEdge}
+                  onRunTask={handleRunTask}
                   onCreateTask={handleCreateTask}
                   onDropCreateTask={handleDropCreateTask}
                   savedPositions={nodePositions}
