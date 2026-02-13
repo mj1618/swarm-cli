@@ -109,6 +109,13 @@ function App() {
     setSelectedTask(null)
   }, [selectedTask, selectedIsYaml, selectedFile])
 
+  const handleCreateTask = useCallback(() => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return
+    const compose = parseComposeFile(yamlContent)
+    setSelectedTask({ name: '', def: { prompt: '' }, compose })
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent])
+
   const handleCloseDrawer = useCallback(() => {
     setSelectedTask(null)
   }, [])
@@ -397,8 +404,10 @@ function App() {
                   yamlContent={selectedIsYaml ? selectedYamlContent : defaultYamlContent}
                   loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
                   error={selectedIsYaml ? selectedYamlError : defaultYamlError}
+                  agents={agents}
                   onSelectTask={handleSelectTask}
                   onAddDependency={handleAddDependency}
+                  onCreateTask={handleCreateTask}
                   savedPositions={nodePositions}
                   onPositionsChange={handlePositionsChange}
                   onResetLayout={handleResetLayout}

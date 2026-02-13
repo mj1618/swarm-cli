@@ -14,7 +14,8 @@ import '@xyflow/react/dist/style.css'
 import TaskNode from './TaskNode'
 import ConnectionDialog from './ConnectionDialog'
 import { composeToFlow, parseComposeFile } from '../lib/yamlParser'
-import type { ComposeFile, TaskDef, TaskDependency, TaskNodeData } from '../lib/yamlParser'
+import type { ComposeFile, TaskDef, TaskDependency, TaskNodeData, AgentDisplayStatus } from '../lib/yamlParser'
+import type { AgentState } from '../../preload/index'
 
 const nodeTypes = { taskNode: TaskNode }
 
@@ -28,19 +29,33 @@ interface DagCanvasProps {
   yamlContent: string | null
   loading: boolean
   error: string | null
+  agents?: AgentState[]
   onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
   onAddDependency?: (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => void
+  onCreateTask?: () => void
   savedPositions?: Record<string, { x: number; y: number }>
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
   onResetLayout?: () => void
+}
+
+function resolveAgentStatus(agent: AgentState): AgentDisplayStatus {
+  if (agent.status === 'running' && agent.paused) return 'paused'
+  if (agent.status === 'running') return 'running'
+  if (agent.status === 'terminated') {
+    if (agent.exit_reason === 'crashed' || agent.exit_reason === 'killed') return 'failed'
+    return 'succeeded'
+  }
+  return 'running'
 }
 
 export default function DagCanvas({
   yamlContent,
   loading,
   error,
+  agents,
   onSelectTask,
   onAddDependency,
+  onCreateTask,
   savedPositions,
   onPositionsChange,
   onResetLayout,
@@ -66,13 +81,33 @@ export default function DagCanvas({
     }
   }, [yamlContent, savedPositions])
 
-  // Local node state for drag interactions
-  const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(initialNodes)
+  // Enrich nodes with agent status data
+  const enrichedNodes = useMemo(() => {
+    if (!agents || agents.length === 0) return initialNodes
+    return initialNodes.map((node) => {
+      const agent = agents.find(
+        (a) => a.name === node.id || a.labels?.task_id === node.id || a.current_task === node.id,
+      )
+      if (!agent) return node
+      return {
+        ...node,
+        data: {
+          ...node.data,
+          agentStatus: resolveAgentStatus(agent),
+          agentProgress: { current: agent.current_iteration, total: agent.iterations },
+          agentCost: agent.total_cost_usd,
+        },
+      }
+    })
+  }, [initialNodes, agents])
 
-  // Sync local state when initial nodes change (YAML reload or positions reset)
+  // Local node state for drag interactions
+  const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(enrichedNodes)
+
+  // Sync local state when nodes change (YAML reload, positions reset, or agent status update)
   useEffect(() => {
-    setNodes(initialNodes)
-  }, [initialNodes])
+    setNodes(enrichedNodes)
+  }, [enrichedNodes])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<TaskNodeData>>[]) => {
@@ -215,6 +250,16 @@ export default function DagCanvas({
               className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
             >
               Reset Layout
+            </button>
+          </Panel>
+        )}
+        {onCreateTask && (
+          <Panel position="bottom-left">
+            <button
+              onClick={onCreateTask}
+              className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+            >
+              + Add Task
             </button>
           </Panel>
         )}

@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import LogView from './LogView'
 
+type FilterMode = 'highlight' | 'filter'
+
 interface LogFile {
   name: string
   path: string
@@ -13,6 +15,10 @@ export default function ConsolePanel() {
   const [logContents, setLogContents] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterMode, setFilterMode] = useState<FilterMode>('highlight')
+  const [matchCount, setMatchCount] = useState(0)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const cleanupRef = useRef<(() => void) | null>(null)
 
   const fetchLogFiles = useCallback(async () => {
@@ -62,6 +68,18 @@ export default function ConsolePanel() {
     }
   }, [fetchLogFiles])
 
+  // Cmd+F / Ctrl+F to focus search input
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'f') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
+
   // Derive tab label from filename (strip .log extension)
   const tabLabel = (name: string) => name.replace(/\.log$/, '').slice(0, 12)
 
@@ -107,6 +125,41 @@ export default function ConsolePanel() {
           </button>
         ))}
         <div className="flex-1" />
+        {/* Search bar */}
+        <div className="flex items-center gap-1.5">
+          <div className="relative">
+            <input
+              ref={searchInputRef}
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') {
+                  setSearchQuery('')
+                  searchInputRef.current?.blur()
+                }
+              }}
+              placeholder="Search logs..."
+              className="h-6 w-40 rounded border border-border bg-background px-2 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          {searchQuery && (
+            <span className="text-xs text-muted-foreground whitespace-nowrap">
+              {matchCount} {matchCount === 1 ? 'match' : 'matches'}
+            </span>
+          )}
+          <button
+            onClick={() => setFilterMode(prev => prev === 'highlight' ? 'filter' : 'highlight')}
+            className={`px-1.5 py-0.5 text-xs rounded transition-colors ${
+              filterMode === 'filter'
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:text-foreground'
+            }`}
+            title={filterMode === 'filter' ? 'Showing matching lines only' : 'Highlighting matches'}
+          >
+            Filter
+          </button>
+        </div>
         <button
           onClick={() => {
             if (activeTab === 'console') {
@@ -133,6 +186,9 @@ export default function ConsolePanel() {
           content={activeContent}
           loading={activeLoading}
           error={activeError}
+          searchQuery={searchQuery}
+          filterMode={filterMode}
+          onMatchCount={setMatchCount}
         />
       )}
     </div>

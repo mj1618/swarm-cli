@@ -29,11 +29,16 @@ export interface ComposeFile {
   pipelines?: Record<string, PipelineDef>
 }
 
+export type AgentDisplayStatus = 'running' | 'paused' | 'succeeded' | 'failed'
+
 export interface TaskNodeData {
   label: string
   promptSource: string
   model?: string
   taskDef: TaskDef
+  agentStatus?: AgentDisplayStatus
+  agentProgress?: { current: number; total: number }
+  agentCost?: number
   [key: string]: unknown
 }
 

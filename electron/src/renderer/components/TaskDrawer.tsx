@@ -42,8 +42,12 @@ const CONDITIONS: TaskDependency['condition'][] = ['success', 'failure', 'any', 
 
 export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null)
+  const nameInputRef = useRef<HTMLInputElement>(null)
+  const isCreating = taskName === ''
   const taskDef = compose.tasks[taskName] ?? {}
   const allTaskNames = Object.keys(compose.tasks)
+  const [newName, setNewName] = useState('')
+  const [nameError, setNameError] = useState<string | null>(null)
   const [promptType, setPromptType] = useState<PromptType>(getPromptType(taskDef))
   const [promptValue, setPromptValue] = useState(getPromptValue(taskDef))
   const [model, setModel] = useState(taskDef.model || '')
@@ -64,6 +68,8 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
 
   // Reset form when task changes
   useEffect(() => {
+    setNewName('')
+    setNameError(null)
     setPromptType(getPromptType(taskDef))
     setPromptValue(getPromptValue(taskDef))
     setModel(taskDef.model || '')
@@ -71,6 +77,13 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
     setSuffix(taskDef.suffix || '')
     setDeps((taskDef.depends_on || []).map(normalizeDep))
   }, [taskName, taskDef])
+
+  // Auto-focus name input in creation mode
+  useEffect(() => {
+    if (isCreating && nameInputRef.current) {
+      nameInputRef.current.focus()
+    }
+  }, [isCreating])
 
   // Close on Escape
   useEffect(() => {
@@ -81,7 +94,23 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
     return () => document.removeEventListener('keydown', handleEscape)
   }, [onClose])
 
+  const validateName = useCallback((name: string): string | null => {
+    if (!name) return 'Task name is required'
+    if (!/^[a-z][a-z0-9-]*$/.test(name)) return 'Must start with a letter, use only lowercase letters, numbers, and hyphens'
+    if (allTaskNames.includes(name)) return 'A task with this name already exists'
+    return null
+  }, [allTaskNames])
+
   const handleSave = useCallback(() => {
+    const saveName = isCreating ? newName : taskName
+    if (isCreating) {
+      const error = validateName(newName)
+      if (error) {
+        setNameError(error)
+        return
+      }
+    }
+
     const updated: TaskDef = {}
 
     if (promptType === 'prompt' && promptValue) updated.prompt = promptValue
@@ -94,17 +123,18 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
     if (deps.length > 0) updated.depends_on = deps
 
     setSaving(true)
-    onSave(taskName, updated)
+    onSave(saveName, updated)
     setTimeout(() => setSaving(false), 500)
-  }, [taskName, promptType, promptValue, model, prefix, suffix, deps, onSave])
+  }, [taskName, isCreating, newName, validateName, promptType, promptValue, model, prefix, suffix, deps, onSave])
 
   const addDep = useCallback(() => {
+    const currentName = isCreating ? newName : taskName
     const available = allTaskNames.filter(
-      n => n !== taskName && !deps.some(d => d.task === n)
+      n => n !== currentName && !deps.some(d => d.task === n)
     )
     if (available.length === 0) return
     setDeps(prev => [...prev, { task: available[0], condition: 'success' }])
-  }, [allTaskNames, taskName, deps])
+  }, [allTaskNames, taskName, isCreating, newName, deps])
 
   const removeDep = useCallback((index: number) => {
     setDeps(prev => prev.filter((_, i) => i !== index))
@@ -127,7 +157,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="text-sm font-semibold text-card-foreground truncate">
-          {taskName}
+          {isCreating ? 'New Task' : taskName}
         </h2>
         <button
           onClick={onClose}
@@ -140,6 +170,26 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
 
       {/* Form */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        {/* Task Name (creation mode only) */}
+        {isCreating && (
+          <div>
+            <label className={labelClass}>Task Name</label>
+            <input
+              ref={nameInputRef}
+              type="text"
+              value={newName}
+              onChange={e => {
+                setNewName(e.target.value)
+                setNameError(null)
+              }}
+              className={`${inputClass} font-mono text-xs ${nameError ? 'border-red-500 focus:ring-red-500' : ''}`}
+              placeholder="my-task-name"
+            />
+            {nameError && (
+              <p className="text-[10px] text-red-400 mt-1">{nameError}</p>
+            )}
+          </div>
+        )}
         {/* Prompt Source */}
         <div>
           <label className={labelClass}>Prompt Source</label>
