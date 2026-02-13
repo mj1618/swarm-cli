@@ -1194,6 +1194,18 @@ function App() {
       action: toggleConsole,
     })
     cmds.push({
+      id: 'toggle-left-sidebar',
+      name: 'Toggle left sidebar',
+      description: 'Show or hide the file tree sidebar (Cmd+B)',
+      action: toggleLeftSidebar,
+    })
+    cmds.push({
+      id: 'toggle-right-sidebar',
+      name: 'Toggle right sidebar',
+      description: 'Show or hide the agent panel sidebar (Cmd+Shift+B)',
+      action: toggleRightSidebar,
+    })
+    cmds.push({
       id: 'fit-dag',
       name: 'Fit DAG to view',
       description: 'Center and fit the DAG in the viewport',
@@ -1245,7 +1257,7 @@ function App() {
     })
 
     return cmds
-  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask, toggleConsole, handleOpenProject])
+  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask, toggleConsole, toggleLeftSidebar, toggleRightSidebar, handleOpenProject])
 
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
@@ -1383,6 +1395,8 @@ function App() {
                     onDropCreateTask={handleDropCreateTask}
                     savedPositions={nodePositions}
                     onPositionsChange={handlePositionsChange}
+                    savedViewport={savedViewport}
+                    onViewportChange={handleViewportChange}
                     onResetLayout={handleResetLayout}
                     onFitViewReady={handleFitViewReady}
                     theme={effectiveTheme}

@@ -23,6 +23,8 @@ const groups: ShortcutGroup[] = [
     title: 'General',
     shortcuts: [
       { keys: [`${mod}+K`], action: 'Open command palette' },
+      { keys: [`${mod}+B`], action: 'Toggle left sidebar' },
+      { keys: [`${mod}+Shift+B`], action: 'Toggle right sidebar' },
       { keys: [`${mod}+J`], action: 'Toggle console panel' },
       { keys: ['?'], action: 'Show keyboard shortcuts' },
     ],
