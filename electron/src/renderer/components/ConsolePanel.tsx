@@ -39,6 +39,8 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
     }
     setLoading(false)
   }, [])
+  const fetchLogFilesRef = useRef(fetchLogFiles)
+  fetchLogFilesRef.current = fetchLogFiles
 
   const fetchLogContent = useCallback(async (filePath: string) => {
     const result = await window.logs.read(filePath)
@@ -49,8 +51,8 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
 
   // Initial load
   useEffect(() => {
-    fetchLogFiles()
-  }, [fetchLogFiles])
+    fetchLogFilesRef.current()
+  }, [])
 
   // Load content for all log files when list changes
   useEffect(() => {
@@ -63,7 +65,7 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
   useEffect(() => {
     window.logs.watch()
     const cleanup = window.logs.onChanged(() => {
-      fetchLogFiles()
+      fetchLogFilesRef.current()
     })
     cleanupRef.current = cleanup
 
@@ -73,7 +75,7 @@ export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChan
       }
       window.logs.unwatch()
     }
-  }, [fetchLogFiles])
+  }, [])
 
   // Cmd+F / Ctrl+F to focus search input
   useEffect(() => {

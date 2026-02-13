@@ -25,11 +25,62 @@ function StatusIndicator({ status }: { status: AgentDisplayStatus }) {
   }
 }
 
+function ProgressRing({ progress }: { progress: number }) {
+  // Ring dimensions - sized to wrap around the node
+  const padding = 4
+  const strokeWidth = 2
+  const rx = 12 // matches rounded-lg border radius (~8px + padding)
+  const ry = 12
+
+  return (
+    <svg
+      className="absolute pointer-events-none"
+      style={{
+        inset: `-${padding}px`,
+        width: `calc(100% + ${padding * 2}px)`,
+        height: `calc(100% + ${padding * 2}px)`,
+      }}
+    >
+      {/* Background track */}
+      <rect
+        x={strokeWidth / 2}
+        y={strokeWidth / 2}
+        width={`calc(100% - ${strokeWidth}px)`}
+        height={`calc(100% - ${strokeWidth}px)`}
+        rx={rx}
+        ry={ry}
+        fill="none"
+        stroke="rgba(255,255,255,0.1)"
+        strokeWidth={strokeWidth}
+      />
+      {/* Progress arc */}
+      <rect
+        x={strokeWidth / 2}
+        y={strokeWidth / 2}
+        width={`calc(100% - ${strokeWidth}px)`}
+        height={`calc(100% - ${strokeWidth}px)`}
+        rx={rx}
+        ry={ry}
+        fill="none"
+        stroke="#3b82f6"
+        strokeWidth={strokeWidth}
+        strokeLinecap="round"
+        pathLength={100}
+        strokeDasharray={100}
+        strokeDashoffset={100 - progress * 100}
+        style={{ transition: 'stroke-dashoffset 0.5s ease' }}
+      />
+    </svg>
+  )
+}
+
 export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
   const { agentStatus, agentProgress, agentCost, isInCycle, isOrphan } = data
-  const progressPct =
+  const showProgressRing =
+    agentStatus === 'running' && agentProgress && agentProgress.total > 0
+  const progress =
     agentProgress && agentProgress.total > 0
-      ? Math.round((agentProgress.current / agentProgress.total) * 100)
+      ? agentProgress.current / agentProgress.total
       : 0
 
   const borderClass = isInCycle
@@ -42,9 +93,12 @@ export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
 
   return (
     <div
-      className={`bg-card border rounded-lg shadow-lg min-w-[180px] overflow-hidden cursor-pointer transition-colors relative ${borderClass}`}
+      className={`bg-card border rounded-lg shadow-lg min-w-[180px] cursor-pointer transition-colors relative ${borderClass}`}
       title={isInCycle ? 'This task is part of a dependency cycle' : isOrphan ? 'This task has dependencies but is not in any pipeline' : undefined}
     >
+      {/* Progress ring for running agents */}
+      {showProgressRing && <ProgressRing progress={progress} />}
+
       <Handle
         type="target"
         position={Position.Top}
@@ -63,16 +117,6 @@ export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
           <span className="text-sm font-semibold text-card-foreground">{data.label}</span>
         </div>
       </div>
-
-      {/* Progress bar for running agents */}
-      {agentStatus === 'running' && agentProgress && agentProgress.total > 0 && (
-        <div className="h-0.5 bg-muted">
-          <div
-            className="h-full bg-blue-500 transition-all duration-500"
-            style={{ width: `${progressPct}%` }}
-          />
-        </div>
-      )}
 
       <div className="px-3 py-2 space-y-1">
         <div className="flex items-center gap-1.5">

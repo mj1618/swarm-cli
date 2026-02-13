@@ -761,7 +761,7 @@ app.on('before-quit', () => {
 
 async function runSwarmCommand(args: string[]): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    const proc = spawn('swarm', args)
+    const proc = spawn('swarm', args, { cwd: workingDir })
     let stdout = ''
     let stderr = ''
 

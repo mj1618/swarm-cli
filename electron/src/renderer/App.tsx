@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
+import ErrorBoundary from './components/ErrorBoundary'
 import FileTree from './components/FileTree'
 import MonacoFileEditor from './components/MonacoFileEditor'
 import DagCanvas from './components/DagCanvas'
@@ -992,7 +993,9 @@ function App() {
           style={{ width: leftSidebarWidth }}
           className="border-r border-border bg-secondary/30 flex flex-col shrink-0 relative"
         >
-          <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} onToast={addToast} />
+          <ErrorBoundary name="File Tree">
+            <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} onToast={addToast} />
+          </ErrorBoundary>
           {/* Left sidebar drag handle */}
           <div
             className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
@@ -1006,55 +1009,57 @@ function App() {
 
         {/* Center - Settings panel, File viewer, or DAG canvas */}
         <div className="flex-1 flex flex-col min-w-0">
-          {settingsOpen ? (
-            <SettingsPanel
-              onClose={() => setSettingsOpen(false)}
-              onToast={addToast}
-            />
-          ) : selectedIsOutputRun && selectedFile ? (
-            <OutputRunViewer folderPath={selectedFile} onOpenFile={handleSelectFile} />
-          ) : selectedFile && !selectedIsYaml ? (
-            <MonacoFileEditor filePath={selectedFile} />
-          ) : (
-            <>
-              <div className="p-3 border-b border-border">
-                <h2 className="text-sm font-semibold text-foreground">{dagLabel}</h2>
-              </div>
-              {currentCompose && (
-                <PipelineConfigBar
-                  compose={currentCompose}
-                  activePipeline={activePipeline}
-                  onSelectPipeline={setActivePipeline}
-                  onUpdatePipeline={handleUpdatePipeline}
-                  onEditPipeline={handleEditPipeline}
-                  onCreatePipeline={handleCreatePipeline}
-                  onRunPipeline={handleRunPipeline}
-                />
-              )}
-              <ReactFlowProvider>
-                <DagCanvas
-                  yamlContent={selectedIsYaml ? selectedYamlContent : defaultYamlContent}
-                  loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
-                  error={selectedIsYaml ? selectedYamlError : defaultYamlError}
-                  agents={agents}
-                  activePipeline={activePipeline}
-                  pipelineTasks={activePipeline ? currentCompose?.pipelines?.[activePipeline]?.tasks ?? null : null}
-                  onSelectTask={handleSelectTask}
-                  onNavigateToAgent={handleNavigateToAgent}
-                  onAddDependency={handleAddDependency}
-                  onDeleteTask={handleDeleteTask}
-                  onDeleteEdge={handleDeleteEdge}
-                  onRunTask={handleRunTask}
-                  onCreateTask={handleCreateTask}
-                  onDropCreateTask={handleDropCreateTask}
-                  savedPositions={nodePositions}
-                  onPositionsChange={handlePositionsChange}
-                  onResetLayout={handleResetLayout}
-                  onFitViewReady={handleFitViewReady}
-                />
-              </ReactFlowProvider>
-            </>
-          )}
+          <ErrorBoundary name="Center Panel">
+            {settingsOpen ? (
+              <SettingsPanel
+                onClose={() => setSettingsOpen(false)}
+                onToast={addToast}
+              />
+            ) : selectedIsOutputRun && selectedFile ? (
+              <OutputRunViewer folderPath={selectedFile} onOpenFile={handleSelectFile} />
+            ) : selectedFile && !selectedIsYaml ? (
+              <MonacoFileEditor filePath={selectedFile} />
+            ) : (
+              <>
+                <div className="p-3 border-b border-border">
+                  <h2 className="text-sm font-semibold text-foreground">{dagLabel}</h2>
+                </div>
+                {currentCompose && (
+                  <PipelineConfigBar
+                    compose={currentCompose}
+                    activePipeline={activePipeline}
+                    onSelectPipeline={setActivePipeline}
+                    onUpdatePipeline={handleUpdatePipeline}
+                    onEditPipeline={handleEditPipeline}
+                    onCreatePipeline={handleCreatePipeline}
+                    onRunPipeline={handleRunPipeline}
+                  />
+                )}
+                <ReactFlowProvider>
+                  <DagCanvas
+                    yamlContent={selectedIsYaml ? selectedYamlContent : defaultYamlContent}
+                    loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
+                    error={selectedIsYaml ? selectedYamlError : defaultYamlError}
+                    agents={agents}
+                    activePipeline={activePipeline}
+                    pipelineTasks={activePipeline ? currentCompose?.pipelines?.[activePipeline]?.tasks ?? null : null}
+                    onSelectTask={handleSelectTask}
+                    onNavigateToAgent={handleNavigateToAgent}
+                    onAddDependency={handleAddDependency}
+                    onDeleteTask={handleDeleteTask}
+                    onDeleteEdge={handleDeleteEdge}
+                    onRunTask={handleRunTask}
+                    onCreateTask={handleCreateTask}
+                    onDropCreateTask={handleDropCreateTask}
+                    savedPositions={nodePositions}
+                    onPositionsChange={handlePositionsChange}
+                    onResetLayout={handleResetLayout}
+                    onFitViewReady={handleFitViewReady}
+                  />
+                </ReactFlowProvider>
+              </>
+            )}
+          </ErrorBoundary>
         </div>
 
         {/* Right sidebar - Task drawer, Pipeline panel, or Agent panel */}
@@ -1071,29 +1076,31 @@ function App() {
               localStorage.setItem('swarm-right-sidebar-width', String(DEFAULT_RIGHT_SIDEBAR_WIDTH))
             }}
           />
-          {selectedTask ? (
-            <TaskDrawer
-              taskName={selectedTask.name}
-              compose={selectedTask.compose}
-              onSave={handleSaveTask}
-              onClose={handleCloseDrawer}
-            />
-          ) : selectedPipeline ? (
-            <PipelinePanel
-              pipelineName={selectedPipeline.name}
-              compose={selectedPipeline.compose}
-              onSave={handleSavePipeline}
-              onDelete={handleDeletePipeline}
-              onClose={handleClosePipelinePanel}
-            />
-          ) : (
-            <AgentPanel
-              onViewLog={handleViewLog}
-              onToast={addToast}
-              selectedAgentId={selectedAgentId}
-              onClearSelectedAgent={handleClearSelectedAgent}
-            />
-          )}
+          <ErrorBoundary name="Right Panel">
+            {selectedTask ? (
+              <TaskDrawer
+                taskName={selectedTask.name}
+                compose={selectedTask.compose}
+                onSave={handleSaveTask}
+                onClose={handleCloseDrawer}
+              />
+            ) : selectedPipeline ? (
+              <PipelinePanel
+                pipelineName={selectedPipeline.name}
+                compose={selectedPipeline.compose}
+                onSave={handleSavePipeline}
+                onDelete={handleDeletePipeline}
+                onClose={handleClosePipelinePanel}
+              />
+            ) : (
+              <AgentPanel
+                onViewLog={handleViewLog}
+                onToast={addToast}
+                selectedAgentId={selectedAgentId}
+                onClearSelectedAgent={handleClearSelectedAgent}
+              />
+            )}
+          </ErrorBoundary>
         </div>
       </div>
 
@@ -1119,7 +1126,9 @@ function App() {
         </div>
         {!consoleCollapsed && (
           <div className="flex-1 min-h-0">
-            <ConsolePanel activeTab={consoleActiveTab} onActiveTabChange={setConsoleActiveTab} />
+            <ErrorBoundary name="Console">
+              <ConsolePanel activeTab={consoleActiveTab} onActiveTabChange={setConsoleActiveTab} />
+            </ErrorBoundary>
           </div>
         )}
       </div>
