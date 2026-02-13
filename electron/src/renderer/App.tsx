@@ -68,6 +68,16 @@ function App() {
 
   const handleSaveTask = useCallback(async (taskName: string, updatedDef: TaskDef) => {
     if (!selectedTask) return
+    // Normalize dependencies: use string shorthand for 'success', object form otherwise
+    if (updatedDef.depends_on) {
+      updatedDef = {
+        ...updatedDef,
+        depends_on: updatedDef.depends_on.map(dep => {
+          if (typeof dep === 'string') return dep
+          return dep.condition === 'success' ? dep.task : dep
+        }),
+      }
+    }
     const compose = { ...selectedTask.compose }
     compose.tasks = { ...compose.tasks, [taskName]: updatedDef }
     const yamlStr = serializeCompose(compose)

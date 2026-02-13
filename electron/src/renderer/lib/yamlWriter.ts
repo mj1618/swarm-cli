@@ -1,4 +1,3 @@
-import yaml from 'js-yaml'
 import type { ComposeFile, TaskDef, TaskDependency } from './yamlParser'
 
 export interface TaskFormData {
@@ -93,12 +92,3 @@ export function addDependency(
   return updated
 }
 
-export function serializeCompose(compose: ComposeFile): string {
-  return yaml.dump(compose, {
-    indent: 2,
-    lineWidth: 120,
-    noRefs: true,
-    quotingType: '"',
-    forceQuotes: false,
-  })
-}
