@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from 'react'
+import { ReactFlowProvider } from '@xyflow/react'
 import FileTree from './components/FileTree'
 import FileViewer from './components/FileViewer'
+import DagCanvas from './components/DagCanvas'
 
 interface Agent {
   id: string
@@ -15,6 +17,9 @@ function App() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
+  const [yamlContent, setYamlContent] = useState<string | null>(null)
+  const [yamlLoading, setYamlLoading] = useState(true)
+  const [yamlError, setYamlError] = useState<string | null>(null)
 
   const handleSelectFile = useCallback((filePath: string) => {
     setSelectedFile(filePath)
@@ -45,6 +50,20 @@ function App() {
     fetchAgents()
     const interval = setInterval(fetchAgents, 5000)
     return () => clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    window.fs.readfile('swarm/swarm.yaml').then((result) => {
+      if (result.error) {
+        setYamlError(result.error)
+      } else {
+        setYamlContent(result.content)
+      }
+      setYamlLoading(false)
+    }).catch(() => {
+      setYamlError('Failed to read swarm.yaml')
+      setYamlLoading(false)
+    })
   }, [])
 
   const handleKill = async (agentId: string) => {
@@ -85,13 +104,9 @@ function App() {
               <div className="p-3 border-b border-border">
                 <h2 className="text-sm font-semibold text-foreground">DAG Editor</h2>
               </div>
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <div className="text-4xl mb-4">🔗</div>
-                  <p>DAG visualization coming soon</p>
-                  <p className="text-sm mt-2">Open a swarm.yaml to get started</p>
-                </div>
-              </div>
+              <ReactFlowProvider>
+                <DagCanvas yamlContent={yamlContent} loading={yamlLoading} error={yamlError} />
+              </ReactFlowProvider>
             </>
           )}
         </div>

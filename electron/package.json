@@ -35,7 +35,12 @@
     "vite": "^6.1.0"
   },
   "dependencies": {
+    "@types/dagre": "^0.7.53",
+    "@types/js-yaml": "^4.0.9",
+    "@xyflow/react": "^12.10.0",
     "chokidar": "^5.0.0",
+    "dagre": "^0.8.5",
+    "js-yaml": "^4.1.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
