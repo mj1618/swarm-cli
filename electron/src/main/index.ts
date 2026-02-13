@@ -159,6 +159,7 @@ function shortenPath(fullPath: string): string {
 }
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+const isTest = process.env.NODE_ENV === 'test'
 
 async function createWindow() {
   const windowState = await loadWindowState()
@@ -194,11 +195,16 @@ async function createWindow() {
     mainWindow.maximize()
   }
 
-  if (isDev) {
+  if (isDev && !isTest) {
     mainWindow.loadURL('http://localhost:5173')
     mainWindow.webContents.openDevTools()
+  } else if (isTest) {
+    // In test mode, load the built files but don't open DevTools
+    // Path goes from dist/main/main/ up to dist/renderer/
+    mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'))
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    // Production mode - path goes from dist/main/main/ up to dist/renderer/
+    mainWindow.loadFile(path.join(__dirname, '../../renderer/index.html'))
   }
 
   // Handle close event with dirty state check

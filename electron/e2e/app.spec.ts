@@ -25,6 +25,35 @@ async function createTestWorkspace(name: string, swarmYamlContent?: string): Pro
   return workspacePath;
 }
 
+/**
+ * Find the main application window (not DevTools).
+ * In dev mode, DevTools may open as a separate window.
+ */
+async function getMainWindow(app: ElectronApplication): Promise<Page> {
+  // Wait a moment for all windows to open
+  await new Promise(resolve => setTimeout(resolve, 2000));
+  
+  // Get all windows
+  const windows = app.windows();
+  
+  // Find a window that's not DevTools
+  for (const win of windows) {
+    const url = win.url();
+    const title = await win.title().catch(() => '');
+    
+    // Skip DevTools windows
+    if (title.includes('DevTools') || url.includes('devtools://')) {
+      continue;
+    }
+    
+    // This is likely our main window
+    return win;
+  }
+  
+  // If we only have DevTools windows, wait for main window
+  return app.firstWindow();
+}
+
 test.beforeAll(async () => {
   // Create fixtures directory
   fs.mkdirSync(fixturesDir, { recursive: true });
@@ -34,10 +63,15 @@ test.beforeAll(async () => {
   electronApp = await electron.launch({
     args: [path.join(__dirname, '../dist/main/main/index.js')],
     timeout: 30000,
+    // Disable DevTools auto-open by setting NODE_ENV
+    env: {
+      ...process.env,
+      NODE_ENV: 'test',
+    },
   });
 
-  // Wait for the first window to open
-  window = await electronApp.firstWindow();
+  // Get the main app window (not DevTools)
+  window = await getMainWindow(electronApp);
   
   // Wait for the window to be ready
   await window.waitForLoadState('domcontentloaded');
