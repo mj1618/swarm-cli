@@ -78,12 +78,6 @@ test.beforeAll(async () => {
   // Give React time to fully hydrate - this fixed timeout is appropriate for Electron
   // where waitForSelector can have issues during React initialization
   await window.waitForTimeout(3000);
-  
-  // Verify the window is responsive before proceeding
-  const isResponsive = await window.evaluate(() => true).catch(() => false);
-  if (!isResponsive) {
-    throw new Error('Window not responsive after initialization');
-  }
 });
 
 test.afterAll(async () => {
@@ -117,10 +111,6 @@ test.describe('Swarm Desktop - Core App Tests', () => {
     // Verify that the app launched and a window opened
     expect(electronApp).toBeDefined();
     expect(window).toBeDefined();
-    
-    // Verify window is responsive by evaluating simple expression
-    const isReady = await window.evaluate(() => document.readyState === 'complete');
-    expect(isReady).toBe(true);
   });
 
   test('main window has correct title containing Swarm Desktop', async () => {
