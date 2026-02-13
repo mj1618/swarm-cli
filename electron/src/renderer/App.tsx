@@ -43,6 +43,24 @@ function loadPositions(filePath: string | null): Record<string, { x: number; y: 
   return {}
 }
 
+function getViewportKey(filePath: string | null): string {
+  return `swarm-dag-viewport:${filePath ?? 'swarm/swarm.yaml'}`
+}
+
+interface ViewportState {
+  x: number
+  y: number
+  zoom: number
+}
+
+function loadViewport(filePath: string | null): ViewportState | null {
+  try {
+    const raw = localStorage.getItem(getViewportKey(filePath))
+    if (raw) return JSON.parse(raw)
+  } catch { /* ignore */ }
+  return null
+}
+
 const DEFAULT_CONSOLE_HEIGHT = 192
 const MIN_CONSOLE_HEIGHT = 100
 const COLLAPSED_CONSOLE_HEIGHT = 28
@@ -128,10 +146,14 @@ function App() {
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
     loadPositions(activeYamlPath),
   )
+  const [savedViewport, setSavedViewport] = useState<ViewportState | null>(() =>
+    loadViewport(activeYamlPath),
+  )
 
-  // Reload saved positions when the active YAML file changes
+  // Reload saved positions and viewport when the active YAML file changes
   useEffect(() => {
     setNodePositions(loadPositions(activeYamlPath))
+    setSavedViewport(loadViewport(activeYamlPath))
   }, [activeYamlPath])
 
   const handlePositionsChange = useCallback(
@@ -142,9 +164,19 @@ function App() {
     [activeYamlPath],
   )
 
+  const handleViewportChange = useCallback(
+    (viewport: ViewportState) => {
+      setSavedViewport(viewport)
+      localStorage.setItem(getViewportKey(activeYamlPath), JSON.stringify(viewport))
+    },
+    [activeYamlPath],
+  )
+
   const handleResetLayout = useCallback(() => {
     setNodePositions({})
+    setSavedViewport(null)
     localStorage.removeItem(getPositionsKey(activeYamlPath))
+    localStorage.removeItem(getViewportKey(activeYamlPath))
   }, [activeYamlPath])
 
   const selectedIsYaml = selectedFile ? isYamlFile(selectedFile) : false
@@ -1252,21 +1284,45 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - File tree */}
         <div
-          style={{ width: leftSidebarWidth }}
-          className="border-r border-border bg-secondary/30 flex flex-col shrink-0 relative"
+          style={{ width: leftSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : leftSidebarWidth }}
+          className="border-r border-border bg-secondary/30 flex flex-col shrink-0 relative transition-[width] duration-200 ease-in-out"
         >
-          <ErrorBoundary name="File Tree">
-            <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} onToast={addToast} />
-          </ErrorBoundary>
-          {/* Left sidebar drag handle */}
-          <div
-            className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
-            onMouseDown={handleLeftSidebarResizeStart}
-            onDoubleClick={() => {
-              setLeftSidebarWidth(DEFAULT_LEFT_SIDEBAR_WIDTH)
-              localStorage.setItem('swarm-left-sidebar-width', String(DEFAULT_LEFT_SIDEBAR_WIDTH))
-            }}
-          />
+          {leftSidebarCollapsed ? (
+            <div className="h-full flex flex-col items-center pt-2">
+              <button
+                onClick={toggleLeftSidebar}
+                className="text-xs text-muted-foreground hover:text-foreground p-1 leading-none"
+                title="Expand sidebar (Cmd+B)"
+              >
+                ▶
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between px-2 py-1 border-b border-border shrink-0">
+                <span className="text-xs font-medium text-muted-foreground">Files</span>
+                <button
+                  onClick={toggleLeftSidebar}
+                  className="text-xs text-muted-foreground hover:text-foreground p-1 leading-none"
+                  title="Collapse sidebar (Cmd+B)"
+                >
+                  ◀
+                </button>
+              </div>
+              <ErrorBoundary name="File Tree">
+                <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} onToast={addToast} />
+              </ErrorBoundary>
+              {/* Left sidebar drag handle */}
+              <div
+                className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
+                onMouseDown={handleLeftSidebarResizeStart}
+                onDoubleClick={() => {
+                  setLeftSidebarWidth(DEFAULT_LEFT_SIDEBAR_WIDTH)
+                  localStorage.setItem('swarm-left-sidebar-width', String(DEFAULT_LEFT_SIDEBAR_WIDTH))
+                }}
+              />
+            </>
+          )}
         </div>
 
         {/* Center - Settings panel, File viewer, or DAG canvas */}
@@ -1286,6 +1342,11 @@ function App() {
                 onDirtyChange={handleDirtyChange}
                 triggerSave={triggerSave}
                 onSaveComplete={handleSaveComplete}
+              />
+            ) : defaultYamlError && !selectedFile ? (
+              <InitializeWorkspace
+                projectPath={projectPath}
+                onInitialize={handleInitializeWorkspace}
               />
             ) : (
               <>
@@ -1335,43 +1396,57 @@ function App() {
 
         {/* Right sidebar - Task drawer, Pipeline panel, or Agent panel */}
         <div
-          style={{ width: rightSidebarWidth }}
-          className="border-l border-border bg-secondary/30 flex flex-col shrink-0 relative"
+          style={{ width: rightSidebarCollapsed ? COLLAPSED_SIDEBAR_WIDTH : rightSidebarWidth }}
+          className="border-l border-border bg-secondary/30 flex flex-col shrink-0 relative transition-[width] duration-200 ease-in-out"
         >
-          {/* Right sidebar drag handle */}
-          <div
-            className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
-            onMouseDown={handleRightSidebarResizeStart}
-            onDoubleClick={() => {
-              setRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH)
-              localStorage.setItem('swarm-right-sidebar-width', String(DEFAULT_RIGHT_SIDEBAR_WIDTH))
-            }}
-          />
-          <ErrorBoundary name="Right Panel">
-            {selectedTask ? (
-              <TaskDrawer
-                taskName={selectedTask.name}
-                compose={selectedTask.compose}
-                onSave={handleSaveTask}
-                onClose={handleCloseDrawer}
+          {rightSidebarCollapsed ? (
+            <div className="h-full flex flex-col items-center pt-2">
+              <button
+                onClick={toggleRightSidebar}
+                className="text-xs text-muted-foreground hover:text-foreground p-1 leading-none"
+                title="Expand sidebar (Cmd+Shift+B)"
+              >
+                ◀
+              </button>
+            </div>
+          ) : (
+            <>
+              {/* Right sidebar drag handle */}
+              <div
+                className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
+                onMouseDown={handleRightSidebarResizeStart}
+                onDoubleClick={() => {
+                  setRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH)
+                  localStorage.setItem('swarm-right-sidebar-width', String(DEFAULT_RIGHT_SIDEBAR_WIDTH))
+                }}
               />
-            ) : selectedPipeline ? (
-              <PipelinePanel
-                pipelineName={selectedPipeline.name}
-                compose={selectedPipeline.compose}
-                onSave={handleSavePipeline}
-                onDelete={handleDeletePipeline}
-                onClose={handleClosePipelinePanel}
-              />
-            ) : (
-              <AgentPanel
-                onViewLog={handleViewLog}
-                onToast={addToast}
-                selectedAgentId={selectedAgentId}
-                onClearSelectedAgent={handleClearSelectedAgent}
-              />
-            )}
-          </ErrorBoundary>
+              <ErrorBoundary name="Right Panel">
+                {selectedTask ? (
+                  <TaskDrawer
+                    taskName={selectedTask.name}
+                    compose={selectedTask.compose}
+                    onSave={handleSaveTask}
+                    onClose={handleCloseDrawer}
+                  />
+                ) : selectedPipeline ? (
+                  <PipelinePanel
+                    pipelineName={selectedPipeline.name}
+                    compose={selectedPipeline.compose}
+                    onSave={handleSavePipeline}
+                    onDelete={handleDeletePipeline}
+                    onClose={handleClosePipelinePanel}
+                  />
+                ) : (
+                  <AgentPanel
+                    onViewLog={handleViewLog}
+                    onToast={addToast}
+                    selectedAgentId={selectedAgentId}
+                    onClearSelectedAgent={handleClearSelectedAgent}
+                  />
+                )}
+              </ErrorBoundary>
+            </>
+          )}
         </div>
       </div>
 

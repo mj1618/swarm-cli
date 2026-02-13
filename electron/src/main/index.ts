@@ -384,11 +384,11 @@ async function buildAppMenu() {
         { type: 'separator' },
         {
           label: 'Swarm CLI Documentation',
-          click: () => shell.openExternal('https://github.com/your-org/swarm-cli#readme'),
+          click: () => shell.openExternal('https://github.com/mj1618/swarm-cli#readme'),
         },
         {
           label: 'Report an Issue',
-          click: () => shell.openExternal('https://github.com/your-org/swarm-cli/issues'),
+          click: () => shell.openExternal('https://github.com/mj1618/swarm-cli/issues'),
         },
         { type: 'separator' },
         {

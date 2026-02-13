@@ -83,14 +83,14 @@ export default function AboutDialog({ open, onClose }: AboutDialogProps) {
           {/* Links */}
           <div className="flex items-center gap-4 mt-6">
             <button
-              onClick={() => handleExternalLink('https://github.com/your-org/swarm-cli#readme')}
+              onClick={() => handleExternalLink('https://github.com/mj1618/swarm-cli#readme')}
               className="text-sm text-primary hover:text-primary/80 transition-colors"
             >
               Documentation
             </button>
             <span className="text-muted-foreground">•</span>
             <button
-              onClick={() => handleExternalLink('https://github.com/your-org/swarm-cli')}
+              onClick={() => handleExternalLink('https://github.com/mj1618/swarm-cli')}
               className="text-sm text-primary hover:text-primary/80 transition-colors"
             >
               GitHub
