@@ -3,6 +3,7 @@ import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawn } from 'child_process'
 import { watch, FSWatcher } from 'chokidar'
+import * as os from 'os'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -162,10 +163,150 @@ ipcMain.handle('fs:unwatch', async () => {
   }
 })
 
+// State file IPC handlers — read agent state directly from ~/.swarm/state.json
+const stateFilePath = path.join(os.homedir(), '.swarm', 'state.json')
+
+ipcMain.handle('state:read', async (): Promise<{ agents: any[]; error?: string }> => {
+  try {
+    const data = await fs.readFile(stateFilePath, 'utf-8')
+    const parsed = JSON.parse(data)
+    // state.json has { agents: { id: {...} } } — convert map to array
+    const agentsMap = parsed.agents || {}
+    const agents = Object.values(agentsMap)
+    return { agents }
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return { agents: [] }
+    }
+    return { agents: [], error: err.message }
+  }
+})
+
+let stateWatcher: FSWatcher | null = null
+
+ipcMain.handle('state:watch', async () => {
+  if (stateWatcher) return
+
+  stateWatcher = watch(stateFilePath, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
+  })
+
+  stateWatcher.on('change', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
+      const data = await fs.readFile(stateFilePath, 'utf-8')
+      const parsed = JSON.parse(data)
+      const agentsMap = parsed.agents || {}
+      const agents = Object.values(agentsMap)
+      mainWindow.webContents.send('state:changed', { agents })
+    } catch {
+      // File may be mid-write; ignore transient errors
+    }
+  })
+})
+
+ipcMain.handle('state:unwatch', async () => {
+  if (stateWatcher) {
+    await stateWatcher.close()
+    stateWatcher = null
+  }
+})
+
+// Logs directory IPC handlers — read log files from ~/swarm/logs/
+const logsDir = path.join(os.homedir(), 'swarm', 'logs')
+
+export interface LogEntry {
+  name: string
+  path: string
+  modifiedAt: number
+}
+
+ipcMain.handle('logs:list', async (): Promise<{ entries: LogEntry[]; error?: string }> => {
+  try {
+    const items = await fs.readdir(logsDir, { withFileTypes: true })
+    const entries: LogEntry[] = []
+    for (const item of items) {
+      if (item.isFile() && !item.name.startsWith('.')) {
+        const fullPath = path.join(logsDir, item.name)
+        const stat = await fs.stat(fullPath)
+        entries.push({
+          name: item.name,
+          path: fullPath,
+          modifiedAt: stat.mtimeMs,
+        })
+      }
+    }
+    entries.sort((a, b) => b.modifiedAt - a.modifiedAt)
+    return { entries }
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return { entries: [] }
+    }
+    return { entries: [], error: err.message }
+  }
+})
+
+ipcMain.handle('logs:read', async (_event, filePath: string): Promise<{ content: string; error?: string }> => {
+  try {
+    const resolved = path.resolve(filePath)
+    if (!resolved.startsWith(path.resolve(logsDir))) {
+      return { content: '', error: 'Access denied: path outside logs directory' }
+    }
+    const content = await fs.readFile(resolved, 'utf-8')
+    return { content }
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return { content: '', error: 'Log file not found' }
+    }
+    return { content: '', error: err.message }
+  }
+})
+
+let logsWatcher: FSWatcher | null = null
+
+ipcMain.handle('logs:watch', async () => {
+  if (logsWatcher) return
+
+  try {
+    await fs.mkdir(logsDir, { recursive: true })
+  } catch {
+    // ignore
+  }
+
+  logsWatcher = watch(logsDir, {
+    ignoreInitial: true,
+    depth: 0,
+    ignored: /(^|[\/\\])\../,
+    awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+  })
+
+  logsWatcher.on('all', (event, filePath) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('logs:changed', { event, path: filePath })
+    }
+  })
+})
+
+ipcMain.handle('logs:unwatch', async () => {
+  if (logsWatcher) {
+    await logsWatcher.close()
+    logsWatcher = null
+  }
+})
+
 app.on('before-quit', () => {
   if (swarmWatcher) {
     swarmWatcher.close()
     swarmWatcher = null
+  }
+  if (stateWatcher) {
+    stateWatcher.close()
+    stateWatcher = null
+  }
+  if (logsWatcher) {
+    logsWatcher.close()
+    logsWatcher = null
   }
 })
 

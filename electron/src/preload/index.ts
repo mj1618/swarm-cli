@@ -10,6 +10,29 @@ contextBridge.exposeInMainWorld('swarm', {
   inspect: (agentId: string) => ipcRenderer.invoke('swarm:inspect', agentId),
 })
 
+contextBridge.exposeInMainWorld('state', {
+  read: () => ipcRenderer.invoke('state:read'),
+  watch: () => ipcRenderer.invoke('state:watch'),
+  unwatch: () => ipcRenderer.invoke('state:unwatch'),
+  onChanged: (callback: (data: { agents: any[] }) => void) => {
+    const listener = (_event: any, data: { agents: any[] }) => callback(data)
+    ipcRenderer.on('state:changed', listener)
+    return () => { ipcRenderer.removeListener('state:changed', listener) }
+  },
+})
+
+contextBridge.exposeInMainWorld('logs', {
+  list: () => ipcRenderer.invoke('logs:list'),
+  read: (filePath: string) => ipcRenderer.invoke('logs:read', filePath),
+  watch: () => ipcRenderer.invoke('logs:watch'),
+  unwatch: () => ipcRenderer.invoke('logs:unwatch'),
+  onChanged: (callback: (data: { event: string; path: string }) => void) => {
+    const listener = (_event: any, data: { event: string; path: string }) => callback(data)
+    ipcRenderer.on('logs:changed', listener)
+    return () => { ipcRenderer.removeListener('logs:changed', listener) }
+  },
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -39,6 +62,20 @@ export type SwarmAPI = {
   inspect: (agentId: string) => Promise<{ stdout: string; stderr: string; code: number }>
 }
 
+export interface LogEntry {
+  name: string
+  path: string
+  modifiedAt: number
+}
+
+export type LogsAPI = {
+  list: () => Promise<{ entries: LogEntry[]; error?: string }>
+  read: (filePath: string) => Promise<{ content: string; error?: string }>
+  watch: () => Promise<void>
+  unwatch: () => Promise<void>
+  onChanged: (callback: (data: { event: string; path: string }) => void) => () => void
+}
+
 export type FsAPI = {
   readdir: (dirPath: string) => Promise<{ entries: DirEntry[]; error?: string }>
   readfile: (filePath: string) => Promise<{ content: string; error?: string }>
@@ -48,9 +85,46 @@ export type FsAPI = {
   onChanged: (callback: (data: { event: string; path: string }) => void) => () => void
 }
 
+export type StateAPI = {
+  read: () => Promise<{ agents: AgentState[]; error?: string }>
+  watch: () => Promise<void>
+  unwatch: () => Promise<void>
+  onChanged: (callback: (data: { agents: AgentState[] }) => void) => () => void
+}
+
+export interface AgentState {
+  id: string
+  name: string
+  parent_id?: string
+  labels?: Record<string, string>
+  pid: number
+  prompt: string
+  model: string
+  started_at: string
+  iterations: number
+  current_iteration: number
+  status: string
+  terminate_mode?: string
+  paused: boolean
+  paused_at?: string
+  log_file: string
+  working_dir: string
+  terminated_at?: string
+  exit_reason?: string
+  successful_iterations: number
+  failed_iterations: number
+  last_error?: string
+  input_tokens: number
+  output_tokens: number
+  total_cost_usd: number
+  current_task?: string
+}
+
 declare global {
   interface Window {
     swarm: SwarmAPI
     fs: FsAPI
+    state: StateAPI
+    logs: LogsAPI
   }
 }
