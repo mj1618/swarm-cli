@@ -4,6 +4,7 @@ export interface ValidationResult {
   cycleNodes: Set<string>
   cycleEdges: Set<string> // format: "source->target"
   orphanedTasks: Set<string>
+  parallelTasks: Set<string>
 }
 
 /**
@@ -102,14 +103,34 @@ function detectOrphans(compose: ComposeFile): Set<string> {
   return orphaned
 }
 
+/**
+ * Detect tasks that belong to pipelines with parallelism > 1.
+ * These tasks may run concurrently and should be flagged with a warning badge.
+ */
+function detectParallelTasks(compose: ComposeFile): Set<string> {
+  const parallelTasks = new Set<string>()
+  const pipelines = compose.pipelines ?? {}
+
+  for (const [, pipeline] of Object.entries(pipelines)) {
+    if ((pipeline.parallelism ?? 1) > 1) {
+      for (const taskName of pipeline.tasks ?? []) {
+        parallelTasks.add(taskName)
+      }
+    }
+  }
+
+  return parallelTasks
+}
+
 export function validateDag(compose: ComposeFile): ValidationResult {
   const tasks = compose.tasks ?? {}
   if (Object.keys(tasks).length === 0) {
-    return { cycleNodes: new Set(), cycleEdges: new Set(), orphanedTasks: new Set() }
+    return { cycleNodes: new Set(), cycleEdges: new Set(), orphanedTasks: new Set(), parallelTasks: new Set() }
   }
 
   const { cycleNodes, cycleEdges } = detectCycles(tasks)
   const orphanedTasks = detectOrphans(compose)
+  const parallelTasks = detectParallelTasks(compose)
 
-  return { cycleNodes, cycleEdges, orphanedTasks }
+  return { cycleNodes, cycleEdges, orphanedTasks, parallelTasks }
 }

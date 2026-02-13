@@ -104,6 +104,7 @@ export default function DagCanvas({
           ...node.data,
           isInCycle: validation.cycleNodes.has(node.id),
           isOrphan: validation.orphanedTasks.has(node.id),
+          isInParallelPipeline: validation.parallelTasks.has(node.id),
         },
       }))
 

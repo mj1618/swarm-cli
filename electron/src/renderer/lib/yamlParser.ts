@@ -41,6 +41,7 @@ export interface TaskNodeData {
   agentCost?: number
   isInCycle?: boolean
   isOrphan?: boolean
+  isInParallelPipeline?: boolean
   [key: string]: unknown
 }
 

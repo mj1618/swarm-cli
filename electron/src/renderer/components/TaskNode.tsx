@@ -77,7 +77,7 @@ function ProgressRing({ progress }: { progress: number }) {
 }
 
 export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
-  const { agentStatus, agentProgress, agentCost, isInCycle, isOrphan } = data
+  const { agentStatus, agentProgress, agentCost, isInCycle, isOrphan, isInParallelPipeline } = data
   const showProgressRing =
     agentStatus === 'running' && agentProgress && agentProgress.total > 0
   const progress =
@@ -110,6 +110,15 @@ export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
       {isOrphan && (
         <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-[8px] font-bold text-black z-10">
           !
+        </div>
+      )}
+
+      {isInParallelPipeline && (
+        <div
+          className="absolute -top-1.5 -left-1.5 w-4 h-4 rounded-full bg-yellow-400 flex items-center justify-center text-[8px] font-bold text-black z-10"
+          title="This task may run concurrently (pipeline has parallelism > 1)"
+        >
+          ⚡
         </div>
       )}
 
