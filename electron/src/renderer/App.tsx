@@ -26,7 +26,9 @@ function App() {
 
   // Load default swarm.yaml for when no file is selected
   useEffect(() => {
+    let cancelled = false
     window.fs.readfile('swarm/swarm.yaml').then((result) => {
+      if (cancelled) return
       if (result.error) {
         setDefaultYamlError(result.error)
       } else {
@@ -34,9 +36,11 @@ function App() {
       }
       setDefaultYamlLoading(false)
     }).catch(() => {
+      if (cancelled) return
       setDefaultYamlError('Failed to read swarm.yaml')
       setDefaultYamlLoading(false)
     })
+    return () => { cancelled = true }
   }, [])
 
   // Load selected YAML file content when a YAML file is selected
@@ -48,11 +52,13 @@ function App() {
       return
     }
 
+    let cancelled = false
     setSelectedYamlLoading(true)
     setSelectedYamlError(null)
     setSelectedYamlContent(null)
 
     window.fs.readfile(selectedFile).then((result) => {
+      if (cancelled) return
       if (result.error) {
         setSelectedYamlError(result.error)
       } else {
@@ -60,9 +66,12 @@ function App() {
       }
       setSelectedYamlLoading(false)
     }).catch(() => {
+      if (cancelled) return
       setSelectedYamlError('Failed to read file')
       setSelectedYamlLoading(false)
     })
+
+    return () => { cancelled = true }
   }, [selectedFile])
 
   const selectedIsYaml = selectedFile ? isYamlFile(selectedFile) : false
