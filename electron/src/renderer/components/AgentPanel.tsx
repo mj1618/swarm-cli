@@ -98,6 +98,17 @@ export default function AgentPanel({ onViewLog, onToast }: AgentPanelProps = {})
     }
   }
 
+  const handleReplay = async (agentId: string) => {
+    const agent = agents.find(a => a.id === agentId)
+    const name = agent?.name || agentId.slice(0, 8)
+    const result = await window.swarm.run(['replay', agentId, '-d'])
+    if (result.code !== 0) {
+      onToast?.('error', `Failed to replay agent: ${result.stderr}`)
+    } else {
+      onToast?.('success', `Replaying agent ${name}`)
+    }
+  }
+
   // Find the selected agent from the live agents list (auto-updates via state:changed)
   const selectedAgent = selectedAgentId
     ? agents.find(a => a.id === selectedAgentId)
@@ -122,6 +133,7 @@ export default function AgentPanel({ onViewLog, onToast }: AgentPanelProps = {})
         onSetIterations={handleSetIterations}
         onSetModel={handleSetModel}
         onClone={handleClone}
+        onReplay={handleReplay}
         onViewLog={onViewLog}
       />
     )

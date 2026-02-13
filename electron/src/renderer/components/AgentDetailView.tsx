@@ -10,6 +10,7 @@ interface AgentDetailViewProps {
   onSetIterations: (id: string, iterations: number) => void
   onSetModel: (id: string, model: string) => void
   onClone: (id: string) => void
+  onReplay: (id: string) => void
   onViewLog?: (logPath: string) => void
 }
 
@@ -58,7 +59,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
-export default function AgentDetailView({ agent, onBack, onPause, onResume, onKill, onSetIterations, onSetModel, onClone, onViewLog }: AgentDetailViewProps) {
+export default function AgentDetailView({ agent, onBack, onPause, onResume, onKill, onSetIterations, onSetModel, onClone, onReplay, onViewLog }: AgentDetailViewProps) {
   const [duration, setDuration] = useState(() => formatDuration(agent.started_at, agent.terminated_at))
   const [iterationsInput, setIterationsInput] = useState(() => String(agent.iterations))
   const [modelInput, setModelInput] = useState(() => agent.model)
@@ -268,7 +269,7 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
           </Section>
         )}
 
-        {/* Action Buttons */}
+        {/* Action Buttons — Active Agents */}
         {isActive && (
           <div className="flex gap-2 mt-1">
             {isRunning && (
@@ -292,6 +293,24 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
               className="text-xs px-3 py-1.5 rounded bg-red-900/50 hover:bg-red-900/70 text-red-200 transition-colors"
             >
               Stop
+            </button>
+            <button
+              onClick={() => onClone(agent.id)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            >
+              Clone
+            </button>
+          </div>
+        )}
+
+        {/* Action Buttons — Terminated Agents */}
+        {!isActive && (
+          <div className="flex gap-2 mt-1">
+            <button
+              onClick={() => onReplay(agent.id)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            >
+              Replay
             </button>
             <button
               onClick={() => onClone(agent.id)}
