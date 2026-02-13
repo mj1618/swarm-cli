@@ -77,6 +77,74 @@ function isReadOnly(filePath: string): boolean {
   return ext === 'log'
 }
 
+function isPromptFile(filePath: string): boolean {
+  return filePath.includes('/prompts/') && filePath.endsWith('.md')
+}
+
+/** Inject CSS for template decoration classes (once) */
+let stylesInjected = false
+function injectDecorationStyles() {
+  if (stylesInjected) return
+  stylesInjected = true
+  const style = document.createElement('style')
+  style.textContent = `
+    .template-include-decoration {
+      color: #67e8f9 !important;
+      text-decoration: underline;
+      text-decoration-color: #22d3ee;
+      font-style: italic;
+    }
+    .template-variable-decoration {
+      color: #c084fc !important;
+      background-color: rgba(192, 132, 252, 0.1);
+      border-radius: 2px;
+    }
+  `
+  document.head.appendChild(style)
+}
+
+function computeDecorations(
+  model: monaco.editor.ITextModel,
+): monaco.editor.IModelDeltaDecoration[] {
+  const decorations: monaco.editor.IModelDeltaDecoration[] = []
+  const text = model.getValue()
+  const lines = text.split('\n')
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i]
+    const lineNumber = i + 1
+
+    // Match all {{...}} patterns
+    const pattern = /\{\{([^}]+)\}\}/g
+    let match: RegExpExecArray | null
+    while ((match = pattern.exec(line)) !== null) {
+      const startCol = match.index + 1
+      const endCol = match.index + match[0].length + 1
+      const inner = match[1].trim()
+
+      const isInclude = inner.startsWith('include:')
+      decorations.push({
+        range: {
+          startLineNumber: lineNumber,
+          startColumn: startCol,
+          endLineNumber: lineNumber,
+          endColumn: endCol,
+        } as monaco.IRange,
+        options: {
+          inlineClassName: isInclude
+            ? 'template-include-decoration'
+            : 'template-variable-decoration',
+          hoverMessage: isInclude
+            ? { value: `Include directive: \`${inner.slice(8).trim()}\`` }
+            : { value: `Template variable: \`${inner}\`` },
+        },
+      })
+    }
+  }
+
+  return decorations
+}
+
 export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   const [content, setContent] = useState<string | null>(null)
   const [savedContent, setSavedContent] = useState<string | null>(null)
@@ -84,7 +152,12 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(false)
+  const [previewContent, setPreviewContent] = useState<string | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
+  const [previewError, setPreviewError] = useState<string | null>(null)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const decorationsRef = useRef<string[]>([])
   const isDirtyRef = useRef(false)
   const saveRef = useRef<() => void>(() => {})
 
@@ -93,6 +166,7 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   const fileType = getFileType(filePath)
   const fileName = filePath.split('/').pop() || filePath
   const readOnly = isReadOnly(filePath)
+  const isPrompt = isPromptFile(filePath)
   const isDirty = content !== null && savedContent !== null && content !== savedContent
   isDirtyRef.current = isDirty
 
@@ -104,6 +178,8 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
     setContent(null)
     setSavedContent(null)
     setSaveError(null)
+    setShowPreview(false)
+    setPreviewContent(null)
 
     window.fs.readfile(filePath).then((result) => {
       if (cancelled) return
@@ -143,6 +219,30 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
     return unsubscribe
   }, [filePath])
 
+  // Load preview content
+  const loadPreview = useCallback(async () => {
+    setPreviewLoading(true)
+    setPreviewError(null)
+    try {
+      const result = await window.promptResolver.resolve(filePath)
+      if (result.error) {
+        setPreviewError(result.error)
+      } else {
+        setPreviewContent(result.content)
+      }
+    } catch {
+      setPreviewError('Failed to resolve prompt')
+    }
+    setPreviewLoading(false)
+  }, [filePath])
+
+  // Refresh preview when toggled on or content saved
+  useEffect(() => {
+    if (showPreview && isPrompt) {
+      loadPreview()
+    }
+  }, [showPreview, isPrompt, savedContent, loadPreview])
+
   const handleSave = useCallback(async () => {
     if (content === null || readOnly) return
     setSaving(true)
@@ -160,12 +260,29 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   // Register Cmd+S / Ctrl+S
   const handleEditorMount: OnMount = useCallback((editor) => {
     editorRef.current = editor
+
+    if (isPrompt) {
+      injectDecorationStyles()
+      // Apply decorations on mount
+      const model = editor.getModel()
+      if (model) {
+        const newDecorations = computeDecorations(model)
+        decorationsRef.current = editor.deltaDecorations([], newDecorations)
+
+        // Re-apply decorations on content change
+        model.onDidChangeContent(() => {
+          const updated = computeDecorations(model)
+          decorationsRef.current = editor.deltaDecorations(decorationsRef.current, updated)
+        })
+      }
+    }
+
     editor.addCommand(
       // Monaco KeyMod.CtrlCmd | Monaco KeyCode.KeyS
       2048 | 49, // CtrlCmd + KeyS
       () => { saveRef.current() },
     )
-  }, [])
+  }, [isPrompt])
 
   const handleChange = useCallback((value: string | undefined) => {
     if (value !== undefined) {
@@ -217,6 +334,18 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
           {isDirty && <span className="text-orange-400 ml-1" title="Unsaved changes">&bull;</span>}
         </span>
         <span className="text-xs text-muted-foreground truncate ml-auto">{filePath}</span>
+        {isPrompt && (
+          <button
+            onClick={() => setShowPreview((v) => !v)}
+            className={`text-xs px-2 py-1 rounded transition-colors ${
+              showPreview
+                ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30'
+                : 'bg-muted text-muted-foreground hover:bg-muted/80'
+            }`}
+          >
+            Preview
+          </button>
+        )}
         {!readOnly && (
           <>
             {saveError && (
@@ -236,28 +365,58 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
         )}
       </div>
 
-      {/* Monaco Editor */}
-      <div className="flex-1 min-h-0">
-        <Editor
-          language={language}
-          value={content ?? ''}
-          theme="vs-dark"
-          onChange={handleChange}
-          onMount={handleEditorMount}
-          options={{
-            readOnly,
-            minimap: { enabled: false },
-            wordWrap: language === 'markdown' ? 'on' : 'off',
-            fontSize: 13,
-            scrollBeyondLastLine: false,
-            automaticLayout: true,
-            tabSize,
-            lineNumbers: 'on',
-            renderLineHighlight: 'line',
-            bracketPairColorization: { enabled: true },
-            padding: { top: 8 },
-          }}
-        />
+      {/* Editor + Preview */}
+      <div className={`flex-1 min-h-0 flex ${showPreview ? 'flex-row' : ''}`}>
+        {/* Monaco Editor */}
+        <div className={`${showPreview ? 'w-1/2 border-r border-border' : 'flex-1'} min-h-0`}>
+          <Editor
+            language={language}
+            value={content ?? ''}
+            theme="vs-dark"
+            onChange={handleChange}
+            onMount={handleEditorMount}
+            options={{
+              readOnly,
+              minimap: { enabled: false },
+              wordWrap: language === 'markdown' ? 'on' : 'off',
+              fontSize: 13,
+              scrollBeyondLastLine: false,
+              automaticLayout: true,
+              tabSize,
+              lineNumbers: 'on',
+              renderLineHighlight: 'line',
+              bracketPairColorization: { enabled: true },
+              padding: { top: 8 },
+            }}
+          />
+        </div>
+
+        {/* Preview Panel */}
+        {showPreview && (
+          <div className="w-1/2 min-h-0 flex flex-col">
+            <div className="px-3 py-1.5 border-b border-border flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Resolved Preview</span>
+              {previewLoading && (
+                <span className="text-xs text-muted-foreground">Loading...</span>
+              )}
+              <button
+                onClick={loadPreview}
+                className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors ml-auto"
+              >
+                Refresh
+              </button>
+            </div>
+            <div className="flex-1 min-h-0 overflow-auto bg-[#1e1e1e]">
+              {previewError ? (
+                <div className="p-4 text-sm text-red-400">{previewError}</div>
+              ) : (
+                <pre className="p-4 text-sm text-[#d4d4d4] font-mono whitespace-pre-wrap leading-relaxed">
+                  {previewContent ?? ''}
+                </pre>
+              )}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   )

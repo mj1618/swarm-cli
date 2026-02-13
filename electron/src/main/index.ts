@@ -147,6 +147,76 @@ ipcMain.handle('fs:writefile', async (_event, filePath: string, content: string)
   }
 })
 
+ipcMain.handle('fs:rename', async (_event, oldPath: string, newPath: string): Promise<{ error?: string }> => {
+  try {
+    const resolvedOld = path.resolve(oldPath)
+    const resolvedNew = path.resolve(newPath)
+    if (!isWithinSwarmDir(resolvedOld) || !isWithinSwarmDir(resolvedNew)) {
+      return { error: 'Access denied: path outside swarm/ directory' }
+    }
+    await fs.rename(resolvedOld, resolvedNew)
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('fs:delete', async (_event, targetPath: string): Promise<{ error?: string }> => {
+  try {
+    const resolved = path.resolve(targetPath)
+    if (!isWithinSwarmDir(resolved)) {
+      return { error: 'Access denied: path outside swarm/ directory' }
+    }
+    await fs.rm(resolved, { recursive: true })
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('fs:duplicate', async (_event, filePath: string): Promise<{ error?: string }> => {
+  try {
+    const resolved = path.resolve(filePath)
+    if (!isWithinSwarmDir(resolved)) {
+      return { error: 'Access denied: path outside swarm/ directory' }
+    }
+    const dir = path.dirname(resolved)
+    const ext = path.extname(resolved)
+    const base = path.basename(resolved, ext)
+    const dest = path.join(dir, `${base}-copy${ext}`)
+    await fs.copyFile(resolved, dest)
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('fs:createfile', async (_event, filePath: string): Promise<{ error?: string }> => {
+  try {
+    const resolved = path.resolve(filePath)
+    if (!isWithinSwarmDir(resolved)) {
+      return { error: 'Access denied: path outside swarm/ directory' }
+    }
+    await fs.writeFile(resolved, '', 'utf-8')
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
+ipcMain.handle('fs:createdir', async (_event, dirPath: string): Promise<{ error?: string }> => {
+  try {
+    const resolved = path.resolve(dirPath)
+    if (!isWithinSwarmDir(resolved)) {
+      return { error: 'Access denied: path outside swarm/ directory' }
+    }
+    await fs.mkdir(resolved, { recursive: true })
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
 ipcMain.handle('fs:listprompts', async (): Promise<{ prompts: string[]; error?: string }> => {
   try {
     const promptsDir = path.join(swarmRoot, 'prompts')
@@ -374,6 +444,59 @@ ipcMain.handle('settings:write', async (_event, updates: { backend?: string; mod
     return { error: err.message }
   }
 })
+
+// Prompt resolution IPC handler — recursively expands {{include:path}} directives
+ipcMain.handle('prompt:resolve', async (_event, filePath: string): Promise<{ content: string; error?: string }> => {
+  try {
+    const fullPath = path.resolve(filePath)
+    if (!isWithinSwarmDir(fullPath)) {
+      return { content: '', error: 'Access denied: path outside swarm/ directory' }
+    }
+    const content = await fs.readFile(fullPath, 'utf-8')
+    const resolved = await resolveIncludes(content, path.dirname(fullPath), new Set())
+    return { content: resolved }
+  } catch (err: any) {
+    if (err.code === 'ENOENT') {
+      return { content: '', error: 'Prompt file not found' }
+    }
+    return { content: '', error: err.message }
+  }
+})
+
+async function resolveIncludes(content: string, baseDir: string, seen: Set<string>): Promise<string> {
+  const includePattern = /\{\{include:([^}]+)\}\}/g
+  const parts: string[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+
+  while ((match = includePattern.exec(content)) !== null) {
+    parts.push(content.slice(lastIndex, match.index))
+    const includePath = match[1].trim()
+
+    // Resolve relative to baseDir first, then relative to swarm/ root
+    let resolvedPath = path.resolve(baseDir, includePath)
+    if (!isWithinSwarmDir(resolvedPath)) {
+      resolvedPath = path.resolve(swarmRoot, includePath)
+    }
+
+    if (seen.has(resolvedPath)) {
+      parts.push(`[ERROR: circular include: ${includePath}]`)
+    } else {
+      try {
+        const includeContent = await fs.readFile(resolvedPath, 'utf-8')
+        seen.add(resolvedPath)
+        const resolved = await resolveIncludes(includeContent, path.dirname(resolvedPath), seen)
+        parts.push(resolved)
+      } catch {
+        parts.push(`[ERROR: file not found: ${includePath}]`)
+      }
+    }
+    lastIndex = match.index + match[0].length
+  }
+
+  parts.push(content.slice(lastIndex))
+  return parts.join('')
+}
 
 app.on('before-quit', () => {
   if (swarmWatcher) {

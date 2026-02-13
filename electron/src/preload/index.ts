@@ -38,10 +38,19 @@ contextBridge.exposeInMainWorld('settings', {
   write: (updates: { backend?: string; model?: string }) => ipcRenderer.invoke('settings:write', updates),
 })
 
+contextBridge.exposeInMainWorld('promptResolver', {
+  resolve: (filePath: string) => ipcRenderer.invoke('prompt:resolve', filePath),
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
   writefile: (filePath: string, content: string) => ipcRenderer.invoke('fs:writefile', filePath, content),
+  rename: (oldPath: string, newPath: string) => ipcRenderer.invoke('fs:rename', oldPath, newPath),
+  delete: (targetPath: string) => ipcRenderer.invoke('fs:delete', targetPath),
+  duplicate: (filePath: string) => ipcRenderer.invoke('fs:duplicate', filePath),
+  createFile: (filePath: string) => ipcRenderer.invoke('fs:createfile', filePath),
+  createDir: (dirPath: string) => ipcRenderer.invoke('fs:createdir', dirPath),
   listprompts: () => ipcRenderer.invoke('fs:listprompts'),
   swarmRoot: () => ipcRenderer.invoke('fs:swarmroot'),
   watch: () => ipcRenderer.invoke('fs:watch'),
@@ -87,6 +96,11 @@ export type FsAPI = {
   readdir: (dirPath: string) => Promise<{ entries: DirEntry[]; error?: string }>
   readfile: (filePath: string) => Promise<{ content: string; error?: string }>
   writefile: (filePath: string, content: string) => Promise<{ error?: string }>
+  rename: (oldPath: string, newPath: string) => Promise<{ error?: string }>
+  delete: (targetPath: string) => Promise<{ error?: string }>
+  duplicate: (filePath: string) => Promise<{ error?: string }>
+  createFile: (filePath: string) => Promise<{ error?: string }>
+  createDir: (dirPath: string) => Promise<{ error?: string }>
   listprompts: () => Promise<{ prompts: string[]; error?: string }>
   swarmRoot: () => Promise<string>
   watch: () => Promise<void>
@@ -104,6 +118,10 @@ export interface SwarmConfig {
 export type SettingsAPI = {
   read: () => Promise<{ config: SwarmConfig; error?: string }>
   write: (updates: { backend?: string; model?: string }) => Promise<{ error?: string }>
+}
+
+export type PromptAPI = {
+  resolve: (filePath: string) => Promise<{ content: string; error?: string }>
 }
 
 export type StateAPI = {
@@ -148,5 +166,6 @@ declare global {
     state: StateAPI
     logs: LogsAPI
     settings: SettingsAPI
+    promptResolver: PromptAPI
   }
 }
