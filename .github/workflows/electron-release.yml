@@ -1,0 +1,90 @@
+name: Electron Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release tag to attach artifacts to (leave empty to skip upload)'
+        required: false
+        type: string
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: macos-latest
+            platform: mac
+            artifact_ext: dmg
+          - os: windows-latest
+            platform: win
+            artifact_ext: exe
+          - os: ubuntu-latest
+            platform: linux
+            artifact_ext: AppImage
+
+    runs-on: ${{ matrix.os }}
+
+    defaults:
+      run:
+        working-directory: electron
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: electron/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build React app
+        run: npm run build
+
+      - name: Build Electron main process
+        run: npm run build:electron
+
+      - name: Package Electron app
+        run: npm run package
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-desktop-${{ matrix.platform }}
+          path: |
+            electron/release/*.dmg
+            electron/release/*.exe
+            electron/release/*.AppImage
+          if-no-files-found: ignore
+
+      - name: Get artifact filename
+        id: artifact
+        shell: bash
+        run: |
+          if [ "${{ matrix.platform }}" = "mac" ]; then
+            ARTIFACT=$(ls release/*.dmg 2>/dev/null | head -1)
+          elif [ "${{ matrix.platform }}" = "win" ]; then
+            ARTIFACT=$(ls release/*.exe 2>/dev/null | head -1)
+          else
+            ARTIFACT=$(ls release/*.AppImage 2>/dev/null | head -1)
+          fi
+          echo "path=${ARTIFACT}" >> $GITHUB_OUTPUT
+          echo "Found artifact: ${ARTIFACT}"
+
+      - name: Upload to release
+        if: github.event_name == 'release' || inputs.release_tag != ''
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event_name == 'release' && github.event.release.tag_name || inputs.release_tag }}
+          files: electron/${{ steps.artifact.outputs.path }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
