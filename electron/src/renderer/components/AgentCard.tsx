@@ -1,13 +1,11 @@
 import type { AgentState } from '../../preload/index'
-import AgentDetailView from './AgentDetailView'
 
 interface AgentCardProps {
   agent: AgentState
-  expanded: boolean
-  onToggleExpand: () => void
   onPause: (id: string) => void
   onResume: (id: string) => void
   onKill: (id: string) => void
+  onClick: (agent: AgentState) => void
 }
 
 function formatDuration(startedAt: string, terminatedAt?: string): string {
@@ -54,28 +52,25 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
   )
 }
 
-export default function AgentCard({ agent, expanded, onToggleExpand, onPause, onResume, onKill }: AgentCardProps) {
+export default function AgentCard({ agent, onPause, onResume, onKill, onClick }: AgentCardProps) {
   const displayName = agent.name || agent.id.slice(0, 8)
   const isRunning = agent.status === 'running' && !agent.paused
   const isPaused = agent.paused
   const isActive = agent.status === 'running'
 
   return (
-    <div className={`p-3 mb-2 rounded-lg bg-background border transition-colors ${expanded ? 'border-zinc-500' : 'border-border hover:border-zinc-600'}`}>
-      {/* Header: status + name + model (clickable to expand) */}
-      <div
-        className="flex items-center gap-2 mb-1.5 cursor-pointer"
-        onClick={onToggleExpand}
-      >
+    <div
+      className="p-3 mb-2 rounded-lg bg-background border border-border hover:border-zinc-600 transition-colors cursor-pointer"
+      onClick={() => onClick(agent)}
+    >
+      {/* Header: status + name + model */}
+      <div className="flex items-center gap-2 mb-1.5">
         <StatusDot status={agent.status} paused={agent.paused} />
         <span className="text-sm font-medium text-foreground truncate flex-1">
           {displayName}
         </span>
         <span className="text-[10px] text-muted-foreground bg-zinc-800 px-1.5 py-0.5 rounded">
           {agent.model}
-        </span>
-        <span className="text-[10px] text-muted-foreground">
-          {expanded ? '▼' : '▶'}
         </span>
       </div>
 
@@ -96,71 +91,55 @@ export default function AgentCard({ agent, expanded, onToggleExpand, onPause, on
         <span>{formatDuration(agent.started_at, agent.terminated_at)}</span>
       </div>
 
-      {/* Compact-only content (hidden when expanded) */}
-      {!expanded && (
-        <>
-          {/* Current task */}
-          {agent.current_task && isActive && (
-            <p className="text-[11px] text-muted-foreground mb-2 truncate italic">
-              {agent.current_task}
-            </p>
-          )}
-
-          {/* Status label for paused */}
-          {isPaused && (
-            <p className="text-[11px] text-yellow-400 mb-2">Paused</p>
-          )}
-
-          {/* Exit reason for terminated */}
-          {agent.status === 'terminated' && agent.exit_reason && (
-            <p className="text-[11px] text-muted-foreground mb-2">
-              {agent.exit_reason === 'completed' ? '✓ Completed' :
-               agent.exit_reason === 'killed' ? '✕ Killed' :
-               agent.exit_reason === 'crashed' ? '✕ Crashed' :
-               agent.exit_reason}
-              {agent.last_error && ` — ${agent.last_error}`}
-            </p>
-          )}
-
-          {/* Controls */}
-          {isActive && (
-            <div className="flex gap-1.5">
-              {isRunning && (
-                <button
-                  onClick={() => onPause(agent.id)}
-                  className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
-                >
-                  Pause
-                </button>
-              )}
-              {isPaused && (
-                <button
-                  onClick={() => onResume(agent.id)}
-                  className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
-                >
-                  Resume
-                </button>
-              )}
-              <button
-                onClick={() => onKill(agent.id)}
-                className="text-[11px] px-2 py-1 rounded bg-red-900/50 hover:bg-red-900/70 text-red-200 transition-colors"
-              >
-                Stop
-              </button>
-            </div>
-          )}
-        </>
+      {/* Current task */}
+      {agent.current_task && isActive && (
+        <p className="text-[11px] text-muted-foreground mb-2 truncate italic">
+          {agent.current_task}
+        </p>
       )}
 
-      {/* Expanded detail view */}
-      {expanded && (
-        <AgentDetailView
-          agent={agent}
-          onPause={onPause}
-          onResume={onResume}
-          onKill={onKill}
-          onBack={onToggleExpand}
-        />
+      {/* Status label for paused */}
+      {isPaused && (
+        <p className="text-[11px] text-yellow-400 mb-2">Paused</p>
+      )}
+
+      {/* Exit reason for terminated */}
+      {agent.status === 'terminated' && agent.exit_reason && (
+        <p className="text-[11px] text-muted-foreground mb-2">
+          {agent.exit_reason === 'completed' ? '✓ Completed' :
+           agent.exit_reason === 'killed' ? '✕ Killed' :
+           agent.exit_reason === 'crashed' ? '✕ Crashed' :
+           agent.exit_reason}
+          {agent.last_error && ` — ${agent.last_error}`}
+        </p>
+      )}
+
+      {/* Controls */}
+      {isActive && (
+        <div className="flex gap-1.5">
+          {isRunning && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onPause(agent.id) }}
+              className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            >
+              Pause
+            </button>
+          )}
+          {isPaused && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onResume(agent.id) }}
+              className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            >
+              Resume
+            </button>
+          )}
+          <button
+            onClick={(e) => { e.stopPropagation(); onKill(agent.id) }}
+            className="text-[11px] px-2 py-1 rounded bg-red-900/50 hover:bg-red-900/70 text-red-200 transition-colors"
+          >
+            Stop
+          </button>
+        </div>
       )}
     </div>
   )

@@ -6,9 +6,12 @@ import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
+import CommandPalette from './components/CommandPalette'
+import type { Command } from './components/CommandPalette'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency } from './lib/yamlParser'
 import { addDependency } from './lib/yamlWriter'
+import type { AgentState } from '../preload/index'
 
 function isYamlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase()
@@ -36,6 +39,8 @@ function App() {
   const [selectedYamlLoading, setSelectedYamlLoading] = useState(false)
   const [selectedYamlError, setSelectedYamlError] = useState<string | null>(null)
   const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef; compose: ComposeFile } | null>(null)
+  const [paletteOpen, setPaletteOpen] = useState(false)
+  const [agents, setAgents] = useState<AgentState[]>([])
 
   const activeYamlPath = selectedFile && isYamlFile(selectedFile) ? selectedFile : null
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
@@ -187,6 +192,126 @@ function App() {
     return () => { cancelled = true }
   }, [selectedFile])
 
+  // Watch agent state for command palette dynamic commands
+  useEffect(() => {
+    window.state.read().then(result => {
+      if (!result.error) setAgents(result.agents)
+    })
+    window.state.watch()
+    const unsubscribe = window.state.onChanged(data => {
+      setAgents(data.agents)
+    })
+    return () => {
+      unsubscribe()
+      window.state.unwatch()
+    }
+  }, [])
+
+  // Cmd+K / Ctrl+K keyboard shortcut
+  useEffect(() => {
+    function handleKeyDown(e: KeyboardEvent) {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        setPaletteOpen(prev => !prev)
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
+  const paletteCommands = useMemo<Command[]>(() => {
+    const cmds: Command[] = []
+    const isMac = navigator.platform.toUpperCase().includes('MAC')
+    const mod = isMac ? '⌘' : 'Ctrl+'
+
+    // Static commands
+    cmds.push({
+      id: 'run-pipeline',
+      name: 'Run pipeline: main',
+      description: 'Start the main pipeline',
+      action: () => { window.swarm.run(['pipeline']) },
+    })
+    cmds.push({
+      id: 'pause-all',
+      name: 'Pause all agents',
+      description: 'Pause every running agent',
+      action: () => {
+        agents.filter(a => a.status === 'running' && !a.paused).forEach(a => window.swarm.pause(a.id))
+      },
+    })
+    cmds.push({
+      id: 'resume-all',
+      name: 'Resume all agents',
+      description: 'Resume all paused agents',
+      action: () => {
+        agents.filter(a => a.paused).forEach(a => window.swarm.resume(a.id))
+      },
+    })
+    cmds.push({
+      id: 'kill-all',
+      name: 'Kill all agents',
+      description: 'Stop all running agents',
+      action: () => {
+        agents.filter(a => a.status === 'running').forEach(a => window.swarm.kill(a.id))
+      },
+    })
+    cmds.push({
+      id: 'open-swarm-yaml',
+      name: 'Open swarm.yaml',
+      description: 'View the compose file',
+      action: () => setSelectedFile('swarm/swarm.yaml'),
+    })
+    cmds.push({
+      id: 'create-task',
+      name: 'Create new task',
+      description: 'Open task drawer with empty task',
+      action: () => {
+        const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+        if (!yamlContent) return
+        const compose = parseComposeFile(yamlContent)
+        setSelectedTask({ name: '', def: { prompt: '' }, compose })
+      },
+    })
+    cmds.push({
+      id: 'reset-layout',
+      name: 'Reset DAG layout',
+      description: 'Clear saved positions and re-layout',
+      action: handleResetLayout,
+    })
+    cmds.push({
+      id: 'refresh-agents',
+      name: 'Refresh agents',
+      description: 'Reload agent state',
+      shortcut: `${mod}K`,
+      action: () => { window.state.read().then(r => { if (!r.error) setAgents(r.agents) }) },
+    })
+
+    // Dynamic: per-agent commands
+    agents.filter(a => a.status === 'running').forEach(a => {
+      cmds.push({
+        id: `kill-${a.id}`,
+        name: `Kill agent: ${a.name || a.id.slice(0, 8)}`,
+        action: () => { window.swarm.kill(a.id) },
+      })
+      if (!a.paused) {
+        cmds.push({
+          id: `pause-${a.id}`,
+          name: `Pause agent: ${a.name || a.id.slice(0, 8)}`,
+          action: () => { window.swarm.pause(a.id) },
+        })
+      }
+    })
+    agents.filter(a => a.paused).forEach(a => {
+      cmds.push({
+        id: `resume-${a.id}`,
+        name: `Resume agent: ${a.name || a.id.slice(0, 8)}`,
+        action: () => { window.swarm.resume(a.id) },
+      })
+    })
+
+    return cmds
+  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout])
+
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
     return selectedFile.split('/').pop() || 'DAG Editor'
@@ -194,6 +319,12 @@ function App() {
 
   return (
     <div className="h-full flex flex-col">
+      <CommandPalette
+        open={paletteOpen}
+        onClose={() => setPaletteOpen(false)}
+        commands={paletteCommands}
+      />
+
       {/* Title bar drag region */}
       <div className="h-8 bg-background border-b border-border flex items-center px-4 drag-region">
         <span className="text-sm font-medium text-muted-foreground ml-16">Swarm Desktop</span>

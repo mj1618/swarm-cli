@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { AgentState } from '../../preload/index'
 import AgentCard from './AgentCard'
+import AgentDetailView from './AgentDetailView'
 
 export default function AgentPanel() {
   const [agents, setAgents] = useState<AgentState[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(true)
-  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
 
   const loadAgents = useCallback(async () => {
     try {
@@ -57,6 +58,33 @@ export default function AgentPanel() {
     await window.swarm.kill(agentId)
   }
 
+  // Find the selected agent from the live agents list (auto-updates via state:changed)
+  const selectedAgent = selectedAgentId
+    ? agents.find(a => a.id === selectedAgentId)
+    : null
+
+  // If viewing a detail but agent disappeared from state, go back to list
+  if (selectedAgentId && !selectedAgent) {
+    // Use effect-safe approach: this will re-render once
+    if (agents.length > 0 || !loading) {
+      // Agent was removed from state — clear selection on next render
+      setTimeout(() => setSelectedAgentId(null), 0)
+    }
+  }
+
+  // Show detail view when an agent is selected
+  if (selectedAgent) {
+    return (
+      <AgentDetailView
+        agent={selectedAgent}
+        onBack={() => setSelectedAgentId(null)}
+        onPause={handlePause}
+        onResume={handleResume}
+        onKill={handleKill}
+      />
+    )
+  }
+
   // Split agents into running/active vs history
   const runningAgents = agents.filter(a => a.status === 'running')
   const historyAgents = agents
@@ -102,11 +130,10 @@ export default function AgentPanel() {
                   <AgentCard
                     key={agent.id}
                     agent={agent}
-                    expanded={expandedAgentId === agent.id}
-                    onToggleExpand={() => setExpandedAgentId(prev => prev === agent.id ? null : agent.id)}
                     onPause={handlePause}
                     onResume={handleResume}
                     onKill={handleKill}
+                    onClick={(a) => setSelectedAgentId(a.id)}
                   />
                 ))}
               </div>
@@ -126,11 +153,10 @@ export default function AgentPanel() {
                   <AgentCard
                     key={agent.id}
                     agent={agent}
-                    expanded={expandedAgentId === agent.id}
-                    onToggleExpand={() => setExpandedAgentId(prev => prev === agent.id ? null : agent.id)}
                     onPause={handlePause}
                     onResume={handleResume}
                     onKill={handleKill}
+                    onClick={(a) => setSelectedAgentId(a.id)}
                   />
                 ))}
               </div>
