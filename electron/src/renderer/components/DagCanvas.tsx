@@ -9,9 +9,12 @@ import {
   applyNodeChanges,
   applyEdgeChanges,
   useReactFlow,
+  getNodesBounds,
+  getViewportForBounds,
 } from '@xyflow/react'
 import type { Node, Edge, NodeChange, EdgeChange, Connection } from '@xyflow/react'
 import '@xyflow/react/dist/style.css'
+import { toPng, toSvg } from 'html-to-image'
 import TaskNode from './TaskNode'
 import ConnectionDialog from './ConnectionDialog'
 import { composeToFlow, parseComposeFile } from '../lib/yamlParser'
@@ -19,6 +22,8 @@ import type { ComposeFile, TaskDef, TaskDependency, TaskNodeData, AgentDisplaySt
 import { validateDag } from '../lib/dagValidation'
 import type { ValidationResult } from '../lib/dagValidation'
 import type { AgentState } from '../../preload/index'
+import type { EffectiveTheme } from '../lib/themeManager'
+import type { ToastType } from './ToastContainer'
 
 const nodeTypes = { taskNode: TaskNode }
 
@@ -41,12 +46,15 @@ interface DagCanvasProps {
   onDeleteTask?: (taskName: string) => void
   onDeleteEdge?: (source: string, target: string) => void
   onRunTask?: (taskName: string, taskDef: TaskDef) => void
+  onDuplicateTask?: (taskName: string, taskDef: TaskDef) => void
   onCreateTask?: () => void
   onDropCreateTask?: (promptName: string, position: { x: number; y: number }) => void
   savedPositions?: Record<string, { x: number; y: number }>
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
   onResetLayout?: () => void
   onFitViewReady?: (fitView: () => void) => void
+  onToast?: (type: ToastType, message: string) => void
+  theme?: EffectiveTheme
 }
 
 function resolveAgentStatus(agent: AgentState): AgentDisplayStatus {
@@ -72,12 +80,15 @@ export default function DagCanvas({
   onDeleteTask,
   onDeleteEdge,
   onRunTask,
+  onDuplicateTask,
   onCreateTask,
   onDropCreateTask,
   savedPositions,
   onPositionsChange,
   onResetLayout,
   onFitViewReady,
+  onToast,
+  theme = 'dark',
 }: DagCanvasProps) {
   // Parse YAML and compute dagre layout (with saved positions applied)
   const { initialNodes, edges, parseError, compose, validation } = useMemo(() => {
@@ -209,6 +220,11 @@ export default function DagCanvas({
   const [contextMenu, setContextMenu] = useState<{ taskName: string; x: number; y: number } | null>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
 
+  // Export dropdown state
+  const [exportDropdownOpen, setExportDropdownOpen] = useState(false)
+  const exportDropdownRef = useRef<HTMLDivElement>(null)
+  const [isExporting, setIsExporting] = useState(false)
+
   // Local node state for drag interactions
   const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(filteredNodes)
 
@@ -280,7 +296,7 @@ export default function DagCanvas({
 
   // Connection dialog state
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
-  const { flowToScreenPosition, screenToFlowPosition, fitView } = useReactFlow()
+  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes } = useReactFlow()
 
   useEffect(() => {
     if (onFitViewReady) {
@@ -377,13 +393,96 @@ export default function DagCanvas({
     return () => document.removeEventListener('mousedown', handleClick)
   }, [contextMenu])
 
+  // Close export dropdown on outside click
+  useEffect(() => {
+    if (!exportDropdownOpen) return
+    function handleClick(e: MouseEvent) {
+      if (exportDropdownRef.current && !exportDropdownRef.current.contains(e.target as globalThis.Node)) {
+        setExportDropdownOpen(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [exportDropdownOpen])
+
+  // Export DAG as image
+  const handleExport = useCallback(async (format: 'png' | 'svg') => {
+    setExportDropdownOpen(false)
+    setIsExporting(true)
+
+    try {
+      // Find the React Flow viewport element
+      const viewport = document.querySelector('.react-flow__viewport') as HTMLElement
+      if (!viewport) {
+        onToast?.('error', 'Could not find DAG viewport')
+        setIsExporting(false)
+        return
+      }
+
+      // Calculate bounds for all nodes with padding
+      const currentNodes = getNodes()
+      if (currentNodes.length === 0) {
+        onToast?.('error', 'No nodes to export')
+        setIsExporting(false)
+        return
+      }
+
+      const bounds = getNodesBounds(currentNodes)
+      const padding = 50
+      const imageWidth = bounds.width + padding * 2
+      const imageHeight = bounds.height + padding * 2
+
+      // Get viewport transformation for centering
+      const transform = getViewportForBounds(bounds, imageWidth, imageHeight, 0.5, 2, padding)
+
+      // Generate the image
+      let dataUrl: string
+      if (format === 'svg') {
+        dataUrl = await toSvg(viewport, {
+          backgroundColor: '#0f172a', // Match dark theme background
+          width: imageWidth,
+          height: imageHeight,
+          style: {
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
+          },
+        })
+      } else {
+        dataUrl = await toPng(viewport, {
+          backgroundColor: '#0f172a', // Match dark theme background
+          width: imageWidth,
+          height: imageHeight,
+          pixelRatio: 2, // High DPI for better quality
+          style: {
+            transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.zoom})`,
+          },
+        })
+      }
+
+      // Prompt save dialog
+      const timestamp = new Date().toISOString().slice(0, 10)
+      const defaultName = `dag-export-${timestamp}.${format}`
+      const result = await window.dialog.saveImage({ defaultName, dataUrl, format })
+
+      if (result.error) {
+        onToast?.('error', `Export failed: ${result.error}`)
+      } else if (!result.canceled) {
+        onToast?.('success', `DAG exported as ${format.toUpperCase()}`)
+      }
+    } catch (err) {
+      console.error('Export error:', err)
+      onToast?.('error', `Export failed: ${(err as Error).message}`)
+    } finally {
+      setIsExporting(false)
+    }
+  }, [getNodes, onToast])
+
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node<TaskNodeData>) => {
       event.preventDefault()
-      if (!onDeleteTask && !onRunTask) return
+      if (!onDeleteTask && !onRunTask && !onDuplicateTask) return
       setContextMenu({ taskName: node.id, x: event.clientX, y: event.clientY })
     },
-    [onDeleteTask, onRunTask],
+    [onDeleteTask, onRunTask, onDuplicateTask],
   )
 
   const handleConfirmDelete = useCallback(() => {
@@ -406,6 +505,16 @@ export default function DagCanvas({
       setContextMenu(null)
     }
   }, [contextMenu, onRunTask, compose])
+
+  const handleContextMenuDuplicate = useCallback(() => {
+    if (contextMenu && onDuplicateTask && compose) {
+      const taskDef = compose.tasks?.[contextMenu.taskName]
+      if (taskDef) {
+        onDuplicateTask(contextMenu.taskName, taskDef)
+      }
+      setContextMenu(null)
+    }
+  }, [contextMenu, onDuplicateTask, compose])
 
   const handleContextMenuDelete = useCallback(() => {
     if (contextMenu) {
@@ -436,9 +545,59 @@ export default function DagCanvas({
   if (nodes.length === 0) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        <div className="text-center">
-          <p>No tasks to display</p>
-          <p className="text-xs mt-2">Add tasks to swarm.yaml to see the DAG</p>
+        <div className="text-center max-w-md px-6">
+          {/* Visual icon */}
+          <div className="mb-6 flex justify-center">
+            <div className="w-20 h-20 rounded-2xl bg-secondary/50 border border-border flex items-center justify-center">
+              <svg
+                className="w-10 h-10 text-muted-foreground/60"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={1.5}
+                  d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"
+                />
+              </svg>
+            </div>
+          </div>
+
+          {/* Heading */}
+          <h2 className="text-lg font-semibold text-foreground mb-2">No tasks yet</h2>
+
+          {/* Explanation */}
+          <p className="text-sm text-muted-foreground mb-6">
+            Tasks are the building blocks of your pipeline. Each task runs an AI agent with a specific prompt.
+          </p>
+
+          {/* Create Task button */}
+          {onCreateTask && (
+            <button
+              onClick={onCreateTask}
+              className="px-4 py-2 text-sm font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors mb-6"
+            >
+              + Create Task
+            </button>
+          )}
+
+          {/* Tips */}
+          <div className="space-y-3 text-xs text-muted-foreground/80">
+            <div className="flex items-start gap-2">
+              <span className="text-blue-400 mt-0.5">💡</span>
+              <span className="text-left">
+                <strong className="text-muted-foreground">Drag &amp; drop:</strong> Drag a prompt from the File Tree on the left to create a task
+              </span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-blue-400 mt-0.5">📝</span>
+              <span className="text-left">
+                <strong className="text-muted-foreground">Edit directly:</strong> Add tasks to <code className="px-1 py-0.5 rounded bg-secondary text-foreground">swarm/swarm.yaml</code>
+              </span>
+            </div>
+          </div>
         </div>
       </div>
     )
@@ -494,7 +653,7 @@ export default function DagCanvas({
         onNodeContextMenu={handleNodeContextMenu}
         onConnect={handleConnect}
         deleteKeyCode={null}
-        colorMode="dark"
+        colorMode={theme}
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(240 5% 20%)" />
         <Controls showInteractive={false} />
@@ -504,16 +663,62 @@ export default function DagCanvas({
           bgColor="hsl(222 84% 5%)"
           style={{ borderRadius: 8, border: '1px solid hsl(217 33% 17%)' }}
         />
-        {onResetLayout && (
-          <Panel position="top-right">
-            <button
-              onClick={onResetLayout}
-              className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
-            >
-              Reset Layout
-            </button>
-          </Panel>
-        )}
+        <Panel position="top-right">
+          <div className="flex items-center gap-2">
+            {/* Export dropdown */}
+            <div className="relative" ref={exportDropdownRef}>
+              <button
+                onClick={() => setExportDropdownOpen(prev => !prev)}
+                disabled={isExporting || nodes.length === 0}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                title="Export DAG as image"
+              >
+                {isExporting ? (
+                  <>
+                    <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                    </svg>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Export
+                  </>
+                )}
+              </button>
+              {exportDropdownOpen && (
+                <div className="absolute right-0 mt-1 w-36 rounded-md border border-border bg-popover shadow-lg py-1 z-50">
+                  <button
+                    onClick={() => handleExport('png')}
+                    className="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-secondary/80 transition-colors"
+                  >
+                    Export as PNG
+                  </button>
+                  <button
+                    onClick={() => handleExport('svg')}
+                    className="w-full px-3 py-1.5 text-left text-xs text-foreground hover:bg-secondary/80 transition-colors"
+                  >
+                    Export as SVG
+                  </button>
+                </div>
+              )}
+            </div>
+            {onResetLayout && (
+              <button
+                onClick={onResetLayout}
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
+              >
+                Reset Layout
+              </button>
+            )}
+          </div>
+        </Panel>
         {onCreateTask && (
           <Panel position="bottom-left">
             <button
@@ -566,6 +771,14 @@ export default function DagCanvas({
               onClick={handleContextMenuRun}
             >
               Run Task
+            </button>
+          )}
+          {onDuplicateTask && (
+            <button
+              className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-secondary/80 transition-colors"
+              onClick={handleContextMenuDuplicate}
+            >
+              Duplicate Task
             </button>
           )}
           {onDeleteTask && (

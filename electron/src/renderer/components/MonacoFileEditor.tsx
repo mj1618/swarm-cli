@@ -8,8 +8,11 @@ import {
   validateSwarmYaml,
 } from '../lib/yamlIntellisense'
 
+import type { EffectiveTheme } from '../lib/themeManager'
+
 interface MonacoFileEditorProps {
   filePath: string
+  theme?: EffectiveTheme
 }
 
 function getLanguage(filePath: string): string {
@@ -154,7 +157,8 @@ function computeDecorations(
   return decorations
 }
 
-export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
+export default function MonacoFileEditor({ filePath, theme = 'dark' }: MonacoFileEditorProps) {
+  const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs'
   const [content, setContent] = useState<string | null>(null)
   const [savedContent, setSavedContent] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
@@ -412,7 +416,7 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
           <Editor
             language={language}
             value={content ?? ''}
-            theme="vs-dark"
+            theme={monacoTheme}
             onChange={handleChange}
             onMount={handleEditorMount}
             options={{

@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume, playSuccess } from '../lib/soundManager'
+import { getTheme, setTheme } from '../lib/themeManager'
+import type { ThemePreference } from '../lib/themeManager'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -24,6 +26,7 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
   )
   const [soundAlerts, setSoundAlerts] = useState(isSoundEnabled)
   const [soundVolume, setSoundVolumeState] = useState(getSoundVolume)
+  const [themePreference, setThemePreference] = useState<ThemePreference>(getTheme)
 
   useEffect(() => {
     window.settings.read().then(result => {
@@ -97,6 +100,32 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
           <p className="text-sm text-muted-foreground">Loading settings...</p>
         ) : (
           <div className="max-w-md mx-auto space-y-6">
+            {/* Appearance */}
+            <div>
+              <label className={labelClass}>Appearance</label>
+              <div className="flex gap-2">
+                {(['system', 'dark', 'light'] as const).map(t => (
+                  <button
+                    key={t}
+                    onClick={() => {
+                      setThemePreference(t)
+                      setTheme(t)
+                    }}
+                    className={`flex-1 px-3 py-2 text-sm rounded border transition-colors ${
+                      themePreference === t
+                        ? 'bg-primary/20 border-primary text-primary'
+                        : 'border-border text-muted-foreground hover:text-foreground hover:border-muted-foreground'
+                    }`}
+                  >
+                    {t === 'system' ? 'System' : t === 'dark' ? 'Dark' : 'Light'}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                System follows your OS preference
+              </p>
+            </div>
+
             {/* Backend */}
             <div>
               <label className={labelClass}>Backend</label>

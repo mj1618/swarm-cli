@@ -18,6 +18,8 @@ import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
 import { playSuccess, playFailure } from './lib/soundManager'
+import { initThemeManager, getEffectiveTheme, onThemeChange } from './lib/themeManager'
+import type { EffectiveTheme } from './lib/themeManager'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency, PipelineDef } from './lib/yamlParser'
 import { addDependency, applyPipelineEdits, deletePipeline, deleteTask, deleteEdge } from './lib/yamlWriter'
@@ -58,6 +60,7 @@ function shortenHomePath(fullPath: string): string {
 }
 
 function App() {
+  const [effectiveTheme, setEffectiveTheme] = useState<EffectiveTheme>(getEffectiveTheme)
   const [projectPath, setProjectPath] = useState<string | null>(() => {
     return localStorage.getItem('swarm-project-path')
   })
@@ -333,6 +336,67 @@ function App() {
     [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, addToast],
   )
 
+  const handleDuplicateTask = useCallback(
+    async (taskName: string, taskDef: TaskDef) => {
+      const yamlContent = selectedIsYaml && selectedFile
+        ? selectedYamlContent
+        : defaultYamlContent
+      if (!yamlContent) return
+
+      const compose = parseComposeFile(yamlContent)
+
+      // Generate unique name: taskName-copy or taskName-copy-N
+      let newName = `${taskName}-copy`
+      let counter = 2
+      while (compose.tasks?.[newName]) {
+        newName = `${taskName}-copy-${counter}`
+        counter++
+      }
+
+      // Clone the task definition without dependencies (clean slate)
+      const newTaskDef: TaskDef = {
+        ...taskDef,
+        depends_on: undefined,
+      }
+
+      // Add the new task
+      if (!compose.tasks) compose.tasks = {}
+      compose.tasks[newName] = newTaskDef
+
+      const yamlStr = serializeCompose(compose)
+      const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+      const result = await window.fs.writefile(filePath, yamlStr)
+      if (result.error) {
+        console.error('Failed to duplicate task:', result.error)
+        addToast('error', `Failed to duplicate task: ${result.error}`)
+        return
+      }
+
+      // Position the new task near the original (offset by 50px)
+      const originalPos = nodePositions[taskName]
+      if (originalPos) {
+        const newPositions = { ...nodePositions, [newName]: { x: originalPos.x + 50, y: originalPos.y + 50 } }
+        handlePositionsChange(newPositions)
+      }
+
+      addToast('success', `Duplicated task "${taskName}" as "${newName}"`)
+
+      // Reload YAML to refresh the DAG
+      if (selectedIsYaml && selectedFile) {
+        const reloaded = await window.fs.readfile(selectedFile)
+        if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+      } else {
+        const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+        if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+      }
+
+      // Open the task drawer for the new task
+      const updatedCompose = parseComposeFile(yamlStr)
+      setSelectedTask({ name: newName, def: newTaskDef, compose: updatedCompose })
+    },
+    [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, nodePositions, handlePositionsChange, addToast],
+  )
+
   const handleUpdatePipeline = useCallback(
     async (pipelineName: string, updates: { iterations?: number; parallelism?: number }) => {
       const yamlContent = selectedIsYaml && selectedFile
@@ -564,6 +628,16 @@ function App() {
       setProjectPath(cwd)
       localStorage.setItem('swarm-project-path', cwd)
     })
+  }, [])
+
+  // Initialize theme manager and subscribe to changes
+  useEffect(() => {
+    const cleanup = initThemeManager()
+    const unsubscribe = onThemeChange(setEffectiveTheme)
+    return () => {
+      cleanup()
+      unsubscribe()
+    }
   }, [])
 
   // Detect agent state transitions and fire toasts
@@ -1110,7 +1184,7 @@ function App() {
             ) : selectedIsOutputRun && selectedFile ? (
               <OutputRunViewer folderPath={selectedFile} onOpenFile={handleSelectFile} />
             ) : selectedFile && !selectedIsYaml ? (
-              <MonacoFileEditor filePath={selectedFile} />
+              <MonacoFileEditor filePath={selectedFile} theme={effectiveTheme} />
             ) : (
               <>
                 <div className="p-3 border-b border-border">
@@ -1141,12 +1215,15 @@ function App() {
                     onDeleteTask={handleDeleteTask}
                     onDeleteEdge={handleDeleteEdge}
                     onRunTask={handleRunTask}
+                    onDuplicateTask={handleDuplicateTask}
                     onCreateTask={handleCreateTask}
                     onDropCreateTask={handleDropCreateTask}
                     savedPositions={nodePositions}
                     onPositionsChange={handlePositionsChange}
                     onResetLayout={handleResetLayout}
                     onFitViewReady={handleFitViewReady}
+                    theme={effectiveTheme}
+                    onToast={addToast}
                   />
                 </ReactFlowProvider>
               </>
