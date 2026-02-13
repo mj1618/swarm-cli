@@ -56,6 +56,12 @@ contextBridge.exposeInMainWorld('workspace', {
   open: () => ipcRenderer.invoke('workspace:open'),
 })
 
+contextBridge.exposeInMainWorld('recent', {
+  get: () => ipcRenderer.invoke('recent:get'),
+  add: (projectPath: string) => ipcRenderer.invoke('recent:add', projectPath),
+  clear: () => ipcRenderer.invoke('recent:clear'),
+})
+
 contextBridge.exposeInMainWorld('electronMenu', {
   on: (channel: string, callback: () => void) => {
     const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project', 'menu:keyboard-shortcuts', 'menu:about']
@@ -162,6 +168,12 @@ export type WorkspaceAPI = {
   open: () => Promise<{ path: string | null; error?: string }>
 }
 
+export type RecentAPI = {
+  get: () => Promise<string[]>
+  add: (projectPath: string) => Promise<string[]>
+  clear: () => Promise<void>
+}
+
 export type ElectronMenuAPI = {
   on: (channel: string, callback: () => void) => () => void
 }
@@ -212,6 +224,7 @@ declare global {
     notify: NotifyAPI
     dialog: DialogAPI
     workspace: WorkspaceAPI
+    recent: RecentAPI
     electronMenu: ElectronMenuAPI
   }
 }
