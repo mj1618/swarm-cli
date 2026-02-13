@@ -328,7 +328,7 @@ ipcMain.handle('logs:unwatch', async () => {
 })
 
 // Settings IPC handlers — read/write swarm config from swarm/.swarm.toml
-const configFilePath = path.join(swarmRoot, '.swarm.toml')
+const configFilePath = path.join(swarmRoot, 'swarm.toml')
 
 export interface SwarmConfig {
   backend: string
