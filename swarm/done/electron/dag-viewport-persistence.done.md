@@ -78,3 +78,37 @@ const savedViewport = useMemo(() => {
 - The localStorage key should include the file path to support different viewports for different YAML files
 - React Flow's `onMoveEnd` is preferred over `onMove` for performance (fewer writes)
 - Default to `fitView` behavior if no saved viewport exists (current behavior)
+
+---
+
+## Completion Notes
+
+**Completed by:** a070434f  
+**Date:** 2026-02-13
+
+### Implementation Summary
+
+1. **App.tsx changes:**
+   - Added `getViewportKey()` and `loadViewport()` helper functions following the same pattern as position persistence
+   - Added `ViewportState` interface for type safety
+   - Added `savedViewport` state initialized from localStorage
+   - Added `handleViewportChange()` callback to persist viewport to localStorage
+   - Updated `handleResetLayout()` to also clear saved viewport from state and localStorage
+   - Passed new props (`savedViewport`, `onViewportChange`) to DagCanvas
+
+2. **DagCanvas.tsx changes:**
+   - Added `ViewportState` interface and new props to `DagCanvasProps`
+   - Added `onMoveEnd` handler to persist viewport state when user finishes panning/zooming
+   - Used `defaultViewport` prop on ReactFlow when saved viewport exists
+   - Conditionally disabled `fitView` when a saved viewport exists (`fitView={!savedViewport}`)
+   - Added `setViewport` call in useEffect for restoring viewport when switching between files
+   - Used `viewportRestoredRef` to prevent duplicate viewport restoration
+
+### All Acceptance Criteria Met:
+- Zooming/panning saves viewport state via `onMoveEnd`
+- Saved viewport is restored when reopening the same file
+- Different files have separate viewport states (keyed by file path)
+- "Reset Layout" clears both positions AND viewport
+- "Fit to View" (F key) still works and saves the new fitted viewport
+- Build passes with no errors
+- Using `onMoveEnd` for performance (no debounce needed)
