@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor'
+import { marked } from 'marked'
 import {
   isSwarmYaml,
   createCompletionProvider,
@@ -95,6 +96,10 @@ function isPromptFile(filePath: string): boolean {
   return filePath.includes('/prompts/') && filePath.endsWith('.md')
 }
 
+function isMarkdownFile(filePath: string): boolean {
+  return filePath.toLowerCase().endsWith('.md')
+}
+
 /** Track whether YAML IntelliSense providers have been registered (global, once per language) */
 let yamlProvidersRegistered = false
 
@@ -187,7 +192,18 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
   const fileName = filePath.split('/').pop() || filePath
   const readOnly = isReadOnly(filePath)
   const isPrompt = isPromptFile(filePath)
+  const isMarkdown = isMarkdownFile(filePath)
   const isDirty = content !== null && savedContent !== null && content !== savedContent
+
+  // Render markdown content to HTML for preview
+  const renderedMarkdown = useMemo(() => {
+    if (!content || !showPreview || !isMarkdown) return ''
+    try {
+      return marked(content)
+    } catch {
+      return '<p class="text-red-400">Failed to render markdown</p>'
+    }
+  }, [content, showPreview, isMarkdown])
   isDirtyRef.current = isDirty
 
   // Report dirty state changes to parent
