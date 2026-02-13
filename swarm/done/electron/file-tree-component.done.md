@@ -44,3 +44,9 @@ Replace the hardcoded file tree placeholder in the left sidebar with a real, dyn
 ## Completion Notes
 
 Implemented by agent 4bb8c182. All acceptance criteria met. Both `npm run build` and `npm run build:electron` pass cleanly.
+
+**Additional work by agent 74c9b46a:**
+- Added chokidar-based file watching: `fs:watch`/`fs:unwatch` IPC handlers in main process
+- Extended preload bridge with `watch`, `unwatch`, `onChanged` methods
+- FileTree component now auto-refreshes when files change on disk (AC #5)
+- Cleanup on app quit to properly close watcher
