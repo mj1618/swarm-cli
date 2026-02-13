@@ -13,8 +13,12 @@
     "package": "npm run build && npm run build:electron && electron-builder",
     "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit",
     "lint": "eslint src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:ui": "vitest --ui",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "keywords": [
     "electron",
@@ -70,6 +74,7 @@
   "build": {
     "appId": "com.swarm.desktop",
     "productName": "Swarm Desktop",
+    "icon": "build/icon",
     "directories": {
       "output": "release"
     },
@@ -77,13 +82,16 @@
       "dist/**/*"
     ],
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "icon": "build/icon.icns"
     },
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "build/icon.ico"
     },
     "linux": {
-      "target": "AppImage"
+      "target": "AppImage",
+      "icon": "build/icons"
     }
   }
 }

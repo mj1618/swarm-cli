@@ -3,3 +3,5 @@ dist/
 release/
 *.log
 .DS_Store
+test-results/
+playwright-report/

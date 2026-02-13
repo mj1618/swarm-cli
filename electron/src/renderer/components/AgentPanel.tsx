@@ -236,7 +236,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
     })
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="agent-panel">
       {/* Header */}
       <div className="p-3 border-b border-border flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">Agents</h2>

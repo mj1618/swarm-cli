@@ -673,6 +673,7 @@ export default function DagCanvas({
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
+        data-testid="dag-canvas"
       >
         <div className="text-center max-w-md px-6">
           {/* Visual icon */}
@@ -739,6 +740,7 @@ export default function DagCanvas({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      data-testid="dag-canvas"
     >
       <ReactFlow
         nodes={nodes}
@@ -845,6 +847,7 @@ export default function DagCanvas({
             <button
               onClick={onCreateTask}
               className="px-3 py-1.5 text-xs font-medium rounded-md bg-primary text-primary-foreground hover:bg-primary/90 transition-colors"
+              data-testid="add-task-button"
             >
               + Add Task
             </button>
@@ -895,11 +898,13 @@ export default function DagCanvas({
           ref={contextMenuRef}
           className="fixed z-50 min-w-[140px] rounded-md border border-border bg-popover py-1 shadow-md"
           style={{ left: contextMenu.x, top: contextMenu.y }}
+          data-testid="task-context-menu"
         >
           {onRunTask && (
             <button
               className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-secondary/80 transition-colors"
               onClick={handleContextMenuRun}
+              data-testid="context-menu-run"
             >
               Run Task
             </button>
@@ -908,6 +913,7 @@ export default function DagCanvas({
             <button
               className="w-full px-3 py-1.5 text-left text-sm text-foreground hover:bg-secondary/80 transition-colors"
               onClick={handleContextMenuDuplicate}
+              data-testid="context-menu-duplicate"
             >
               Duplicate Task
             </button>
@@ -916,6 +922,7 @@ export default function DagCanvas({
             <button
               className="w-full px-3 py-1.5 text-left text-sm text-red-400 hover:bg-secondary/80 transition-colors"
               onClick={handleContextMenuDelete}
+              data-testid="context-menu-delete"
             >
               Delete Task
             </button>
@@ -925,7 +932,7 @@ export default function DagCanvas({
 
       {/* Delete confirmation dialog */}
       {deleteConfirm && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="delete-confirm-dialog">
           <div className="rounded-lg border border-border bg-card p-6 shadow-lg max-w-sm mx-4">
             <h3 className="text-sm font-semibold text-foreground mb-2">Delete task?</h3>
             <p className="text-sm text-muted-foreground mb-4">
@@ -935,6 +942,7 @@ export default function DagCanvas({
               <button
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
                 onClick={handleCancelDelete}
+                data-testid="delete-confirm-cancel"
               >
                 Cancel
               </button>
@@ -942,6 +950,7 @@ export default function DagCanvas({
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors"
                 onClick={handleConfirmDelete}
                 autoFocus
+                data-testid="delete-confirm-submit"
               >
                 Delete
               </button>

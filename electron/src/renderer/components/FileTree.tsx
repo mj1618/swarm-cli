@@ -253,7 +253,7 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="file-tree">
       <div className="p-3 border-b border-border flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">Files</h2>
         <div className="flex items-center gap-1">
