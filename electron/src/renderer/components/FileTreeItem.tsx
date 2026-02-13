@@ -276,7 +276,9 @@ export default function FileTreeItem({
         />
       ) : (
         <div
-          className={`flex items-center py-0.5 px-1 rounded cursor-pointer text-sm select-none ${
+          className={`flex items-center py-0.5 px-1 rounded text-sm select-none ${
+            isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+          } ${
             isSelected
               ? 'bg-accent text-accent-foreground'
               : 'hover:bg-accent/50 text-muted-foreground'

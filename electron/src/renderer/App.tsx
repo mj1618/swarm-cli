@@ -120,6 +120,51 @@ function App() {
     setSelectedTask({ name: '', def: { prompt: '' }, compose })
   }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent])
 
+  const handleDropCreateTask = useCallback(async (promptName: string, position: { x: number; y: number }) => {
+    const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
+    if (!yamlContent) return
+
+    const compose = parseComposeFile(yamlContent)
+
+    // Determine unique task name; warn on duplicate
+    let taskName = promptName
+    if (compose.tasks?.[taskName]) {
+      addToast('warning', `Task "${promptName}" already exists — creating "${promptName}" with a new name`)
+      let counter = 2
+      while (compose.tasks?.[`${promptName}-${counter}`]) counter++
+      taskName = `${promptName}-${counter}`
+    }
+
+    // Add the new task
+    if (!compose.tasks) compose.tasks = {}
+    compose.tasks[taskName] = { prompt: promptName }
+
+    const yamlStr = serializeCompose(compose)
+    const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+    const result = await window.fs.writefile(filePath, yamlStr)
+    if (result.error) {
+      console.error('Failed to save:', result.error)
+      return
+    }
+
+    // Save the drop position
+    const newPositions = { ...nodePositions, [taskName]: position }
+    handlePositionsChange(newPositions)
+
+    // Reload YAML to refresh the DAG
+    if (selectedIsYaml && selectedFile) {
+      const reloaded = await window.fs.readfile(selectedFile)
+      if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+    } else {
+      const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+      if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+    }
+
+    // Open the task drawer for the new task
+    const updatedCompose = { ...compose }
+    setSelectedTask({ name: taskName, def: { prompt: promptName }, compose: updatedCompose })
+  }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, nodePositions, handlePositionsChange, addToast])
+
   const handleCloseDrawer = useCallback(() => {
     setSelectedTask(null)
   }, [])
@@ -364,6 +409,17 @@ function App() {
         }
 
         addToast(type, msg)
+
+        // Fire system notification if enabled
+        const notificationsEnabled = localStorage.getItem('swarm-system-notifications') !== 'false'
+        if (notificationsEnabled && agent.exit_reason !== 'killed') {
+          const isFailed = agent.exit_reason === 'crashed'
+          const costStr = agent.total_cost_usd != null ? ` — $${agent.total_cost_usd.toFixed(2)}` : ''
+          window.notify.send({
+            title: isFailed ? 'Agent failed' : 'Agent completed',
+            body: `${label} — ${agent.current_iteration}/${agent.iterations} iterations${costStr}`,
+          })
+        }
       }
     }
 
@@ -567,6 +623,7 @@ function App() {
                   onSelectTask={handleSelectTask}
                   onAddDependency={handleAddDependency}
                   onCreateTask={handleCreateTask}
+                  onDropCreateTask={handleDropCreateTask}
                   savedPositions={nodePositions}
                   onPositionsChange={handlePositionsChange}
                   onResetLayout={handleResetLayout}

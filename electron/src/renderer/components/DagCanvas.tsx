@@ -37,6 +37,7 @@ interface DagCanvasProps {
   onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
   onAddDependency?: (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => void
   onCreateTask?: () => void
+  onDropCreateTask?: (promptName: string, position: { x: number; y: number }) => void
   savedPositions?: Record<string, { x: number; y: number }>
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
   onResetLayout?: () => void
@@ -62,6 +63,7 @@ export default function DagCanvas({
   onSelectTask,
   onAddDependency,
   onCreateTask,
+  onDropCreateTask,
   savedPositions,
   onPositionsChange,
   onResetLayout,
@@ -152,6 +154,9 @@ export default function DagCanvas({
     })
   }, [enrichedNodes, activePipeline, pipelineTasks])
 
+  // Drop target visual indicator
+  const [isDragOver, setIsDragOver] = useState(false)
+
   // Local node state for drag interactions
   const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(filteredNodes)
 
@@ -194,7 +199,7 @@ export default function DagCanvas({
 
   // Connection dialog state
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
-  const { flowToScreenPosition } = useReactFlow()
+  const { flowToScreenPosition, screenToFlowPosition } = useReactFlow()
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -269,8 +274,39 @@ export default function DagCanvas({
     )
   }
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/swarm-prompt')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when leaving the container (not entering a child)
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as globalThis.Node)) {
+      setIsDragOver(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const promptName = e.dataTransfer.getData('application/swarm-prompt')
+    if (promptName && onDropCreateTask) {
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      onDropCreateTask(promptName, position)
+    }
+  }, [onDropCreateTask, screenToFlowPosition])
+
   return (
-    <div className="flex-1" style={{ minHeight: 0 }}>
+    <div
+      className={`flex-1 transition-colors ${isDragOver ? 'ring-2 ring-inset ring-blue-500/50 bg-blue-500/5' : ''}`}
+      style={{ minHeight: 0 }}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
       <ReactFlow
         nodes={nodes}
         edges={edges}
