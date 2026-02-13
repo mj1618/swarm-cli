@@ -29,7 +29,7 @@ export function isSwarmYaml(filePath: string): boolean {
 }
 
 /** Extract all task names from YAML content using line-based heuristics */
-function extractTaskNames(content: string): string[] {
+export function extractTaskNames(content: string): string[] {
   const lines = content.split('\n')
   const names: string[] = []
   let inTasksBlock = false

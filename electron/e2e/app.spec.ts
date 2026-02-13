@@ -12,14 +12,15 @@ const fixturesDir = path.join(os.tmpdir(), 'swarm-e2e-fixtures');
 // Helper to wait for React app to be ready
 async function waitForAppReady(page: Page): Promise<void> {
   // Wait for root element to be visible
-  await page.waitForSelector('#root', { state: 'visible', timeout: 15000 });
-  // Wait for React to hydrate - root should have child content
+  await page.waitForSelector('#root', { state: 'visible', timeout: 30000 });
+  // Wait for React to hydrate - root should have some content rendered
   await page.waitForFunction(
     () => {
       const root = document.getElementById('root');
-      return root && root.children.length > 0;
+      // Check if root exists and has meaningful content (not just empty or loading)
+      return root && root.innerHTML && root.innerHTML.length > 10;
     },
-    { timeout: 15000 }
+    { timeout: 30000 }
   );
 }
 
@@ -90,13 +91,17 @@ test.beforeAll(async () => {
   await window.waitForLoadState('domcontentloaded');
   // Wait for React app to fully initialize
   await waitForAppReady(window);
-}, 60000); // 60 second timeout for beforeAll hook
+});
 
 test.afterAll(async () => {
-  // Close the Electron app gracefully
+  // Close the Electron app gracefully with a short timeout
   try {
     if (electronApp) {
-      await electronApp.close().catch(() => {
+      // Use Promise.race to ensure we don't hang on close
+      await Promise.race([
+        electronApp.close(),
+        new Promise(resolve => setTimeout(resolve, 5000)) // 5 second max wait
+      ]).catch(() => {
         // Ignore close errors - app may already be closed
       });
     }

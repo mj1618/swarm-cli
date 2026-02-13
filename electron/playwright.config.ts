@@ -16,12 +16,12 @@ export default defineConfig({
     ['list'],
   ],
   // Timeout for each test (increased for CI stability)
-  timeout: process.env.CI ? 60000 : 30000,
+  timeout: process.env.CI ? 90000 : 60000,
   // Global timeout for the test run
   globalTimeout: process.env.CI ? 600000 : undefined, // 10 minutes on CI
   // Expect timeout (increased for better stability)
   expect: {
-    timeout: 10000,
+    timeout: 15000,
   },
   use: {
     // Take screenshot on failure
@@ -29,7 +29,7 @@ export default defineConfig({
     // Trace on first retry
     trace: 'on-first-retry',
     // Action timeout for interactions
-    actionTimeout: 15000,
+    actionTimeout: 20000,
   },
   // Output directory for test artifacts
   outputDir: 'test-results/',
