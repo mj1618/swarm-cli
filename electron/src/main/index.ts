@@ -329,6 +329,8 @@ ipcMain.handle('fs:createfile', async (_event, filePath: string): Promise<{ erro
     if (!isWithinSwarmDir(resolved)) {
       return { error: 'Access denied: path outside swarm/ directory' }
     }
+    // Ensure parent directory exists
+    await fs.mkdir(path.dirname(resolved), { recursive: true })
     await fs.writeFile(resolved, '', 'utf-8')
     return {}
   } catch (err: any) {
@@ -673,10 +675,18 @@ ipcMain.handle('settings:write', async (_event, updates: { backend?: string; mod
       }
     }
     if (updates.backend !== undefined) {
-      content = content.replace(/^(backend\s*=\s*)"[^"]*"/m, `$1"${updates.backend}"`)
+      if (/^backend\s*=/m.test(content)) {
+        content = content.replace(/^(backend\s*=\s*)"[^"]*"/m, `$1"${updates.backend}"`)
+      } else {
+        content = `backend = "${updates.backend}"\n` + content
+      }
     }
     if (updates.model !== undefined) {
-      content = content.replace(/^(model\s*=\s*)"[^"]*"/m, `$1"${updates.model}"`)
+      if (/^model\s*=/m.test(content)) {
+        content = content.replace(/^(model\s*=\s*)"[^"]*"/m, `$1"${updates.model}"`)
+      } else {
+        content = `model = "${updates.model}"\n` + content
+      }
     }
     await fs.writeFile(getConfigFilePath(), content, 'utf-8')
     return {}
