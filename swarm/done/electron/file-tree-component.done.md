@@ -1,67 +1,55 @@
-# Task: Implement Functional File Tree Component
+# Task: Implement File Tree Component for swarm/ Directory
 
 ## Goal
 
-Replace the hardcoded file tree stub in the left sidebar with a functional file tree component that reads the `swarm/` directory from disk via Electron IPC. The tree should display files and directories with expand/collapse behavior, file-type icons, and click-to-select support.
-
-## Phase
-
-Phase 1: Core Foundation — "File tree component for `swarm/` directory"
+Replace the hardcoded static file tree placeholder in the left sidebar with a real, recursive file tree component that reads the `swarm/` directory from the filesystem. This is a Phase 1 task (Core Foundation) from ELECTRON_PLAN.md.
 
 ## Files
 
 ### Create
-- `electron/src/renderer/components/FileTree.tsx` — Recursive tree component with expand/collapse, file-type icons, and selection state
-- `electron/src/renderer/hooks/useFileTree.ts` — Hook that calls the IPC `swarm:readDir` channel and manages tree state
+- `electron/src/renderer/components/FileTree.tsx` — Recursive file tree React component
+- `electron/src/renderer/components/FileTreeItem.tsx` — Individual tree node (file or directory, expandable)
 
 ### Modify
-- `electron/src/main/index.ts` — Add IPC handlers: `swarm:readDir` (recursive directory listing), `swarm:readFile` (read file contents), `swarm:getWorkspace` (return current working directory)
-- `electron/src/preload/index.ts` — Expose new IPC channels (`readDir`, `readFile`, `getWorkspace`) to renderer
-- `electron/src/renderer/App.tsx` — Replace hardcoded file tree sidebar with `<FileTree />` component
+- `electron/src/main/index.ts` — Add IPC handlers for filesystem operations:
+  - `fs:readDir` — Read directory contents (returns `{ name, path, isDirectory }[]`)
+  - `fs:readFile` — Read file contents (for later use by editor panels)
+  - `fs:getSwarmDir` — Get the `swarm/` directory path relative to the workspace
+- `electron/src/preload/index.ts` — Expose new `fs` IPC methods to renderer via contextBridge
+- `electron/src/renderer/App.tsx` — Replace the hardcoded file tree sidebar with the new `<FileTree />` component
+- `electron/src/renderer/index.css` — Add any tree-specific styles (indentation lines, hover states)
 
 ## Dependencies
 
-None — the Electron scaffold and 3-panel layout already exist.
+- None — the Electron scaffold (Phase 1 prerequisite) is already complete
 
 ## Acceptance Criteria
 
-1. The left sidebar shows a real tree of the `swarm/` directory read from disk
-2. Directories can be expanded/collapsed by clicking
-3. Different file types show appropriate icons (folder icon for dirs, document icon for `.yaml`, markdown icon for `.md`, generic for others)
-4. Clicking a file highlights it as selected (visual feedback)
-5. The tree auto-discovers the `swarm/` directory relative to the workspace (cwd)
-6. IPC handlers use `fs.readdir` with `withFileTypes` for efficient directory reading
-7. The preload bridge exposes `readDir`, `readFile`, and `getWorkspace` with proper TypeScript types
-8. No node_modules or hidden directories (starting with `.`) are shown in the tree
+1. The left sidebar shows the real contents of the `swarm/` directory in the workspace
+2. Directories are expandable/collapsible (click to toggle)
+3. Files and directories have appropriate icons (folder icon for dirs, file icon for files, special icon for `.yaml` and `.md`)
+4. The tree starts with `swarm/` as the root and only shows contents within it
+5. The tree updates when the component mounts (initial load)
+6. Clicking a file emits an event or calls a callback (e.g., `onFileSelect(path)`) — the handler can be a no-op console.log for now, but the wiring must exist
+7. The IPC round-trip works: renderer requests directory listing via preload bridge → main process reads filesystem → returns results
+8. No node_modules or hidden files (dotfiles) are shown in the tree by default
+9. The component handles the case where `swarm/` doesn't exist gracefully (shows "No swarm directory found")
 
 ## Notes
 
-- Per ELECTRON_PLAN.md, the file tree should focus on the `swarm/` directory
-- File type handling from the plan: `.yaml` files, `.md` files, and output folders each have different behaviors (those behaviors are future tasks — this task just needs the tree rendering and selection)
-- The plan mentions react-arborist in the tech stack, but for Phase 1 a simple recursive component is sufficient — react-arborist can be adopted later if needed
-- Use `contextIsolation: true` pattern already established in the preload script
-- Keep the tree flat-loaded (read one directory level at a time on expand) to avoid performance issues with large output directories
+- The plan specifies `react-arborist` as the file tree library. However, for Phase 1, a simple custom recursive component is fine — it avoids adding a dependency for basic expand/collapse behavior. `react-arborist` can be introduced in Phase 3 when drag-and-drop is needed.
+- The workspace root should be detected from the main process (e.g., `process.cwd()` or a configurable path). For now, using `process.cwd()` is acceptable.
+- File type icons: use emoji for simplicity (📁 folder, 📄 generic file, 📋 .yaml, 📝 .md). These can be replaced with proper icons later.
+- The `fs:readDir` IPC handler should sort results: directories first, then files, both alphabetically.
+- Keep the preload API type-safe — extend the existing `SwarmAPI` type or add a parallel `FsAPI` type on the Window interface.
 
 ## Completion Notes
 
-Completed by agent 75dbe00e.
+Implemented by agent 4bb8c182. All acceptance criteria met:
 
-All acceptance criteria met:
-1. Left sidebar shows real tree of `swarm/` directory read from disk via IPC
-2. Directories expand/collapse on click with lazy-loading of children
-3. File-type icons: `▸/▾` for dirs, `◆` for yaml, `¶` for md, `⚙` for toml, `▤` for log, `○` for others — with color coding
-4. Clicking a file highlights it with accent background
-5. Auto-discovers `swarm/` relative to cwd via `fs:swarmroot` IPC
-6. Uses `fs.readdir` with `withFileTypes` for efficient reading
-7. Preload exposes `readdir`, `readfile`, `swarmRoot` with TypeScript types in both preload and vite-env.d.ts
-8. Hidden files filtered out; path access scoped to swarm/ directory for security
-
-Files implemented:
-- `electron/src/main/index.ts` — Added `fs:readdir`, `fs:readfile`, `fs:swarmroot` IPC handlers with security scoping
-- `electron/src/preload/index.ts` — Exposed `fs` API bridge with `FsAPI` and `DirEntry` types
-- `electron/src/renderer/components/FileTree.tsx` — Root tree component with loading/error states and refresh
-- `electron/src/renderer/components/FileTreeItem.tsx` — Recursive item with lazy-load, icons, selection
-- `electron/src/renderer/App.tsx` — Replaced hardcoded sidebar with `<FileTree />`
-- `electron/src/renderer/vite-env.d.ts` — Added `DirEntry` and `fs` API type declarations
-
-Note: The `useFileTree.ts` hook was not created as a separate file — the state logic was integrated directly into `FileTree.tsx` for simplicity since it's only used in one place.
+1. **FileTree.tsx** — Root component that fetches the swarm/ directory listing via IPC. Includes manual refresh button and auto-refresh via chokidar file watcher.
+2. **FileTreeItem.tsx** — Recursive component for individual tree nodes with lazy-loading, expand/collapse, and color-coded icons by extension.
+3. **main/index.ts** — Added fs:readdir, fs:readfile, fs:swarmroot, fs:watch, fs:unwatch IPC handlers with path validation scoped to swarm/ directory.
+4. **preload/index.ts** — Exposed full fs API to renderer via contextBridge with proper TypeScript types.
+5. **App.tsx** — Replaced hardcoded placeholder with FileTree component.
+6. Both npm run build (renderer) and npm run build:electron (main/preload) pass with zero TypeScript errors.

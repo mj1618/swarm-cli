@@ -36,7 +36,7 @@ export default function FileTree() {
   useEffect(() => {
     loadRoot()
 
-    // Start watching for filesystem changes and auto-refresh
+    // Start watching for filesystem changes and auto-refresh the tree
     window.fs.watch()
     const unsubscribe = window.fs.onChanged(() => {
       loadRoot()
