@@ -640,10 +640,14 @@ function App() {
       addToast('warning', `No swarm/ directory found in ${result.path}`)
       setProjectPath(result.path)
       localStorage.setItem('swarm-project-path', result.path)
+      // Still add to recents even without swarm/ dir
+      await window.recent.add(result.path)
       return
     }
     setProjectPath(result.path)
     localStorage.setItem('swarm-project-path', result.path)
+    // Add to recent projects
+    await window.recent.add(result.path)
     // Reset state for new workspace
     setSelectedFile(null)
     setSelectedTask(null)
@@ -854,24 +858,48 @@ function App() {
       id: 'pause-all',
       name: 'Pause all agents',
       description: 'Pause every running agent',
-      action: () => {
-        agents.filter(a => a.status === 'running' && !a.paused).forEach(a => window.swarm.pause(a.id))
+      action: async () => {
+        const toPause = agents.filter(a => a.status === 'running' && !a.paused)
+        if (toPause.length === 0) return
+        const results = await Promise.all(toPause.map(a => window.swarm.pause(a.id)))
+        const failed = results.filter(r => r.code !== 0).length
+        if (failed > 0) {
+          addToast('error', `Failed to pause ${failed} agent(s)`)
+        } else {
+          addToast('success', `Paused ${toPause.length} agent(s)`)
+        }
       },
     })
     cmds.push({
       id: 'resume-all',
       name: 'Resume all agents',
       description: 'Resume all paused agents',
-      action: () => {
-        agents.filter(a => a.paused).forEach(a => window.swarm.resume(a.id))
+      action: async () => {
+        const toResume = agents.filter(a => a.paused)
+        if (toResume.length === 0) return
+        const results = await Promise.all(toResume.map(a => window.swarm.resume(a.id)))
+        const failed = results.filter(r => r.code !== 0).length
+        if (failed > 0) {
+          addToast('error', `Failed to resume ${failed} agent(s)`)
+        } else {
+          addToast('success', `Resumed ${toResume.length} agent(s)`)
+        }
       },
     })
     cmds.push({
       id: 'kill-all',
       name: 'Kill all agents',
       description: 'Stop all running agents',
-      action: () => {
-        agents.filter(a => a.status === 'running').forEach(a => window.swarm.kill(a.id))
+      action: async () => {
+        const toKill = agents.filter(a => a.status === 'running')
+        if (toKill.length === 0) return
+        const results = await Promise.all(toKill.map(a => window.swarm.kill(a.id)))
+        const failed = results.filter(r => r.code !== 0).length
+        if (failed > 0) {
+          addToast('error', `Failed to stop ${failed} agent(s)`)
+        } else {
+          addToast('success', `Stopped ${toKill.length} agent(s)`)
+        }
       },
     })
     cmds.push({
@@ -940,13 +968,27 @@ function App() {
       cmds.push({
         id: `kill-${a.id}`,
         name: `Kill agent: ${a.name || a.id.slice(0, 8)}`,
-        action: () => { window.swarm.kill(a.id) },
+        action: async () => {
+          const result = await window.swarm.kill(a.id)
+          if (result.code !== 0) {
+            addToast('error', `Failed to stop agent: ${result.stderr}`)
+          } else {
+            addToast('success', 'Agent stopped')
+          }
+        },
       })
       if (!a.paused) {
         cmds.push({
           id: `pause-${a.id}`,
           name: `Pause agent: ${a.name || a.id.slice(0, 8)}`,
-          action: () => { window.swarm.pause(a.id) },
+          action: async () => {
+            const result = await window.swarm.pause(a.id)
+            if (result.code !== 0) {
+              addToast('error', `Failed to pause agent: ${result.stderr}`)
+            } else {
+              addToast('success', 'Agent paused')
+            }
+          },
         })
       }
     })
@@ -954,7 +996,14 @@ function App() {
       cmds.push({
         id: `resume-${a.id}`,
         name: `Resume agent: ${a.name || a.id.slice(0, 8)}`,
-        action: () => { window.swarm.resume(a.id) },
+        action: async () => {
+          const result = await window.swarm.resume(a.id)
+          if (result.code !== 0) {
+            addToast('error', `Failed to resume agent: ${result.stderr}`)
+          } else {
+            addToast('success', 'Agent resumed')
+          }
+        },
       })
     })
 
