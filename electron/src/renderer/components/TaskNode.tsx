@@ -97,6 +97,7 @@ export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
     <div
       className={`bg-card border rounded-lg shadow-lg min-w-[180px] cursor-pointer transition-colors relative ${borderClass}`}
       title={isInCycle ? 'This task is part of a dependency cycle' : isOrphan ? 'This task has dependencies but is not in any pipeline' : undefined}
+      data-testid={`task-node-${data.label}`}
     >
       {/* Progress ring for running agents */}
       {showProgressRing && <ProgressRing progress={progress} />}

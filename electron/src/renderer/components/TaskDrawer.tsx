@@ -206,6 +206,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
                     ? 'bg-primary/20 border-primary text-primary'
                     : 'border-border text-muted-foreground hover:text-foreground'
                 }`}
+                data-testid={`prompt-type-${pt}`}
               >
                 {pt}
               </button>

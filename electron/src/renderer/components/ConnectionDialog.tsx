@@ -42,6 +42,7 @@ export default function ConnectionDialog({ sourceTask, targetTask, position, onS
       ref={ref}
       className="fixed z-50 bg-card border border-border rounded-lg shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150"
       style={{ left: position.x, top: position.y, transform: 'translate(-50%, -50%)' }}
+      data-testid="connection-dialog"
     >
       <p className="text-[10px] text-muted-foreground mb-2 text-center">
         {sourceTask} &rarr; {targetTask}
@@ -52,6 +53,7 @@ export default function ConnectionDialog({ sourceTask, targetTask, position, onS
             key={value}
             onClick={() => onSelect(value)}
             className={`text-[11px] font-medium px-2.5 py-1 rounded border transition-colors ${color}`}
+            data-testid={`condition-${value}`}
           >
             {label}
           </button>
