@@ -4,6 +4,7 @@ import FileTree from './components/FileTree'
 import FileViewer from './components/FileViewer'
 import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
+import ConsolePanel from './components/ConsolePanel'
 
 function isYamlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase()
@@ -113,13 +114,7 @@ function App() {
 
       {/* Bottom - Console */}
       <div className="h-48 border-t border-border bg-background flex flex-col">
-        <div className="p-2 border-b border-border">
-          <h2 className="text-sm font-semibold text-foreground">Console</h2>
-        </div>
-        <div className="flex-1 p-2 font-mono text-xs text-muted-foreground overflow-auto">
-          <div>Welcome to Swarm Desktop</div>
-          <div className="text-green-400">✓ Ready</div>
-        </div>
+        <ConsolePanel />
       </div>
     </div>
   )
