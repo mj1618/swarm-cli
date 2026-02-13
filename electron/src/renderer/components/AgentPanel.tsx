@@ -7,6 +7,7 @@ export default function AgentPanel() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(true)
+  const [expandedAgentId, setExpandedAgentId] = useState<string | null>(null)
 
   const loadAgents = useCallback(async () => {
     try {
@@ -101,6 +102,8 @@ export default function AgentPanel() {
                   <AgentCard
                     key={agent.id}
                     agent={agent}
+                    expanded={expandedAgentId === agent.id}
+                    onToggleExpand={() => setExpandedAgentId(prev => prev === agent.id ? null : agent.id)}
                     onPause={handlePause}
                     onResume={handleResume}
                     onKill={handleKill}
@@ -123,6 +126,8 @@ export default function AgentPanel() {
                   <AgentCard
                     key={agent.id}
                     agent={agent}
+                    expanded={expandedAgentId === agent.id}
+                    onToggleExpand={() => setExpandedAgentId(prev => prev === agent.id ? null : agent.id)}
                     onPause={handlePause}
                     onResume={handleResume}
                     onKill={handleKill}
