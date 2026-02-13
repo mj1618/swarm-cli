@@ -26,21 +26,36 @@ function StatusIndicator({ status }: { status: AgentDisplayStatus }) {
 }
 
 export default function TaskNode({ data, selected }: NodeProps<TaskNodeType>) {
-  const { agentStatus, agentProgress, agentCost } = data
+  const { agentStatus, agentProgress, agentCost, isInCycle, isOrphan } = data
   const progressPct =
     agentProgress && agentProgress.total > 0
       ? Math.round((agentProgress.current / agentProgress.total) * 100)
       : 0
 
+  const borderClass = isInCycle
+    ? 'border-red-500 ring-2 ring-red-500/30 shadow-red-500/20'
+    : isOrphan
+      ? 'border-amber-500 ring-1 ring-amber-500/20'
+      : selected
+        ? 'border-primary ring-2 ring-primary/30'
+        : `border-border hover:border-primary/50 ${agentStatus === 'running' ? 'border-blue-500/50' : ''} ${agentStatus === 'failed' ? 'border-red-500/50' : ''} ${agentStatus === 'succeeded' ? 'border-green-500/50' : ''}`
+
   return (
-    <div className={`bg-card border rounded-lg shadow-lg min-w-[180px] overflow-hidden cursor-pointer transition-colors ${
-      selected ? 'border-primary ring-2 ring-primary/30' : 'border-border hover:border-primary/50'
-    } ${agentStatus === 'running' ? 'border-blue-500/50' : ''} ${agentStatus === 'failed' ? 'border-red-500/50' : ''} ${agentStatus === 'succeeded' ? 'border-green-500/50' : ''}`}>
+    <div
+      className={`bg-card border rounded-lg shadow-lg min-w-[180px] overflow-hidden cursor-pointer transition-colors relative ${borderClass}`}
+      title={isInCycle ? 'This task is part of a dependency cycle' : isOrphan ? 'This task has dependencies but is not in any pipeline' : undefined}
+    >
       <Handle
         type="target"
         position={Position.Top}
         className="!bg-primary !w-3 !h-1.5 !rounded-sm !border-0 hover:!bg-green-400 hover:!w-4 hover:!h-2 !transition-all"
       />
+
+      {isOrphan && (
+        <div className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-amber-500 flex items-center justify-center text-[8px] font-bold text-black z-10">
+          !
+        </div>
+      )}
 
       <div className="px-3 py-2 border-b border-border bg-primary/10">
         <div className="flex items-center gap-1.5">

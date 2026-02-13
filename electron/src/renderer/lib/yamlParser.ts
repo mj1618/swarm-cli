@@ -39,6 +39,8 @@ export interface TaskNodeData {
   agentStatus?: AgentDisplayStatus
   agentProgress?: { current: number; total: number }
   agentCost?: number
+  isInCycle?: boolean
+  isOrphan?: boolean
   [key: string]: unknown
 }
 

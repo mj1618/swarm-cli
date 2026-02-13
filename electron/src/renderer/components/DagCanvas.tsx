@@ -15,6 +15,8 @@ import TaskNode from './TaskNode'
 import ConnectionDialog from './ConnectionDialog'
 import { composeToFlow, parseComposeFile } from '../lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency, TaskNodeData, AgentDisplayStatus } from '../lib/yamlParser'
+import { validateDag } from '../lib/dagValidation'
+import type { ValidationResult } from '../lib/dagValidation'
 import type { AgentState } from '../../preload/index'
 
 const nodeTypes = { taskNode: TaskNode }
@@ -30,6 +32,8 @@ interface DagCanvasProps {
   loading: boolean
   error: string | null
   agents?: AgentState[]
+  activePipeline?: string | null
+  pipelineTasks?: string[] | null
   onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
   onAddDependency?: (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => void
   onCreateTask?: () => void
@@ -53,6 +57,8 @@ export default function DagCanvas({
   loading,
   error,
   agents,
+  activePipeline,
+  pipelineTasks,
   onSelectTask,
   onAddDependency,
   onCreateTask,
@@ -61,12 +67,13 @@ export default function DagCanvas({
   onResetLayout,
 }: DagCanvasProps) {
   // Parse YAML and compute dagre layout (with saved positions applied)
-  const { initialNodes, edges, parseError, compose } = useMemo(() => {
+  const { initialNodes, edges, parseError, compose, validation } = useMemo(() => {
     const empty = {
       initialNodes: [] as Node<TaskNodeData>[],
       edges: [] as Edge[],
       parseError: null as string | null,
       compose: null as ComposeFile | null,
+      validation: null as ValidationResult | null,
     }
     if (!yamlContent) return empty
     try {
@@ -75,7 +82,38 @@ export default function DagCanvas({
         return { ...empty, parseError: 'No tasks found in swarm.yaml' }
       }
       const result = composeToFlow(compose, savedPositions)
-      return { initialNodes: result.nodes, edges: result.edges, parseError: null, compose }
+      const validation = validateDag(compose)
+
+      // Inject validation state into node data
+      const nodesWithValidation = result.nodes.map(node => ({
+        ...node,
+        data: {
+          ...node.data,
+          isInCycle: validation.cycleNodes.has(node.id),
+          isOrphan: validation.orphanedTasks.has(node.id),
+        },
+      }))
+
+      // Override edge styles for cycle edges
+      const edgesWithValidation = result.edges.map(edge => {
+        if (validation.cycleEdges.has(edge.id)) {
+          return {
+            ...edge,
+            style: { stroke: '#ef4444', strokeWidth: 2.5 },
+            labelStyle: { ...edge.labelStyle, fill: '#ef4444' },
+            animated: true,
+          }
+        }
+        return edge
+      })
+
+      return {
+        initialNodes: nodesWithValidation,
+        edges: edgesWithValidation,
+        parseError: null,
+        compose,
+        validation,
+      }
     } catch (e) {
       return { ...empty, parseError: (e as Error).message }
     }
@@ -101,13 +139,26 @@ export default function DagCanvas({
     })
   }, [initialNodes, agents])
 
-  // Local node state for drag interactions
-  const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(enrichedNodes)
+  // Dim nodes not in the active pipeline
+  const filteredNodes = useMemo(() => {
+    if (!activePipeline || !pipelineTasks) return enrichedNodes
+    const taskSet = new Set(pipelineTasks)
+    return enrichedNodes.map(node => {
+      const inPipeline = taskSet.has(node.id)
+      return {
+        ...node,
+        style: inPipeline ? node.style : { ...node.style, opacity: 0.35 },
+      }
+    })
+  }, [enrichedNodes, activePipeline, pipelineTasks])
 
-  // Sync local state when nodes change (YAML reload, positions reset, or agent status update)
+  // Local node state for drag interactions
+  const [nodes, setNodes] = useState<Node<TaskNodeData>[]>(filteredNodes)
+
+  // Sync local state when nodes change (YAML reload, positions reset, agent status, or pipeline filter)
   useEffect(() => {
-    setNodes(enrichedNodes)
-  }, [enrichedNodes])
+    setNodes(filteredNodes)
+  }, [filteredNodes])
 
   const onNodesChange = useCallback(
     (changes: NodeChange<Node<TaskNodeData>>[]) => {
@@ -261,6 +312,24 @@ export default function DagCanvas({
             >
               + Add Task
             </button>
+          </Panel>
+        )}
+        {validation && (validation.cycleNodes.size > 0 || validation.orphanedTasks.size > 0) && (
+          <Panel position="top-left">
+            <div className="px-3 py-2 rounded-md bg-card/95 border border-border text-xs space-y-1 max-w-[300px]">
+              {validation.cycleNodes.size > 0 && (
+                <div className="flex items-start gap-1.5 text-red-400">
+                  <span className="shrink-0 mt-px">&#9888;</span>
+                  <span>Cycle detected: {[...validation.cycleNodes].join(', ')}</span>
+                </div>
+              )}
+              {validation.orphanedTasks.size > 0 && (
+                <div className="flex items-start gap-1.5 text-amber-400">
+                  <span className="shrink-0 mt-px">&#9888;</span>
+                  <span>Orphaned: {[...validation.orphanedTasks].join(', ')}</span>
+                </div>
+              )}
+            </div>
           </Panel>
         )}
       </ReactFlow>
