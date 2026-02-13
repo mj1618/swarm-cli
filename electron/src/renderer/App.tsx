@@ -57,7 +57,8 @@ function App() {
   const { toasts, addToast, removeToast } = useToasts()
   const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
 
-  // Console panel collapse/resize state
+  // Console panel tab + collapse/resize state
+  const [consoleActiveTab, setConsoleActiveTab] = useState<string>('console')
   const [consoleCollapsed, setConsoleCollapsed] = useState<boolean>(() => {
     return localStorage.getItem('swarm-console-collapsed') === 'true'
   })
@@ -540,6 +541,22 @@ function App() {
     prevAgentsRef.current = newMap
   }, [agents, addToast])
 
+  // Handle "View Log" from agent detail — switch console tab and expand
+  const handleViewLog = useCallback((logPath: string) => {
+    setConsoleActiveTab(logPath)
+    setConsoleCollapsed(prev => {
+      if (prev) {
+        localStorage.setItem('swarm-console-collapsed', 'false')
+        return false
+      }
+      return prev
+    })
+  }, [])
+
+  const handleFitViewReady = useCallback((fn: () => void) => {
+    fitViewRef.current = fn
+  }, [])
+
   // Console panel toggle
   const toggleConsole = useCallback(() => {
     setConsoleCollapsed(prev => {
@@ -823,7 +840,7 @@ function App() {
                   savedPositions={nodePositions}
                   onPositionsChange={handlePositionsChange}
                   onResetLayout={handleResetLayout}
-                  onFitViewReady={(fn) => { fitViewRef.current = fn }}
+                  onFitViewReady={handleFitViewReady}
                 />
               </ReactFlowProvider>
             </>
@@ -848,7 +865,7 @@ function App() {
           />
         ) : (
           <div className="w-72 border-l border-border bg-secondary/30 flex flex-col">
-            <AgentPanel />
+            <AgentPanel onViewLog={handleViewLog} onToast={addToast} />
           </div>
         )}
       </div>
@@ -875,7 +892,7 @@ function App() {
         </div>
         {!consoleCollapsed && (
           <div className="flex-1 min-h-0">
-            <ConsolePanel />
+            <ConsolePanel activeTab={consoleActiveTab} onActiveTabChange={setConsoleActiveTab} />
           </div>
         )}
       </div>
