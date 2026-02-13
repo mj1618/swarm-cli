@@ -46,6 +46,11 @@ contextBridge.exposeInMainWorld('notify', {
   send: (payload: { title: string; body: string }) => ipcRenderer.invoke('notify:send', payload),
 })
 
+contextBridge.exposeInMainWorld('dialog', {
+  saveFile: (options: { defaultName: string; content: string }) =>
+    ipcRenderer.invoke('dialog:saveFile', options),
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -132,6 +137,11 @@ export type NotifyAPI = {
   send: (payload: { title: string; body: string }) => Promise<void>
 }
 
+export type DialogAPI = {
+  saveFile: (options: { defaultName: string; content: string }) =>
+    Promise<{ error?: string; canceled?: boolean }>
+}
+
 export type StateAPI = {
   read: () => Promise<{ agents: AgentState[]; error?: string }>
   watch: () => Promise<void>
@@ -176,5 +186,6 @@ declare global {
     settings: SettingsAPI
     promptResolver: PromptAPI
     notify: NotifyAPI
+    dialog: DialogAPI
   }
 }

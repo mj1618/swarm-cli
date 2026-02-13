@@ -161,6 +161,19 @@ export default function ConsolePanel() {
           </button>
         </div>
         <button
+          onClick={async () => {
+            const tabName = activeTab === 'console' ? 'console' : tabLabel(activeFile?.name || 'log')
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+            const defaultName = `swarm-${tabName}-${timestamp}.log`
+            await window.dialog.saveFile({ defaultName, content: activeContent })
+          }}
+          disabled={!activeContent}
+          className="px-2 py-1 text-xs text-muted-foreground hover:text-foreground disabled:opacity-40"
+          title="Export logs to file"
+        >
+          Export
+        </button>
+        <button
           onClick={() => {
             if (activeTab === 'console') {
               setLogContents({})

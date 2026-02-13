@@ -1,6 +1,12 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import Editor, { type OnMount } from '@monaco-editor/react'
 import type * as monaco from 'monaco-editor'
+import {
+  isSwarmYaml,
+  createCompletionProvider,
+  createHoverProvider,
+  validateSwarmYaml,
+} from '../lib/yamlIntellisense'
 
 interface MonacoFileEditorProps {
   filePath: string
@@ -80,6 +86,9 @@ function isReadOnly(filePath: string): boolean {
 function isPromptFile(filePath: string): boolean {
   return filePath.includes('/prompts/') && filePath.endsWith('.md')
 }
+
+/** Track whether YAML IntelliSense providers have been registered (global, once per language) */
+let yamlProvidersRegistered = false
 
 /** Inject CSS for template decoration classes (once) */
 let stylesInjected = false
@@ -255,8 +264,10 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   }, [content, filePath, readOnly])
   saveRef.current = handleSave
 
+  const isSwarm = isSwarmYaml(filePath)
+
   // Register Cmd+S / Ctrl+S
-  const handleEditorMount: OnMount = useCallback((editor) => {
+  const handleEditorMount: OnMount = useCallback((editor, monacoInstance) => {
     editorRef.current = editor
 
     if (isPrompt) {
@@ -275,12 +286,43 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
       }
     }
 
+    // Register YAML IntelliSense providers (once globally) and per-file validation
+    if (isSwarm) {
+      if (!yamlProvidersRegistered) {
+        yamlProvidersRegistered = true
+
+        const getPromptNames = async (): Promise<string[]> => {
+          try {
+            const result = await window.fs.listprompts()
+            if (result.prompts) {
+              return result.prompts.map((p) => p.replace(/\.md$/, ''))
+            }
+          } catch {
+            // ignore
+          }
+          return []
+        }
+
+        monacoInstance.languages.registerCompletionItemProvider('yaml', createCompletionProvider(getPromptNames))
+        monacoInstance.languages.registerHoverProvider('yaml', createHoverProvider())
+      }
+
+      // Run validation on mount and on each change
+      const model = editor.getModel()
+      if (model) {
+        validateSwarmYaml(model.getValue(), monacoInstance, model)
+        model.onDidChangeContent(() => {
+          validateSwarmYaml(model.getValue(), monacoInstance, model)
+        })
+      }
+    }
+
     editor.addCommand(
       // Monaco KeyMod.CtrlCmd | Monaco KeyCode.KeyS
       2048 | 49, // CtrlCmd + KeyS
       () => { saveRef.current() },
     )
-  }, [isPrompt])
+  }, [isPrompt, isSwarm])
 
   const handleChange = useCallback((value: string | undefined) => {
     if (value !== undefined) {

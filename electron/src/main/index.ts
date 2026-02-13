@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, Notification } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Notification } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawn } from 'child_process'
@@ -459,6 +459,26 @@ ipcMain.handle('notify:send', async (_event, payload: { title: string; body: str
     }
   })
   notification.show()
+})
+
+// Dialog IPC handler — save file dialog for log export
+ipcMain.handle('dialog:saveFile', async (_event, options: { defaultName: string; content: string }) => {
+  const result = await dialog.showSaveDialog({
+    defaultPath: options.defaultName,
+    filters: [
+      { name: 'Log files', extensions: ['log', 'txt'] },
+      { name: 'All files', extensions: ['*'] },
+    ],
+  })
+  if (result.canceled || !result.filePath) {
+    return { canceled: true }
+  }
+  try {
+    await fs.writeFile(result.filePath, options.content, 'utf-8')
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
 })
 
 // Prompt resolution IPC handler — recursively expands {{include:path}} directives
