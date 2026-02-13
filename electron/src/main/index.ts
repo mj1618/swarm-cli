@@ -966,6 +966,36 @@ ipcMain.handle('dialog:saveFile', async (_event, options: { defaultName: string;
   }
 })
 
+// Dialog IPC handler — save image dialog for DAG export
+ipcMain.handle('dialog:saveImage', async (_event, options: { defaultName: string; dataUrl: string; format: 'png' | 'svg' }) => {
+  const filters = options.format === 'svg'
+    ? [{ name: 'SVG Image', extensions: ['svg'] }]
+    : [{ name: 'PNG Image', extensions: ['png'] }]
+
+  const result = await dialog.showSaveDialog({
+    defaultPath: options.defaultName,
+    filters,
+  })
+  if (result.canceled || !result.filePath) {
+    return { canceled: true }
+  }
+  try {
+    if (options.format === 'svg') {
+      // SVG data URL: data:image/svg+xml;charset=utf-8,...
+      const svgContent = decodeURIComponent(options.dataUrl.split(',')[1])
+      await fs.writeFile(result.filePath, svgContent, 'utf-8')
+    } else {
+      // PNG data URL: data:image/png;base64,...
+      const base64Data = options.dataUrl.split(',')[1]
+      const buffer = Buffer.from(base64Data, 'base64')
+      await fs.writeFile(result.filePath, buffer)
+    }
+    return {}
+  } catch (err: any) {
+    return { error: err.message }
+  }
+})
+
 // Prompt resolution IPC handler — recursively expands {{include:path}} directives
 ipcMain.handle('prompt:resolve', async (_event, filePath: string): Promise<{ content: string; error?: string }> => {
   try {

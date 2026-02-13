@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('notify', {
 contextBridge.exposeInMainWorld('dialog', {
   saveFile: (options: { defaultName: string; content: string }) =>
     ipcRenderer.invoke('dialog:saveFile', options),
+  saveImage: (options: { defaultName: string; dataUrl: string; format: 'png' | 'svg' }) =>
+    ipcRenderer.invoke('dialog:saveImage', options),
 })
 
 contextBridge.exposeInMainWorld('workspace', {
@@ -161,6 +163,8 @@ export type NotifyAPI = {
 
 export type DialogAPI = {
   saveFile: (options: { defaultName: string; content: string }) =>
+    Promise<{ error?: string; canceled?: boolean }>
+  saveImage: (options: { defaultName: string; dataUrl: string; format: 'png' | 'svg' }) =>
     Promise<{ error?: string; canceled?: boolean }>
 }
 
