@@ -1032,6 +1032,8 @@ function App() {
     const cleanups = [
       window.electronMenu.on('menu:settings', () => setSettingsOpen(true)),
       window.electronMenu.on('menu:toggle-console', toggleConsole),
+      window.electronMenu.on('menu:toggle-left-sidebar', toggleLeftSidebar),
+      window.electronMenu.on('menu:toggle-right-sidebar', toggleRightSidebar),
       window.electronMenu.on('menu:command-palette', () => setPaletteOpen(prev => !prev)),
       window.electronMenu.on('menu:open-project', handleOpenProject),
       window.electronMenu.on('menu:open-recent', (path: string) => handleOpenRecentProject(path)),
@@ -1039,7 +1041,7 @@ function App() {
       window.electronMenu.on('menu:about', () => setAboutOpen(true)),
     ]
     return () => { cleanups.forEach(fn => fn()) }
-  }, [toggleConsole, handleOpenProject, handleOpenRecentProject])
+  }, [toggleConsole, toggleLeftSidebar, toggleRightSidebar, handleOpenProject, handleOpenRecentProject])
 
   const currentCompose = useMemo(() => {
     const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent

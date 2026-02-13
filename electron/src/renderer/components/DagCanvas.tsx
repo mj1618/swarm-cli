@@ -34,6 +34,12 @@ interface PendingConnection {
   position: { x: number; y: number }
 }
 
+interface ViewportState {
+  x: number
+  y: number
+  zoom: number
+}
+
 interface DagCanvasProps {
   yamlContent: string | null
   loading: boolean
@@ -52,6 +58,8 @@ interface DagCanvasProps {
   onDropCreateTask?: (promptName: string, position: { x: number; y: number }) => void
   savedPositions?: Record<string, { x: number; y: number }>
   onPositionsChange?: (positions: Record<string, { x: number; y: number }>) => void
+  savedViewport?: ViewportState | null
+  onViewportChange?: (viewport: ViewportState) => void
   onResetLayout?: () => void
   onFitViewReady?: (fitView: () => void) => void
   onToast?: (type: ToastType, message: string) => void
@@ -86,6 +94,8 @@ export default function DagCanvas({
   onDropCreateTask,
   savedPositions,
   onPositionsChange,
+  savedViewport,
+  onViewportChange,
   onResetLayout,
   onFitViewReady,
   onToast,
@@ -297,7 +307,37 @@ export default function DagCanvas({
 
   // Connection dialog state
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
-  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes, setCenter, getZoom } = useReactFlow()
+  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes, setCenter, getZoom, setViewport, getViewport } = useReactFlow()
+
+  // Track if we've restored the viewport for this file (to avoid re-restoring after fitView)
+  const viewportRestoredRef = useRef(false)
+
+  // Restore saved viewport on mount (only once per file)
+  useEffect(() => {
+    if (savedViewport && !viewportRestoredRef.current && nodes.length > 0) {
+      // Delay slightly to ensure React Flow is fully initialized
+      const timer = setTimeout(() => {
+        setViewport(savedViewport, { duration: 0 })
+        viewportRestoredRef.current = true
+      }, 50)
+      return () => clearTimeout(timer)
+    }
+  }, [savedViewport, setViewport, nodes.length])
+
+  // Reset the viewport restored flag when savedViewport changes (i.e., switching files)
+  useEffect(() => {
+    viewportRestoredRef.current = false
+  }, [savedViewport])
+
+  // Handle viewport changes (pan/zoom end)
+  const handleMoveEnd = useCallback(
+    (_event: MouseEvent | TouchEvent | null, viewport: { x: number; y: number; zoom: number }) => {
+      if (onViewportChange) {
+        onViewportChange({ x: viewport.x, y: viewport.y, zoom: viewport.zoom })
+      }
+    },
+    [onViewportChange],
+  )
 
   useEffect(() => {
     if (onFitViewReady) {
@@ -701,8 +741,9 @@ export default function DagCanvas({
         nodeTypes={nodeTypes}
         onNodesChange={onNodesChange}
         onEdgesChange={onEdgesChange}
-        fitView
+        fitView={!savedViewport}
         fitViewOptions={{ padding: 0.3 }}
+        defaultViewport={savedViewport ?? undefined}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={true}
         nodesConnectable={true}
@@ -711,6 +752,7 @@ export default function DagCanvas({
         onNodeClick={handleNodeClick}
         onNodeContextMenu={handleNodeContextMenu}
         onConnect={handleConnect}
+        onMoveEnd={handleMoveEnd}
         deleteKeyCode={null}
         colorMode={theme}
       >
