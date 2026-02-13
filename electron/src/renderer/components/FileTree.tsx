@@ -29,6 +29,8 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
   const [filterQuery, setFilterQuery] = useState('')
   const filterInputRef = useRef<HTMLInputElement>(null)
   const [visibleRootChildren, setVisibleRootChildren] = useState<Set<string>>(new Set())
+  const [quickCreateMenu, setQuickCreateMenu] = useState<{ x: number; y: number } | null>(null)
+  const quickCreateButtonRef = useRef<HTMLButtonElement>(null)
 
   const toast = useCallback(
     (type: ToastType, message: string) => {
@@ -254,13 +256,32 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
     <div className="flex flex-col h-full">
       <div className="p-3 border-b border-border flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">Files</h2>
-        <button
-          onClick={loadRoot}
-          className="text-xs px-1.5 py-0.5 rounded hover:bg-accent text-muted-foreground"
-          title="Refresh file tree"
-        >
-          ↻
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            ref={quickCreateButtonRef}
+            onClick={(e) => {
+              if (quickCreateMenu) {
+                setQuickCreateMenu(null)
+              } else {
+                const rect = e.currentTarget.getBoundingClientRect()
+                setQuickCreateMenu({ x: rect.left, y: rect.bottom + 4 })
+              }
+            }}
+            className="text-xs px-1.5 py-0.5 rounded hover:bg-accent text-muted-foreground"
+            title="Create new file or folder"
+            aria-haspopup="true"
+            aria-expanded={quickCreateMenu !== null}
+          >
+            +
+          </button>
+          <button
+            onClick={loadRoot}
+            className="text-xs px-1.5 py-0.5 rounded hover:bg-accent text-muted-foreground"
+            title="Refresh file tree"
+          >
+            ↻
+          </button>
+        </div>
       </div>
       {!loading && !error && entries.length > 0 && (
         <div className="px-3 pb-2 pt-1">
@@ -367,6 +388,35 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
           y={contextMenu.y}
           items={contextMenuItems}
           onClose={closeContextMenu}
+        />
+      )}
+
+      {/* Quick-create dropdown menu */}
+      {quickCreateMenu && swarmRootPath && (
+        <ContextMenu
+          x={quickCreateMenu.x}
+          y={quickCreateMenu.y}
+          items={[
+            {
+              label: 'New Prompt',
+              action: () => {
+                handleStartCreate(`${swarmRootPath}/prompts`, 'file')
+              },
+            },
+            {
+              label: 'New File',
+              action: () => {
+                handleStartCreate(swarmRootPath, 'file')
+              },
+            },
+            {
+              label: 'New Folder',
+              action: () => {
+                handleStartCreate(swarmRootPath, 'dir')
+              },
+            },
+          ]}
+          onClose={() => setQuickCreateMenu(null)}
         />
       )}
 
