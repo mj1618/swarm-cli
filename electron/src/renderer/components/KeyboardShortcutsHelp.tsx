@@ -43,7 +43,11 @@ const groups: ShortcutGroup[] = [
   {
     title: 'DAG Canvas',
     shortcuts: [
+      { keys: ['N'], action: 'Create new task' },
+      { keys: ['F'], action: 'Fit DAG to view' },
+      { keys: ['R'], action: 'Reset DAG layout' },
       { keys: ['Delete', 'Backspace'], action: 'Delete selected task or edge' },
+      { keys: ['Esc'], action: 'Deselect all' },
     ],
   },
   {

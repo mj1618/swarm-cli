@@ -354,13 +354,47 @@ export default function DagCanvas({
     [],
   )
 
-  // Keyboard handler for deleting selected nodes/edges
+  // Keyboard handler for DAG canvas shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
-      if (e.key !== 'Backspace' && e.key !== 'Delete') return
       // Don't intercept when typing in inputs
       const tag = (e.target as HTMLElement)?.tagName
       if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return
+
+      // N — Create new task
+      if (e.key === 'n' || e.key === 'N') {
+        if (onCreateTask) {
+          e.preventDefault()
+          onCreateTask()
+        }
+        return
+      }
+
+      // F — Fit view
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault()
+        fitView({ padding: 0.3 })
+        return
+      }
+
+      // R — Reset layout
+      if (e.key === 'r' || e.key === 'R') {
+        if (onResetLayout) {
+          e.preventDefault()
+          onResetLayout()
+        }
+        return
+      }
+
+      // Escape — Deselect all nodes and edges
+      if (e.key === 'Escape') {
+        setNodes(prev => prev.map(n => ({ ...n, selected: false })))
+        setLocalEdges(prev => prev.map(edge => ({ ...edge, selected: false })))
+        return
+      }
+
+      // Delete/Backspace — Delete selected node or edge
+      if (e.key !== 'Backspace' && e.key !== 'Delete') return
 
       // Check for selected edges first
       const selectedEdge = localEdges.find(edge => edge.selected)
@@ -379,7 +413,7 @@ export default function DagCanvas({
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [nodes, localEdges, onDeleteTask, onDeleteEdge])
+  }, [nodes, localEdges, onDeleteTask, onDeleteEdge, onCreateTask, onResetLayout, fitView])
 
   // Close context menu on outside click
   useEffect(() => {
@@ -662,10 +696,25 @@ export default function DagCanvas({
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(240 5% 20%)" />
         <Controls showInteractive={false} />
         <MiniMap
-          nodeColor="hsl(217 91% 60%)"
-          maskColor="hsl(222 84% 5% / 0.7)"
-          bgColor="hsl(222 84% 5%)"
-          style={{ borderRadius: 8, border: '1px solid hsl(217 33% 17%)' }}
+          nodeColor={(node) => {
+            // Return color based on node status
+            const status = (node.data as TaskNodeData)?.agentStatus
+            if (status === 'running') return '#3b82f6' // blue
+            if (status === 'paused') return '#f59e0b' // amber
+            if (status === 'succeeded') return '#22c55e' // green
+            if (status === 'failed') return '#ef4444' // red
+            if (status === 'pending') return '#6b7280' // gray
+            // Default color for idle/no status
+            return theme === 'light' ? '#64748b' : '#94a3b8'
+          }}
+          maskColor={theme === 'light' ? 'rgba(255, 255, 255, 0.8)' : 'rgba(0, 0, 0, 0.7)'}
+          bgColor={theme === 'light' ? 'rgba(248, 250, 252, 0.9)' : 'rgba(15, 23, 42, 0.9)'}
+          style={{
+            borderRadius: 8,
+            border: theme === 'light' ? '1px solid hsl(214 32% 91%)' : '1px solid hsl(217 33% 17%)',
+          }}
+          pannable
+          zoomable
         />
         <Panel position="top-right">
           <div className="flex items-center gap-2">
