@@ -136,6 +136,31 @@ function buildAppMenu() {
           : [{ role: 'close' as const }]),
       ],
     },
+    // Help menu
+    {
+      label: 'Help',
+      submenu: [
+        {
+          label: 'Keyboard Shortcuts',
+          accelerator: 'CmdOrCtrl+/',
+          click: () => sendToRenderer('menu:keyboard-shortcuts'),
+        },
+        { type: 'separator' },
+        {
+          label: 'Swarm CLI Documentation',
+          click: () => shell.openExternal('https://github.com/your-org/swarm-cli#readme'),
+        },
+        {
+          label: 'Report an Issue',
+          click: () => shell.openExternal('https://github.com/your-org/swarm-cli/issues'),
+        },
+        { type: 'separator' },
+        {
+          label: 'About Swarm Desktop',
+          click: () => sendToRenderer('menu:about'),
+        },
+      ],
+    },
   ]
 
   const menu = Menu.buildFromTemplate(template)

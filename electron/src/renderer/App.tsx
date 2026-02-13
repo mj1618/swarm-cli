@@ -11,6 +11,7 @@ import PipelinePanel from './components/PipelinePanel'
 import PipelineConfigBar from './components/PipelineConfigBar'
 import CommandPalette from './components/CommandPalette'
 import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
+import AboutDialog from './components/AboutDialog'
 import SettingsPanel from './components/SettingsPanel'
 import OutputRunViewer, { isOutputRunFolder } from './components/OutputRunViewer'
 import type { Command } from './components/CommandPalette'
@@ -71,6 +72,7 @@ function App() {
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [shortcutsOpen, setShortcutsOpen] = useState(false)
+  const [aboutOpen, setAboutOpen] = useState(false)
   const [activePipeline, setActivePipeline] = useState<string | null>(null)
   const [selectedPipeline, setSelectedPipeline] = useState<{ name: string; compose: ComposeFile } | null>(null)
   const [agents, setAgents] = useState<AgentState[]>([])
@@ -792,6 +794,8 @@ function App() {
       window.electronMenu.on('menu:toggle-console', toggleConsole),
       window.electronMenu.on('menu:command-palette', () => setPaletteOpen(prev => !prev)),
       window.electronMenu.on('menu:open-project', handleOpenProject),
+      window.electronMenu.on('menu:keyboard-shortcuts', () => setShortcutsOpen(true)),
+      window.electronMenu.on('menu:about', () => setAboutOpen(true)),
     ]
     return () => { cleanups.forEach(fn => fn()) }
   }, [toggleConsole, handleOpenProject])
@@ -972,6 +976,10 @@ function App() {
       <KeyboardShortcutsHelp
         open={shortcutsOpen}
         onClose={() => setShortcutsOpen(false)}
+      />
+      <AboutDialog
+        open={aboutOpen}
+        onClose={() => setAboutOpen(false)}
       />
 
       {/* Title bar drag region */}

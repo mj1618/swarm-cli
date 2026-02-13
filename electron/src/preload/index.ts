@@ -58,7 +58,7 @@ contextBridge.exposeInMainWorld('workspace', {
 
 contextBridge.exposeInMainWorld('electronMenu', {
   on: (channel: string, callback: () => void) => {
-    const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project']
+    const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project', 'menu:keyboard-shortcuts', 'menu:about']
     if (!allowed.includes(channel)) return () => {}
     const listener = () => callback()
     ipcRenderer.on(channel, listener)
