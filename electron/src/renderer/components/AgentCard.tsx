@@ -159,7 +159,7 @@ export default function AgentCard({ agent, expanded, onToggleExpand, onPause, on
           onPause={onPause}
           onResume={onResume}
           onKill={onKill}
-          onCollapse={onToggleExpand}
+          onBack={onToggleExpand}
         />
       )}
     </div>
