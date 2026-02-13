@@ -142,7 +142,7 @@ export default function LogView({ content, loading, error, searchQuery, filterMo
     setAutoScroll(isAtBottom)
   }, [setAutoScroll])
 
-  const lines = content?.split('\n') ?? []
+  const lines = useMemo(() => content?.split('\n') ?? [], [content])
   const query = searchQuery?.trim() || ''
 
   const filteredLines = useMemo(() => {
