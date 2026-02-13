@@ -1,7 +1,80 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, type ReactNode } from 'react'
 
 interface FileViewerProps {
   filePath: string
+}
+
+function isYamlFile(filePath: string): boolean {
+  const ext = filePath.split('.').pop()?.toLowerCase()
+  return ext === 'yaml' || ext === 'yml'
+}
+
+function highlightYamlLine(line: string): ReactNode {
+  // Comment lines
+  if (/^\s*#/.test(line)) {
+    return <span className="text-muted-foreground/70 italic">{line}</span>
+  }
+
+  // Key-value lines (key: value)
+  const kvMatch = line.match(/^(\s*)([\w.-]+)(\s*:\s*)(.*)$/)
+  if (kvMatch) {
+    const [, indent, key, colon, value] = kvMatch
+    return (
+      <>
+        {indent}
+        <span className="text-blue-400">{key}</span>
+        <span className="text-muted-foreground">{colon}</span>
+        {highlightYamlValue(value)}
+      </>
+    )
+  }
+
+  // List items (- value)
+  const listMatch = line.match(/^(\s*)(- )(.*)$/)
+  if (listMatch) {
+    const [, indent, dash, value] = listMatch
+    return (
+      <>
+        {indent}
+        <span className="text-orange-400">{dash}</span>
+        {highlightYamlValue(value)}
+      </>
+    )
+  }
+
+  return line
+}
+
+function highlightYamlValue(value: string): ReactNode {
+  if (!value) return null
+
+  // Quoted strings
+  if (/^["'].*["']$/.test(value)) {
+    return <span className="text-green-400">{value}</span>
+  }
+  // Numbers
+  if (/^\d+(\.\d+)?$/.test(value)) {
+    return <span className="text-purple-400">{value}</span>
+  }
+  // Booleans
+  if (/^(true|false|yes|no)$/i.test(value)) {
+    return <span className="text-purple-400">{value}</span>
+  }
+  // null
+  if (/^(null|~)$/i.test(value)) {
+    return <span className="text-red-400">{value}</span>
+  }
+  // Inline comment after value
+  const commentMatch = value.match(/^(.+?)(\s+#.*)$/)
+  if (commentMatch) {
+    return (
+      <>
+        <span className="text-yellow-300">{commentMatch[1]}</span>
+        <span className="text-muted-foreground/70 italic">{commentMatch[2]}</span>
+      </>
+    )
+  }
+  return <span className="text-yellow-300">{value}</span>
 }
 
 function getFileType(filePath: string): { label: string; color: string } {
