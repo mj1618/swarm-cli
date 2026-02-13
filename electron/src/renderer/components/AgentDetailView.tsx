@@ -10,6 +10,7 @@ interface AgentDetailViewProps {
   onSetIterations: (id: string, iterations: number) => void
   onSetModel: (id: string, model: string) => void
   onClone: (id: string) => void
+  onViewLog?: (logPath: string) => void
 }
 
 function formatDuration(startedAt: string, terminatedAt?: string): string {
@@ -57,7 +58,7 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
-export default function AgentDetailView({ agent, onBack, onPause, onResume, onKill, onSetIterations, onSetModel, onClone }: AgentDetailViewProps) {
+export default function AgentDetailView({ agent, onBack, onPause, onResume, onKill, onSetIterations, onSetModel, onClone, onViewLog }: AgentDetailViewProps) {
   const [duration, setDuration] = useState(() => formatDuration(agent.started_at, agent.terminated_at))
   const [iterationsInput, setIterationsInput] = useState(() => String(agent.iterations))
   const [modelInput, setModelInput] = useState(() => agent.model)
@@ -203,9 +204,19 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
         {/* Log File */}
         {agent.log_file && (
           <Section label="Log File">
-            <p className="text-[10px] font-mono text-muted-foreground break-all select-all">
-              {agent.log_file}
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-[10px] font-mono text-muted-foreground break-all select-all flex-1">
+                {agent.log_file}
+              </p>
+              {onViewLog && (
+                <button
+                  onClick={() => onViewLog(agent.log_file!)}
+                  className="shrink-0 px-2 py-0.5 text-[10px] bg-primary/10 text-primary rounded hover:bg-primary/20 transition-colors"
+                >
+                  View Log
+                </button>
+              )}
+            </div>
           </Section>
         )}
 

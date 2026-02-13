@@ -9,9 +9,16 @@ interface LogFile {
   modifiedAt: number
 }
 
-export default function ConsolePanel() {
+interface ConsolePanelProps {
+  activeTab?: string
+  onActiveTabChange?: (tab: string) => void
+}
+
+export default function ConsolePanel({ activeTab: controlledTab, onActiveTabChange }: ConsolePanelProps = {}) {
   const [logFiles, setLogFiles] = useState<LogFile[]>([])
-  const [activeTab, setActiveTab] = useState<string>('console')
+  const [internalTab, setInternalTab] = useState<string>('console')
+  const activeTab = controlledTab ?? internalTab
+  const setActiveTab = onActiveTabChange ?? setInternalTab
   const [logContents, setLogContents] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)

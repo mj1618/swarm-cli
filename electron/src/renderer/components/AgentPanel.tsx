@@ -3,7 +3,12 @@ import type { AgentState } from '../../preload/index'
 import AgentCard from './AgentCard'
 import AgentDetailView from './AgentDetailView'
 
-export default function AgentPanel() {
+interface AgentPanelProps {
+  onViewLog?: (logPath: string) => void
+  onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
+}
+
+export default function AgentPanel({ onViewLog, onToast }: AgentPanelProps = {}) {
   const [agents, setAgents] = useState<AgentState[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -43,35 +48,53 @@ export default function AgentPanel() {
   }, [loadAgents])
 
   const handlePause = async (agentId: string) => {
-    await window.swarm.pause(agentId)
+    try {
+      await window.swarm.pause(agentId)
+    } catch {
+      onToast?.('error', 'Failed to pause agent')
+    }
   }
 
   const handleResume = async (agentId: string) => {
-    await window.swarm.resume(agentId)
+    try {
+      await window.swarm.resume(agentId)
+    } catch {
+      onToast?.('error', 'Failed to resume agent')
+    }
   }
 
   const handleKill = async (agentId: string) => {
-    await window.swarm.kill(agentId)
+    try {
+      await window.swarm.kill(agentId)
+    } catch {
+      onToast?.('error', 'Failed to kill agent')
+    }
   }
 
   const handleSetIterations = async (agentId: string, iterations: number) => {
     const result = await window.swarm.run(['update', agentId, '--iterations', String(iterations)])
     if (result.code !== 0) {
-      console.error('Failed to set iterations:', result.stderr)
+      onToast?.('error', `Failed to set iterations: ${result.stderr}`)
+    } else {
+      onToast?.('success', `Updated iterations to ${iterations}`)
     }
   }
 
   const handleSetModel = async (agentId: string, model: string) => {
     const result = await window.swarm.run(['update', agentId, '--model', model])
     if (result.code !== 0) {
-      console.error('Failed to set model:', result.stderr)
+      onToast?.('error', `Failed to set model: ${result.stderr}`)
+    } else {
+      onToast?.('success', `Updated model to ${model}`)
     }
   }
 
   const handleClone = async (agentId: string) => {
     const result = await window.swarm.run(['clone', agentId, '-d'])
     if (result.code !== 0) {
-      console.error('Failed to clone agent:', result.stderr)
+      onToast?.('error', `Failed to clone agent: ${result.stderr}`)
+    } else {
+      onToast?.('success', 'Agent cloned')
     }
   }
 
@@ -99,6 +122,7 @@ export default function AgentPanel() {
         onSetIterations={handleSetIterations}
         onSetModel={handleSetModel}
         onClone={handleClone}
+        onViewLog={onViewLog}
       />
     )
   }
