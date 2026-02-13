@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
+import { getOutputFolderDisplay } from '../lib/outputFolderUtils'
 
 export interface DirEntry {
   name: string
@@ -275,32 +276,47 @@ export default function FileTreeItem({
           iconColor={iconColor}
         />
       ) : (
-        <div
-          className={`flex items-center py-0.5 px-1 rounded text-sm select-none ${
-            isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
-          } ${
-            isSelected
-              ? 'bg-accent text-accent-foreground'
-              : 'hover:bg-accent/50 text-muted-foreground'
-          }`}
-          style={{ paddingLeft: `${depth * 12 + 4}px`, opacity: isDragging ? 0.5 : undefined }}
-          onClick={handleClick}
-          onContextMenu={handleContextMenu}
-          draggable={isDraggable}
-          onDragStart={isDraggable ? (e) => {
-            const promptName = entry.name.replace(/\.md$/, '')
-            e.dataTransfer.setData('application/swarm-prompt', promptName)
-            e.dataTransfer.setData('text/plain', promptName)
-            e.dataTransfer.effectAllowed = 'copy'
-            setIsDragging(true)
-          } : undefined}
-          onDragEnd={isDraggable ? () => setIsDragging(false) : undefined}
-        >
-          <span className={`w-4 text-center text-xs mr-1 ${iconColor}`}>{icon}</span>
-          <span className="truncate">
-            <HighlightedName name={entry.name} query={filterQuery || ''} />
-          </span>
-        </div>
+        (() => {
+          const outputDisplay = entry.isDirectory
+            ? getOutputFolderDisplay(entry.name, entry.path)
+            : null
+
+          return (
+            <div
+              className={`flex items-center py-0.5 px-1 rounded text-sm select-none ${
+                isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'
+              } ${
+                isSelected
+                  ? 'bg-accent text-accent-foreground'
+                  : 'hover:bg-accent/50 text-muted-foreground'
+              }`}
+              style={{ paddingLeft: `${depth * 12 + 4}px`, opacity: isDragging ? 0.5 : undefined }}
+              onClick={handleClick}
+              onContextMenu={handleContextMenu}
+              draggable={isDraggable}
+              onDragStart={isDraggable ? (e) => {
+                const promptName = entry.name.replace(/\.md$/, '')
+                e.dataTransfer.setData('application/swarm-prompt', promptName)
+                e.dataTransfer.setData('text/plain', promptName)
+                e.dataTransfer.effectAllowed = 'copy'
+                setIsDragging(true)
+              } : undefined}
+              onDragEnd={isDraggable ? () => setIsDragging(false) : undefined}
+            >
+              <span className={`w-4 text-center text-xs mr-1 ${iconColor}`}>{icon}</span>
+              {outputDisplay ? (
+                <span className="truncate flex items-center gap-1.5">
+                  <span>{outputDisplay.timestamp}</span>
+                  <span className="text-muted-foreground/60 text-xs font-mono">({outputDisplay.hash})</span>
+                </span>
+              ) : (
+                <span className="truncate">
+                  <HighlightedName name={entry.name} query={filterQuery || ''} />
+                </span>
+              )}
+            </div>
+          )
+        })()
       )}
       {entry.isDirectory && isOpen && (
         <div>
