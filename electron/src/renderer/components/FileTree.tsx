@@ -76,6 +76,9 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
   const handleSelect = useCallback((filePath: string, isDirectory: boolean) => {
     if (!isDirectory) {
       onSelectFile(filePath)
+    } else if (/\/outputs\/\d{8}-\d{6}-[a-f0-9]+\/?$/.test(filePath)) {
+      // Allow selecting output run folders to open the summary viewer
+      onSelectFile(filePath)
     }
   }, [onSelectFile])
 

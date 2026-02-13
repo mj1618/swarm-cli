@@ -11,6 +11,7 @@ import PipelineConfigBar from './components/PipelineConfigBar'
 import CommandPalette from './components/CommandPalette'
 import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
 import SettingsPanel from './components/SettingsPanel'
+import OutputRunViewer, { isOutputRunFolder } from './components/OutputRunViewer'
 import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
@@ -72,6 +73,7 @@ function App() {
   const [activePipeline, setActivePipeline] = useState<string | null>(null)
   const [selectedPipeline, setSelectedPipeline] = useState<{ name: string; compose: ComposeFile } | null>(null)
   const [agents, setAgents] = useState<AgentState[]>([])
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
   const { toasts, addToast, removeToast } = useToasts()
   const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
 
@@ -127,9 +129,11 @@ function App() {
   }, [activeYamlPath])
 
   const selectedIsYaml = selectedFile ? isYamlFile(selectedFile) : false
+  const selectedIsOutputRun = selectedFile ? isOutputRunFolder(selectedFile) : false
 
   const handleSelectTask = useCallback((task: { name: string; def: TaskDef; compose: ComposeFile }) => {
     setSelectedTask(task)
+    setSelectedAgentId(null)
   }, [])
 
   const handleSaveTask = useCallback(async (taskName: string, updatedDef: TaskDef) => {
@@ -218,6 +222,16 @@ function App() {
 
   const handleCloseDrawer = useCallback(() => {
     setSelectedTask(null)
+  }, [])
+
+  const handleNavigateToAgent = useCallback((agentId: string) => {
+    setSelectedAgentId(agentId)
+    setSelectedTask(null)
+    setSelectedPipeline(null)
+  }, [])
+
+  const handleClearSelectedAgent = useCallback(() => {
+    setSelectedAgentId(null)
   }, [])
 
   const handleAddDependency = useCallback(
@@ -402,7 +416,7 @@ function App() {
   }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, activePipeline])
 
   const handleRunPipeline = useCallback(async (pipelineName: string) => {
-    const result = await window.swarm.run(['pipeline', '--name', pipelineName])
+    const result = await window.swarm.run(['up', pipelineName])
     if (result.code !== 0) {
       addToast('error', `Pipeline failed: ${result.stderr || 'unknown error'}`)
     } else {
@@ -791,7 +805,7 @@ function App() {
           id: `run-pipeline-${name}`,
           name: `Run pipeline: ${name}`,
           description: `Start the ${name} pipeline`,
-          action: () => { window.swarm.run(['pipeline', '--name', name]) },
+          action: () => { window.swarm.run(['up', name]) },
         })
       }
     } else {
@@ -799,7 +813,7 @@ function App() {
         id: 'run-pipeline',
         name: 'Run pipeline: main',
         description: 'Start the main pipeline',
-        action: () => { window.swarm.run(['pipeline']) },
+        action: () => { window.swarm.run(['up']) },
       })
     }
     // Dynamic per-task run commands
@@ -986,6 +1000,8 @@ function App() {
               onClose={() => setSettingsOpen(false)}
               onToast={addToast}
             />
+          ) : selectedIsOutputRun && selectedFile ? (
+            <OutputRunViewer folderPath={selectedFile} onOpenFile={handleSelectFile} />
           ) : selectedFile && !selectedIsYaml ? (
             <MonacoFileEditor filePath={selectedFile} />
           ) : (
@@ -1013,6 +1029,7 @@ function App() {
                   activePipeline={activePipeline}
                   pipelineTasks={activePipeline ? currentCompose?.pipelines?.[activePipeline]?.tasks ?? null : null}
                   onSelectTask={handleSelectTask}
+                  onNavigateToAgent={handleNavigateToAgent}
                   onAddDependency={handleAddDependency}
                   onDeleteTask={handleDeleteTask}
                   onDeleteEdge={handleDeleteEdge}
@@ -1059,7 +1076,12 @@ function App() {
               onClose={handleClosePipelinePanel}
             />
           ) : (
-            <AgentPanel onViewLog={handleViewLog} onToast={addToast} />
+            <AgentPanel
+              onViewLog={handleViewLog}
+              onToast={addToast}
+              selectedAgentId={selectedAgentId}
+              onClearSelectedAgent={handleClearSelectedAgent}
+            />
           )}
         </div>
       </div>
