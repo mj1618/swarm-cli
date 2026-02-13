@@ -15,7 +15,7 @@ import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency, PipelineDef } from './lib/yamlParser'
-import { addDependency, applyPipelineEdits, deletePipeline } from './lib/yamlWriter'
+import { addDependency, applyPipelineEdits, deletePipeline, deleteTask, deleteEdge } from './lib/yamlWriter'
 import type { AgentState } from '../preload/index'
 
 function isYamlFile(filePath: string): boolean {
@@ -619,7 +619,7 @@ function App() {
                   error={selectedIsYaml ? selectedYamlError : defaultYamlError}
                   agents={agents}
                   activePipeline={activePipeline}
-                  pipelineTasks={activePipeline && currentCompose?.pipelines?.[activePipeline]?.tasks || null}
+                  pipelineTasks={activePipeline ? currentCompose?.pipelines?.[activePipeline]?.tasks ?? null : null}
                   onSelectTask={handleSelectTask}
                   onAddDependency={handleAddDependency}
                   onCreateTask={handleCreateTask}

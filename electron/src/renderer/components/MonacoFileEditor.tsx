@@ -202,10 +202,8 @@ export default function MonacoFileEditor({ filePath }: MonacoFileEditorProps) {
   // Watch for external file changes
   useEffect(() => {
     const unsubscribe = window.fs.onChanged((data) => {
-      // Match by checking if either path ends with /filename
-      const changedName = data.path.split('/').pop()
-      const currentName = filePath.split('/').pop()
-      if (changedName && currentName && changedName === currentName) {
+      // Match by full path or by trailing path suffix
+      if (data.path === filePath || data.path.endsWith('/' + filePath) || filePath.endsWith('/' + data.path)) {
         if (!isDirtyRef.current) {
           window.fs.readfile(filePath).then((result) => {
             if (!result.error) {
