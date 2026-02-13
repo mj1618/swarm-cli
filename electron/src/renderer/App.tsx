@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { ReactFlowProvider } from '@xyflow/react'
 import FileTree from './components/FileTree'
-import FileViewer from './components/FileViewer'
+import MonacoFileEditor from './components/MonacoFileEditor'
 import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
@@ -386,7 +386,7 @@ function App() {
               onToast={addToast}
             />
           ) : selectedFile && !selectedIsYaml ? (
-            <FileViewer filePath={selectedFile} />
+            <MonacoFileEditor filePath={selectedFile} />
           ) : (
             <>
               <div className="p-3 border-b border-border">

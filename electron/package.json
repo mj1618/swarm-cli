@@ -35,6 +35,7 @@
     "vite": "^6.1.0"
   },
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@types/dagre": "^0.7.53",
     "@types/js-yaml": "^4.0.9",
     "@xyflow/react": "^12.10.0",
