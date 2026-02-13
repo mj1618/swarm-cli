@@ -784,6 +784,17 @@ function App() {
     return () => document.removeEventListener('keydown', handleKeyDown)
   }, [])
 
+  // Native menu IPC listeners
+  useEffect(() => {
+    const cleanups = [
+      window.electronMenu.on('menu:settings', () => setSettingsOpen(true)),
+      window.electronMenu.on('menu:toggle-console', toggleConsole),
+      window.electronMenu.on('menu:command-palette', () => setPaletteOpen(prev => !prev)),
+      window.electronMenu.on('menu:open-project', handleOpenProject),
+    ]
+    return () => { cleanups.forEach(fn => fn()) }
+  }, [toggleConsole, handleOpenProject])
+
   const currentCompose = useMemo(() => {
     const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
     if (!yamlContent) return null

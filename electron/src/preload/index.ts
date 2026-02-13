@@ -56,6 +56,16 @@ contextBridge.exposeInMainWorld('workspace', {
   open: () => ipcRenderer.invoke('workspace:open'),
 })
 
+contextBridge.exposeInMainWorld('electronMenu', {
+  on: (channel: string, callback: () => void) => {
+    const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project']
+    if (!allowed.includes(channel)) return () => {}
+    const listener = () => callback()
+    ipcRenderer.on(channel, listener)
+    return () => { ipcRenderer.removeListener(channel, listener) }
+  },
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -152,6 +162,10 @@ export type WorkspaceAPI = {
   open: () => Promise<{ path: string | null; error?: string }>
 }
 
+export type ElectronMenuAPI = {
+  on: (channel: string, callback: () => void) => () => void
+}
+
 export type StateAPI = {
   read: () => Promise<{ agents: AgentState[]; error?: string }>
   watch: () => Promise<void>
@@ -198,5 +212,6 @@ declare global {
     notify: NotifyAPI
     dialog: DialogAPI
     workspace: WorkspaceAPI
+    electronMenu: ElectronMenuAPI
   }
 }
