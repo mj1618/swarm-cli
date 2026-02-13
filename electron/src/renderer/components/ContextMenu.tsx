@@ -54,10 +54,12 @@ export default function ContextMenu({ x, y, items, onClose }: ContextMenuProps) 
       ref={menuRef}
       className="fixed z-50 min-w-[160px] rounded-md border border-border bg-card shadow-lg py-1"
       style={{ left: x, top: y }}
+      data-testid="context-menu"
     >
       {items.map((item) => (
         <button
           key={item.label}
+          data-testid={`context-menu-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
           className={`w-full text-left px-3 py-1.5 text-sm hover:bg-accent/50 ${
             item.danger ? 'text-red-400 hover:text-red-300' : 'text-foreground'
           }`}

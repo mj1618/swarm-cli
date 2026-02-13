@@ -246,6 +246,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
               onClick={() => setPruneDialog({ open: true, deleteLogs: false, olderThan: '' })}
               className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
               title="Clear terminated agents from history"
+              data-testid="clear-history-button"
             >
               Clear History
             </button>
@@ -254,6 +255,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
             onClick={loadAgents}
             className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
             title="Refresh"
+            data-testid="refresh-agents-button"
           >
             ↻
           </button>
@@ -261,7 +263,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
       </div>
 
       {/* Search and Filter */}
-      <div className="p-2 border-b border-border flex items-center gap-2">
+      <div className="p-2 border-b border-border flex items-center gap-2" data-testid="agent-search-filter">
         <div className="relative flex-1">
           <input
             type="text"
@@ -269,12 +271,14 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search agents..."
             className="w-full h-7 rounded border border-border bg-background px-2 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+            data-testid="agent-search-input"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery('')}
               className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
               title="Clear search"
+              data-testid="agent-search-clear"
             >
               ✕
             </button>
@@ -284,6 +288,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as 'all' | 'running' | 'terminated')}
           className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          data-testid="agent-status-filter"
         >
           <option value="all">All</option>
           <option value="running">Running</option>
@@ -292,20 +297,20 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-auto p-2">
+      <div className="flex-1 overflow-auto p-2" data-testid="agent-list-content">
         {loading ? (
-          <div className="text-sm text-muted-foreground p-2">Loading...</div>
+          <div className="text-sm text-muted-foreground p-2" data-testid="agent-loading">Loading...</div>
         ) : error ? (
-          <div className="text-sm text-red-400 p-2">{error}</div>
+          <div className="text-sm text-red-400 p-2" data-testid="agent-error">{error}</div>
         ) : agents.length === 0 ? (
-          <div className="text-sm text-muted-foreground p-2">No agents</div>
+          <div className="text-sm text-muted-foreground p-2" data-testid="no-agents">No agents</div>
         ) : filteredAgents.length === 0 ? (
-          <div className="text-sm text-muted-foreground p-2">No agents match your search</div>
+          <div className="text-sm text-muted-foreground p-2" data-testid="no-matching-agents">No agents match your search</div>
         ) : (
           <>
             {/* Running agents section */}
             {runningAgents.length > 0 && (
-              <div className="mb-4">
+              <div className="mb-4" data-testid="running-agents-section">
                 <div className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-1 mb-2">
                   Running ({runningAgents.length})
                 </div>
@@ -324,10 +329,11 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
 
             {/* History section */}
             {historyAgents.length > 0 && (
-              <div>
+              <div data-testid="history-agents-section">
                 <button
                   onClick={() => setHistoryExpanded(!historyExpanded)}
                   className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider px-1 mb-2 flex items-center gap-1 hover:text-foreground transition-colors w-full text-left"
+                  data-testid="history-toggle-button"
                 >
                   <span className="text-[10px]">{historyExpanded ? '▼' : '▶'}</span>
                   History ({historyAgents.length})
@@ -350,8 +356,8 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
 
       {/* Prune confirmation dialog */}
       {pruneDialog.open && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="rounded-lg border border-border bg-card p-6 shadow-lg max-w-sm mx-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="prune-dialog-overlay">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-lg max-w-sm mx-4" data-testid="prune-dialog">
             <h3 className="text-sm font-semibold text-foreground mb-2">Clear History?</h3>
             <p className="text-sm text-muted-foreground mb-4">
               This will permanently remove {allTerminatedAgents.length} terminated agent{allTerminatedAgents.length === 1 ? '' : 's'} from the state file.
@@ -366,6 +372,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
                   checked={pruneDialog.deleteLogs}
                   onChange={(e) => setPruneDialog(prev => ({ ...prev, deleteLogs: e.target.checked }))}
                   className="rounded border-border bg-background"
+                  data-testid="prune-delete-logs-checkbox"
                 />
                 Also delete log files
               </label>
@@ -377,6 +384,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
                   value={pruneDialog.olderThan}
                   onChange={(e) => setPruneDialog(prev => ({ ...prev, olderThan: e.target.value }))}
                   className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                  data-testid="prune-older-than-select"
                 >
                   <option value="">All terminated</option>
                   <option value="1d">Older than 1 day</option>
@@ -395,6 +403,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
                 className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
                 onClick={() => setPruneDialog({ open: false, deleteLogs: false, olderThan: '' })}
                 disabled={pruning}
+                data-testid="prune-cancel-button"
               >
                 Cancel
               </button>
@@ -403,6 +412,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
                 onClick={handlePrune}
                 disabled={pruning}
                 autoFocus
+                data-testid="prune-confirm-button"
               >
                 {pruning ? 'Clearing...' : 'Clear History'}
               </button>

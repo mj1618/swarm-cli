@@ -271,6 +271,7 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
             title="Create new file or folder"
             aria-haspopup="true"
             aria-expanded={quickCreateMenu !== null}
+            data-testid="file-tree-create-button"
           >
             +
           </button>
@@ -278,6 +279,7 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
             onClick={loadRoot}
             className="text-xs px-1.5 py-0.5 rounded hover:bg-accent text-muted-foreground"
             title="Refresh file tree"
+            data-testid="file-tree-refresh-button"
           >
             ↻
           </button>
@@ -293,6 +295,7 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
               onChange={(e) => setFilterQuery(e.target.value)}
               placeholder="Filter files..."
               className="w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-blue-500 placeholder:text-muted-foreground/50"
+              data-testid="file-tree-filter-input"
             />
             {filterQuery && (
               <button
@@ -422,7 +425,7 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
 
       {/* Delete confirmation dialog */}
       {confirmDelete && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="file-tree-delete-dialog">
           <div className="bg-card border border-border rounded-lg p-4 shadow-xl max-w-sm mx-4">
             <p className="text-sm text-foreground mb-4">
               Delete <span className="font-semibold">{confirmDelete.name}</span>?
@@ -432,12 +435,14 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
               <button
                 className="px-3 py-1.5 text-sm rounded border border-border hover:bg-accent text-foreground"
                 onClick={() => setConfirmDelete(null)}
+                data-testid="file-tree-delete-cancel"
               >
                 Cancel
               </button>
               <button
                 className="px-3 py-1.5 text-sm rounded bg-red-600 hover:bg-red-700 text-white"
                 onClick={() => handleDelete(confirmDelete)}
+                data-testid="file-tree-delete-confirm"
               >
                 Delete
               </button>

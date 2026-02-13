@@ -102,12 +102,13 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
     : 0
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full" data-testid="agent-detail-view">
       {/* Header with back button */}
       <div className="p-3 border-b border-border flex items-center gap-2">
         <button
           onClick={onBack}
           className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+          data-testid="agent-detail-back"
         >
           ← Back
         </button>
@@ -271,11 +272,12 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
 
         {/* Action Buttons — Active Agents */}
         {isActive && (
-          <div className="flex gap-2 mt-1">
+          <div className="flex gap-2 mt-1" data-testid="agent-detail-actions">
             {isRunning && (
               <button
                 onClick={() => onPause(agent.id)}
                 className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+                data-testid="agent-detail-pause"
               >
                 Pause
               </button>
@@ -284,6 +286,7 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
               <button
                 onClick={() => onResume(agent.id)}
                 className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+                data-testid="agent-detail-resume"
               >
                 Resume
               </button>
@@ -291,12 +294,14 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
             <button
               onClick={() => onKill(agent.id)}
               className="text-xs px-3 py-1.5 rounded bg-red-900/50 hover:bg-red-900/70 text-red-200 transition-colors"
+              data-testid="agent-detail-stop"
             >
               Stop
             </button>
             <button
               onClick={() => onClone(agent.id)}
               className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+              data-testid="agent-detail-clone"
             >
               Clone
             </button>
@@ -305,16 +310,18 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
 
         {/* Action Buttons — Terminated Agents */}
         {!isActive && (
-          <div className="flex gap-2 mt-1">
+          <div className="flex gap-2 mt-1" data-testid="agent-detail-history-actions">
             <button
               onClick={() => onReplay(agent.id)}
               className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+              data-testid="agent-detail-replay"
             >
               Replay
             </button>
             <button
               onClick={() => onClone(agent.id)}
               className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+              data-testid="agent-detail-clone-history"
             >
               Clone
             </button>

@@ -302,6 +302,7 @@ export default function FileTreeItem({
                 setIsDragging(true)
               } : undefined}
               onDragEnd={isDraggable ? () => setIsDragging(false) : undefined}
+              data-testid={`file-tree-item-${entry.name}`}
             >
               <span className={`w-4 text-center text-xs mr-1 ${iconColor}`}>{icon}</span>
               {outputDisplay ? (

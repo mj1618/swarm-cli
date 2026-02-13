@@ -58,23 +58,23 @@ test.beforeAll(async () => {
   // Create fixtures directory
   fs.mkdirSync(fixturesDir, { recursive: true });
   
-  // Launch Electron app
+  // Launch Electron app with test environment
   // The app runs from dist/main/main/index.js after build
   electronApp = await electron.launch({
     args: [path.join(__dirname, '../dist/main/main/index.js')],
-    timeout: 30000,
-    // Disable DevTools auto-open by setting NODE_ENV
+    timeout: 60000,
     env: {
       ...process.env,
       NODE_ENV: 'test',
     },
   });
 
-  // Get the main app window (not DevTools)
-  window = await getMainWindow(electronApp);
+  // Get the first window (should be main window in test mode since DevTools don't open)
+  window = await electronApp.firstWindow();
   
-  // Wait for the window to be ready
+  // Wait for the window to be ready and React to mount
   await window.waitForLoadState('domcontentloaded');
+  await window.waitForTimeout(3000); // Give React time to render
 });
 
 test.afterAll(async () => {

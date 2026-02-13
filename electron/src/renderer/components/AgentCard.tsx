@@ -62,6 +62,7 @@ export default function AgentCard({ agent, onPause, onResume, onKill, onClick }:
     <div
       className="p-3 mb-2 rounded-lg bg-background border border-border hover:border-zinc-600 transition-colors cursor-pointer"
       onClick={() => onClick(agent)}
+      data-testid={`agent-card-${agent.id}`}
     >
       {/* Header: status + name + model */}
       <div className="flex items-center gap-2 mb-1.5">
@@ -116,11 +117,12 @@ export default function AgentCard({ agent, onPause, onResume, onKill, onClick }:
 
       {/* Controls */}
       {isActive && (
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5" data-testid={`agent-controls-${agent.id}`}>
           {isRunning && (
             <button
               onClick={(e) => { e.stopPropagation(); onPause(agent.id) }}
               className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+              data-testid={`agent-pause-${agent.id}`}
             >
               Pause
             </button>
@@ -129,6 +131,7 @@ export default function AgentCard({ agent, onPause, onResume, onKill, onClick }:
             <button
               onClick={(e) => { e.stopPropagation(); onResume(agent.id) }}
               className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+              data-testid={`agent-resume-${agent.id}`}
             >
               Resume
             </button>
@@ -136,6 +139,7 @@ export default function AgentCard({ agent, onPause, onResume, onKill, onClick }:
           <button
             onClick={(e) => { e.stopPropagation(); onKill(agent.id) }}
             className="text-[11px] px-2 py-1 rounded bg-red-900/50 hover:bg-red-900/70 text-red-200 transition-colors"
+            data-testid={`agent-stop-${agent.id}`}
           >
             Stop
           </button>
