@@ -9,6 +9,48 @@ interface LogViewProps {
   onMatchCount?: (count: number) => void
 }
 
+const AGENT_COLORS = [
+  'text-cyan-400',
+  'text-green-400',
+  'text-yellow-400',
+  'text-pink-400',
+  'text-orange-400',
+  'text-purple-400',
+  'text-blue-400',
+  'text-emerald-400',
+  'text-rose-400',
+  'text-teal-400',
+]
+
+const agentColorMap = new Map<string, string>()
+
+function getAgentColor(agentName: string): string {
+  const existing = agentColorMap.get(agentName)
+  if (existing) return existing
+  // Deterministic hash to pick a color
+  let hash = 0
+  for (let i = 0; i < agentName.length; i++) {
+    hash = ((hash << 5) - hash + agentName.charCodeAt(i)) | 0
+  }
+  const color = AGENT_COLORS[Math.abs(hash) % AGENT_COLORS.length]
+  agentColorMap.set(agentName, color)
+  return color
+}
+
+// Pattern to match agent tags like [planner], [coder], [evaluator]
+const AGENT_TAG_RE = /^(.*?)(\[[a-zA-Z][a-zA-Z0-9_-]*\])(.*)$/
+
+function parseAgentTag(line: string): { before: string; tag: string; after: string; agentName: string } | null {
+  const match = AGENT_TAG_RE.exec(line)
+  if (!match) return null
+  return {
+    before: match[1],
+    tag: match[2],
+    after: match[3],
+    agentName: match[2].slice(1, -1),
+  }
+}
+
 function classifyLine(line: string): 'error' | 'tool' | 'normal' {
   if (/\b[Ee]rror\b/.test(line) || /\b[Ff]ailed\b/.test(line) || /\bpanic\b/.test(line)) {
     return 'error'
@@ -44,6 +86,30 @@ function highlightMatches(text: string, query: string): React.ReactNode {
     part.toLowerCase() === lowerQuery
       ? <mark key={i} className="bg-yellow-500/30 text-yellow-200 rounded-sm px-0.5">{part}</mark>
       : part
+  )
+}
+
+function renderLineContent(line: string, query: string): React.ReactNode {
+  const parsed = parseAgentTag(line)
+  if (!parsed) {
+    return query ? highlightMatches(line || '\u00A0', query) : (line || '\u00A0')
+  }
+  const colorClass = getAgentColor(parsed.agentName)
+  if (query) {
+    return (
+      <>
+        {highlightMatches(parsed.before, query)}
+        <span className={colorClass}>{highlightMatches(parsed.tag, query)}</span>
+        {highlightMatches(parsed.after, query)}
+      </>
+    )
+  }
+  return (
+    <>
+      {parsed.before}
+      <span className={colorClass}>{parsed.tag}</span>
+      {parsed.after}
+    </>
   )
 }
 
@@ -138,7 +204,7 @@ export default function LogView({ content, loading, error, searchQuery, filterMo
           const kind = classifyLine(line)
           return (
             <div key={index} className={`whitespace-pre-wrap break-all ${lineClass(kind)}`}>
-              {query ? highlightMatches(line || '\u00A0', query) : (line || '\u00A0')}
+              {renderLineContent(line, query)}
             </div>
           )
         })}
