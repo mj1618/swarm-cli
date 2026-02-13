@@ -668,7 +668,12 @@ export default function DagCanvas({
     void isExporting
     void handleExport
     return (
-      <div className="flex-1 flex items-center justify-center text-muted-foreground">
+      <div
+        className={`flex-1 flex items-center justify-center text-muted-foreground transition-colors ${isDragOver ? 'ring-2 ring-inset ring-blue-500/50 bg-blue-500/5' : ''}`}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+      >
         <div className="text-center max-w-md px-6">
           {/* Visual icon */}
           <div className="mb-6 flex justify-center">
