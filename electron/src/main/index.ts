@@ -82,8 +82,8 @@ ipcMain.handle('swarm:inspect', async (_event, agentId: string) => {
 })
 
 // Filesystem IPC handlers scoped to the swarm/ directory
-const workingDir = process.cwd()
-const swarmRoot = path.join(workingDir, 'swarm')
+let workingDir = process.cwd()
+let swarmRoot = path.join(workingDir, 'swarm')
 
 function isWithinSwarmDir(targetPath: string): boolean {
   const resolved = path.resolve(targetPath)
@@ -236,6 +236,101 @@ ipcMain.handle('fs:listprompts', async (): Promise<{ prompts: string[]; error?: 
 
 ipcMain.handle('fs:swarmroot', async (): Promise<string> => {
   return swarmRoot
+})
+
+// Workspace IPC handlers — get/set the current project directory
+ipcMain.handle('workspace:getCwd', async (): Promise<string> => {
+  return workingDir
+})
+
+ipcMain.handle('workspace:open', async (): Promise<{ path: string | null; error?: string }> => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: 'Open Project Directory',
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { path: null }
+  }
+
+  const newDir = result.filePaths[0]
+  const newSwarmRoot = path.join(newDir, 'swarm')
+
+  // Check if swarm/ subdirectory exists
+  try {
+    await fs.access(newSwarmRoot)
+  } catch {
+    return { path: newDir, error: 'no-swarm-dir' }
+  }
+
+  // Update working directory and swarm root
+  workingDir = newDir
+  swarmRoot = newSwarmRoot
+
+  // Restart file watchers for new paths
+  if (swarmWatcher) {
+    await swarmWatcher.close()
+    swarmWatcher = null
+  }
+  if (stateWatcher) {
+    await stateWatcher.close()
+    stateWatcher = null
+  }
+  if (logsWatcher) {
+    await logsWatcher.close()
+    logsWatcher = null
+  }
+
+  // Re-initialize watchers
+  swarmWatcher = watch(swarmRoot, {
+    ignoreInitial: true,
+    depth: 10,
+    ignored: /(^|[\/\\])\../,
+  })
+  swarmWatcher.on('all', (event, filePath) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('fs:changed', { event, path: filePath })
+    }
+  })
+
+  stateWatcher = watch(stateFilePath, {
+    ignoreInitial: true,
+    awaitWriteFinish: { stabilityThreshold: 100, pollInterval: 50 },
+  })
+  stateWatcher.on('change', async () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    try {
+      const data = await fs.readFile(stateFilePath, 'utf-8')
+      const parsed = JSON.parse(data)
+      const agentsMap = parsed.agents || {}
+      const agents = Object.values(agentsMap)
+      mainWindow.webContents.send('state:changed', { agents })
+    } catch {
+      // File may be mid-write; ignore transient errors
+    }
+  })
+
+  try {
+    await fs.mkdir(logsDir, { recursive: true })
+  } catch { /* ignore */ }
+  logsWatcher = watch(logsDir, {
+    ignoreInitial: true,
+    depth: 0,
+    ignored: /(^|[\/\\])\../,
+    awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
+  })
+  logsWatcher.on('all', (event, filePath) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('logs:changed', { event, path: filePath })
+    }
+  })
+
+  // Update window title
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    const dirName = path.basename(newDir)
+    mainWindow.setTitle(`Swarm Desktop — ${dirName}`)
+  }
+
+  return { path: newDir }
 })
 
 // File watcher using chokidar

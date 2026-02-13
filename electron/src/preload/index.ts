@@ -51,6 +51,11 @@ contextBridge.exposeInMainWorld('dialog', {
     ipcRenderer.invoke('dialog:saveFile', options),
 })
 
+contextBridge.exposeInMainWorld('workspace', {
+  getCwd: () => ipcRenderer.invoke('workspace:getCwd'),
+  open: () => ipcRenderer.invoke('workspace:open'),
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -142,6 +147,11 @@ export type DialogAPI = {
     Promise<{ error?: string; canceled?: boolean }>
 }
 
+export type WorkspaceAPI = {
+  getCwd: () => Promise<string>
+  open: () => Promise<{ path: string | null; error?: string }>
+}
+
 export type StateAPI = {
   read: () => Promise<{ agents: AgentState[]; error?: string }>
   watch: () => Promise<void>
@@ -187,5 +197,6 @@ declare global {
     promptResolver: PromptAPI
     notify: NotifyAPI
     dialog: DialogAPI
+    workspace: WorkspaceAPI
   }
 }

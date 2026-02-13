@@ -41,6 +41,11 @@ const DEFAULT_CONSOLE_HEIGHT = 192
 const MIN_CONSOLE_HEIGHT = 100
 const COLLAPSED_CONSOLE_HEIGHT = 28
 
+const DEFAULT_LEFT_SIDEBAR_WIDTH = 256
+const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320
+const MIN_SIDEBAR_WIDTH = 160
+const MAX_SIDEBAR_WIDTH = 480
+
 function shortenHomePath(fullPath: string): string {
   const homeMatch = fullPath.match(/^(\/Users\/[^/]+|\/home\/[^/]+)/)
   if (homeMatch) {
@@ -83,6 +88,20 @@ function App() {
   const isDraggingConsole = useRef(false)
   const dragStartY = useRef(0)
   const dragStartHeight = useRef(0)
+
+  // Sidebar resize state
+  const [leftSidebarWidth, setLeftSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('swarm-left-sidebar-width')
+    return saved ? parseInt(saved, 10) || DEFAULT_LEFT_SIDEBAR_WIDTH : DEFAULT_LEFT_SIDEBAR_WIDTH
+  })
+  const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
+    const saved = localStorage.getItem('swarm-right-sidebar-width')
+    return saved ? parseInt(saved, 10) || DEFAULT_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH
+  })
+  const isDraggingLeftSidebar = useRef(false)
+  const isDraggingRightSidebar = useRef(false)
+  const sidebarDragStartX = useRef(0)
+  const sidebarDragStartWidth = useRef(0)
 
   const activeYamlPath = selectedFile && isYamlFile(selectedFile) ? selectedFile : null
   const [nodePositions, setNodePositions] = useState<Record<string, { x: number; y: number }>>(() =>
@@ -671,6 +690,59 @@ function App() {
     }
   }, [updateConsoleHeight])
 
+  // Sidebar resize helpers
+  const clampSidebarWidth = useCallback((w: number) => {
+    return Math.max(MIN_SIDEBAR_WIDTH, Math.min(w, MAX_SIDEBAR_WIDTH))
+  }, [])
+
+  const handleLeftSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingLeftSidebar.current = true
+    sidebarDragStartX.current = e.clientX
+    sidebarDragStartWidth.current = leftSidebarWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [leftSidebarWidth])
+
+  const handleRightSidebarResizeStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault()
+    isDraggingRightSidebar.current = true
+    sidebarDragStartX.current = e.clientX
+    sidebarDragStartWidth.current = rightSidebarWidth
+    document.body.style.cursor = 'col-resize'
+    document.body.style.userSelect = 'none'
+  }, [rightSidebarWidth])
+
+  useEffect(() => {
+    function onMouseMove(e: MouseEvent) {
+      if (isDraggingLeftSidebar.current) {
+        const delta = e.clientX - sidebarDragStartX.current
+        const newWidth = clampSidebarWidth(sidebarDragStartWidth.current + delta)
+        setLeftSidebarWidth(newWidth)
+        localStorage.setItem('swarm-left-sidebar-width', String(newWidth))
+      } else if (isDraggingRightSidebar.current) {
+        const delta = sidebarDragStartX.current - e.clientX
+        const newWidth = clampSidebarWidth(sidebarDragStartWidth.current + delta)
+        setRightSidebarWidth(newWidth)
+        localStorage.setItem('swarm-right-sidebar-width', String(newWidth))
+      }
+    }
+    function onMouseUp() {
+      if (isDraggingLeftSidebar.current || isDraggingRightSidebar.current) {
+        isDraggingLeftSidebar.current = false
+        isDraggingRightSidebar.current = false
+        document.body.style.cursor = ''
+        document.body.style.userSelect = ''
+      }
+    }
+    document.addEventListener('mousemove', onMouseMove)
+    document.addEventListener('mouseup', onMouseUp)
+    return () => {
+      document.removeEventListener('mousemove', onMouseMove)
+      document.removeEventListener('mouseup', onMouseUp)
+    }
+  }, [clampSidebarWidth])
+
   // Cmd+K / Ctrl+K and Cmd+J / Ctrl+J keyboard shortcuts
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
@@ -891,8 +963,20 @@ function App() {
       {/* Main content */}
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - File tree */}
-        <div className="w-64 border-r border-border bg-secondary/30 flex flex-col">
+        <div
+          style={{ width: leftSidebarWidth }}
+          className="border-r border-border bg-secondary/30 flex flex-col shrink-0 relative"
+        >
           <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} onToast={addToast} />
+          {/* Left sidebar drag handle */}
+          <div
+            className="absolute top-0 right-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
+            onMouseDown={handleLeftSidebarResizeStart}
+            onDoubleClick={() => {
+              setLeftSidebarWidth(DEFAULT_LEFT_SIDEBAR_WIDTH)
+              localStorage.setItem('swarm-left-sidebar-width', String(DEFAULT_LEFT_SIDEBAR_WIDTH))
+            }}
+          />
         </div>
 
         {/* Center - Settings panel, File viewer, or DAG canvas */}
@@ -946,26 +1030,38 @@ function App() {
         </div>
 
         {/* Right sidebar - Task drawer, Pipeline panel, or Agent panel */}
-        {selectedTask ? (
-          <TaskDrawer
-            taskName={selectedTask.name}
-            compose={selectedTask.compose}
-            onSave={handleSaveTask}
-            onClose={handleCloseDrawer}
+        <div
+          style={{ width: rightSidebarWidth }}
+          className="border-l border-border bg-secondary/30 flex flex-col shrink-0 relative"
+        >
+          {/* Right sidebar drag handle */}
+          <div
+            className="absolute top-0 left-0 w-1 h-full cursor-col-resize hover:bg-primary/30 active:bg-primary/50 transition-colors z-10"
+            onMouseDown={handleRightSidebarResizeStart}
+            onDoubleClick={() => {
+              setRightSidebarWidth(DEFAULT_RIGHT_SIDEBAR_WIDTH)
+              localStorage.setItem('swarm-right-sidebar-width', String(DEFAULT_RIGHT_SIDEBAR_WIDTH))
+            }}
           />
-        ) : selectedPipeline ? (
-          <PipelinePanel
-            pipelineName={selectedPipeline.name}
-            compose={selectedPipeline.compose}
-            onSave={handleSavePipeline}
-            onDelete={handleDeletePipeline}
-            onClose={handleClosePipelinePanel}
-          />
-        ) : (
-          <div className="w-72 border-l border-border bg-secondary/30 flex flex-col">
+          {selectedTask ? (
+            <TaskDrawer
+              taskName={selectedTask.name}
+              compose={selectedTask.compose}
+              onSave={handleSaveTask}
+              onClose={handleCloseDrawer}
+            />
+          ) : selectedPipeline ? (
+            <PipelinePanel
+              pipelineName={selectedPipeline.name}
+              compose={selectedPipeline.compose}
+              onSave={handleSavePipeline}
+              onDelete={handleDeletePipeline}
+              onClose={handleClosePipelinePanel}
+            />
+          ) : (
             <AgentPanel onViewLog={handleViewLog} onToast={addToast} />
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       {/* Bottom - Console (collapsible & resizable) */}
