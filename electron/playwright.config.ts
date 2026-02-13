@@ -6,8 +6,8 @@ export default defineConfig({
   fullyParallel: false,
   // Fail the build on CI if you accidentally left test.only in the source code
   forbidOnly: !!process.env.CI,
-  // Retry failed tests on CI (increased from 2 to 3 for better stability)
-  retries: process.env.CI ? 3 : 1,
+  // Retry failed tests on CI only (local retries cause issues with shared beforeAll state)
+  retries: process.env.CI ? 2 : 0,
   // Single worker for Electron tests
   workers: 1,
   // Reporter to use

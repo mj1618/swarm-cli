@@ -9,12 +9,6 @@ let window: Page;
 // Test fixtures directory for isolated test workspaces
 const fixturesDir = path.join(os.tmpdir(), 'swarm-e2e-fixtures');
 
-// Helper to wait for React app to be ready
-async function waitForAppReady(page: Page, timeoutMs: number = 5000): Promise<void> {
-  // Wait using a fixed timeout since Playwright's waitForSelector has issues in Electron
-  // when the DOM is constantly updating during React hydration
-  await new Promise(resolve => setTimeout(resolve, timeoutMs));
-}
 
 // Helper to create a test workspace with optional swarm.yaml content
 async function createTestWorkspace(name: string, swarmYamlContent?: string): Promise<string> {
@@ -81,8 +75,9 @@ test.beforeAll(async () => {
   
   // Wait for the window to be ready and React to mount
   await window.waitForLoadState('domcontentloaded');
-  // Wait for React app to fully initialize
-  await waitForAppReady(window);
+  // Give React time to fully hydrate - this fixed timeout is appropriate for Electron
+  // where waitForSelector can have issues during React initialization
+  await window.waitForTimeout(3000);
 });
 
 test.afterAll(async () => {
@@ -110,7 +105,7 @@ test.afterAll(async () => {
 });
 
 test.describe('Swarm Desktop - Core App Tests', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('app launches successfully', async () => {
     // Verify that the app launched and a window opened
@@ -150,13 +145,13 @@ test.describe('Swarm Desktop - Core App Tests', () => {
 });
 
 test.describe('Swarm Desktop - Main 3-Panel Layout', () => {
-  test.describe.configure({ mode: 'serial', retries: 2 });
+  test.describe.configure({ mode: 'serial' });
 
   test('displays the main 3-panel layout with file tree, DAG canvas, and agent panel', async () => {
     test.slow(); // This test needs more time to verify all panels
     
     // Wait for React to fully render the app
-    await waitForAppReady(window);
+    await window.waitForSelector('#root', { timeout: 10000 });
     
     // Check for the title bar with "Swarm Desktop" text
     const titleBar = await window.locator('text=Swarm Desktop').first();
