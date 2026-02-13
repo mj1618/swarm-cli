@@ -57,6 +57,7 @@ contextBridge.exposeInMainWorld('workspace', {
   getCwd: () => ipcRenderer.invoke('workspace:getCwd'),
   open: () => ipcRenderer.invoke('workspace:open'),
   switch: (dirPath: string) => ipcRenderer.invoke('workspace:switch', dirPath),
+  init: () => ipcRenderer.invoke('workspace:init'),
 })
 
 contextBridge.exposeInMainWorld('recent', {
@@ -182,6 +183,7 @@ export type WorkspaceAPI = {
   getCwd: () => Promise<string>
   open: () => Promise<{ path: string | null; error?: string }>
   switch: (dirPath: string) => Promise<{ path: string; error?: string }>
+  init: () => Promise<{ success?: boolean; error?: string }>
 }
 
 export type RecentAPI = {

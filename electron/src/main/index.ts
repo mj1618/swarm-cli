@@ -754,6 +754,53 @@ ipcMain.handle('workspace:switch', async (_event, newDir: string): Promise<{ pat
   return switchWorkspace(newDir)
 })
 
+ipcMain.handle('workspace:init', async (): Promise<{ success?: boolean; error?: string }> => {
+  const promptsDir = path.join(swarmRoot, 'prompts')
+
+  try {
+    // Create directories
+    await fs.mkdir(swarmRoot, { recursive: true })
+    await fs.mkdir(promptsDir, { recursive: true })
+
+    // Create swarm.yaml with example content
+    const exampleYaml = `version: "1"
+
+tasks:
+  example:
+    prompt: example
+    model: sonnet
+
+pipelines:
+  main:
+    iterations: 1
+    tasks: [example]
+`
+    await fs.writeFile(path.join(swarmRoot, 'swarm.yaml'), exampleYaml, 'utf-8')
+
+    // Create example prompt
+    const examplePrompt = `# Example Prompt
+
+This is an example prompt file. Edit this to define what your AI agent should do.
+
+Your agent will receive this prompt and execute the instructions.
+`
+    await fs.writeFile(path.join(promptsDir, 'example.md'), examplePrompt, 'utf-8')
+
+    // Create swarm.toml with basic configuration
+    const exampleToml = `# Swarm CLI configuration
+# See documentation for available options
+
+backend = "claude-code"
+model = "sonnet"
+`
+    await fs.writeFile(path.join(swarmRoot, 'swarm.toml'), exampleToml, 'utf-8')
+
+    return { success: true }
+  } catch (err: any) {
+    return { error: err.message || String(err) }
+  }
+})
+
 // File watcher using chokidar
 let swarmWatcher: FSWatcher | null = null
 

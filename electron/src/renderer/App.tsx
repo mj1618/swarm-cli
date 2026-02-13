@@ -14,6 +14,7 @@ import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
 import AboutDialog from './components/AboutDialog'
 import SettingsPanel from './components/SettingsPanel'
 import OutputRunViewer, { isOutputRunFolder } from './components/OutputRunViewer'
+import InitializeWorkspace from './components/InitializeWorkspace'
 import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
@@ -50,6 +51,7 @@ const DEFAULT_LEFT_SIDEBAR_WIDTH = 256
 const DEFAULT_RIGHT_SIDEBAR_WIDTH = 320
 const MIN_SIDEBAR_WIDTH = 160
 const MAX_SIDEBAR_WIDTH = 480
+const COLLAPSED_SIDEBAR_WIDTH = 28
 
 function shortenHomePath(fullPath: string): string {
   const homeMatch = fullPath.match(/^(\/Users\/[^/]+|\/home\/[^/]+)/)
@@ -110,6 +112,12 @@ function App() {
   const [rightSidebarWidth, setRightSidebarWidth] = useState<number>(() => {
     const saved = localStorage.getItem('swarm-right-sidebar-width')
     return saved ? parseInt(saved, 10) || DEFAULT_RIGHT_SIDEBAR_WIDTH : DEFAULT_RIGHT_SIDEBAR_WIDTH
+  })
+  const [leftSidebarCollapsed, setLeftSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('swarm-left-sidebar-collapsed') === 'true'
+  })
+  const [rightSidebarCollapsed, setRightSidebarCollapsed] = useState<boolean>(() => {
+    return localStorage.getItem('swarm-right-sidebar-collapsed') === 'true'
   })
   const isDraggingLeftSidebar = useRef(false)
   const isDraggingRightSidebar = useRef(false)
@@ -751,6 +759,22 @@ function App() {
     fitViewRef.current = fn
   }, [])
 
+  // Initialize workspace (create swarm/ directory structure)
+  const handleInitializeWorkspace = useCallback(async () => {
+    const result = await window.workspace.init()
+    if (result.error) {
+      addToast('error', `Failed to initialize: ${result.error}`)
+      return
+    }
+    addToast('success', 'Swarm project initialized!')
+    // Reload the default yaml
+    const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+    if (!reloaded.error) {
+      setDefaultYamlContent(reloaded.content)
+      setDefaultYamlError(null)
+    }
+  }, [addToast])
+
   // Open project directory picker
   const handleOpenProject = useCallback(async () => {
     const result = await window.workspace.open()
@@ -822,6 +846,23 @@ function App() {
     setConsoleCollapsed(prev => {
       const next = !prev
       localStorage.setItem('swarm-console-collapsed', String(next))
+      return next
+    })
+  }, [])
+
+  // Sidebar collapse toggles
+  const toggleLeftSidebar = useCallback(() => {
+    setLeftSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('swarm-left-sidebar-collapsed', String(next))
+      return next
+    })
+  }, [])
+
+  const toggleRightSidebar = useCallback(() => {
+    setRightSidebarCollapsed(prev => {
+      const next = !prev
+      localStorage.setItem('swarm-right-sidebar-collapsed', String(next))
       return next
     })
   }, [])
@@ -917,7 +958,7 @@ function App() {
     }
   }, [clampSidebarWidth])
 
-  // Cmd+K / Ctrl+K and Cmd+J / Ctrl+J keyboard shortcuts
+  // Keyboard shortcuts: Cmd+K, Cmd+J, Cmd+B, Cmd+Shift+B, ?
   useEffect(() => {
     function handleKeyDown(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -932,6 +973,16 @@ function App() {
           return next
         })
       }
+      // Cmd+B to toggle left sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b' && !e.shiftKey) {
+        e.preventDefault()
+        toggleLeftSidebar()
+      }
+      // Cmd+Shift+B to toggle right sidebar
+      if ((e.metaKey || e.ctrlKey) && e.key === 'b' && e.shiftKey) {
+        e.preventDefault()
+        toggleRightSidebar()
+      }
       if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
         const tag = (e.target as HTMLElement)?.tagName
         const editable = (e.target as HTMLElement)?.isContentEditable
@@ -942,7 +993,7 @@ function App() {
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [])
+  }, [toggleLeftSidebar, toggleRightSidebar])
 
   // Native menu IPC listeners
   useEffect(() => {

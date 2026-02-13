@@ -17,6 +17,7 @@ import '@xyflow/react/dist/style.css'
 import { toPng, toSvg } from 'html-to-image'
 import TaskNode from './TaskNode'
 import ConnectionDialog from './ConnectionDialog'
+import DagSearchBox from './DagSearchBox'
 import { composeToFlow, parseComposeFile } from '../lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency, TaskNodeData, AgentDisplayStatus } from '../lib/yamlParser'
 import { validateDag } from '../lib/dagValidation'
@@ -296,13 +297,33 @@ export default function DagCanvas({
 
   // Connection dialog state
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
-  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes } = useReactFlow()
+  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes, setCenter, getZoom } = useReactFlow()
 
   useEffect(() => {
     if (onFitViewReady) {
       onFitViewReady(() => fitView({ padding: 0.3 }))
     }
   }, [onFitViewReady, fitView])
+
+  // Get task names for search (respecting pipeline filter)
+  const searchableTaskNames = useMemo(() => {
+    // If pipeline filter is active, only show tasks in that pipeline
+    if (activePipeline && pipelineTasks) {
+      const taskSet = new Set(pipelineTasks)
+      return nodes.filter(n => taskSet.has(n.id)).map(n => n.id)
+    }
+    return nodes.map(n => n.id)
+  }, [nodes, activePipeline, pipelineTasks])
+
+  // Zoom to a specific node by ID
+  const handleZoomToNode = useCallback((nodeId: string) => {
+    const node = getNodes().find(n => n.id === nodeId)
+    if (node) {
+      const x = node.position.x + (node.measured?.width ?? 150) / 2
+      const y = node.position.y + (node.measured?.height ?? 60) / 2
+      setCenter(x, y, { zoom: Math.max(getZoom(), 1), duration: 300 })
+    }
+  }, [getNodes, setCenter, getZoom])
 
   const handleConnect = useCallback(
     (connection: Connection) => {
@@ -782,24 +803,34 @@ export default function DagCanvas({
             </button>
           </Panel>
         )}
-        {validation && (validation.cycleNodes.size > 0 || validation.orphanedTasks.size > 0) && (
-          <Panel position="top-left">
-            <div className="px-3 py-2 rounded-md bg-card/95 border border-border text-xs space-y-1 max-w-[300px]">
-              {validation.cycleNodes.size > 0 && (
-                <div className="flex items-start gap-1.5 text-red-400">
-                  <span className="shrink-0 mt-px">&#9888;</span>
-                  <span>Cycle detected: {[...validation.cycleNodes].join(', ')}</span>
-                </div>
-              )}
-              {validation.orphanedTasks.size > 0 && (
-                <div className="flex items-start gap-1.5 text-amber-400">
-                  <span className="shrink-0 mt-px">&#9888;</span>
-                  <span>Orphaned: {[...validation.orphanedTasks].join(', ')}</span>
-                </div>
-              )}
-            </div>
-          </Panel>
-        )}
+        {/* Top-left panel: Search + Validation warnings */}
+        <Panel position="top-left">
+          <div className="space-y-2">
+            {/* Search box */}
+            <DagSearchBox
+              taskNames={searchableTaskNames}
+              onSelectTask={handleZoomToNode}
+              disabled={nodes.length === 0}
+            />
+            {/* Validation warnings */}
+            {validation && (validation.cycleNodes.size > 0 || validation.orphanedTasks.size > 0) && (
+              <div className="px-3 py-2 rounded-md bg-card/95 border border-border text-xs space-y-1 max-w-[300px]">
+                {validation.cycleNodes.size > 0 && (
+                  <div className="flex items-start gap-1.5 text-red-400">
+                    <span className="shrink-0 mt-px">&#9888;</span>
+                    <span>Cycle detected: {[...validation.cycleNodes].join(', ')}</span>
+                  </div>
+                )}
+                {validation.orphanedTasks.size > 0 && (
+                  <div className="flex items-start gap-1.5 text-amber-400">
+                    <span className="shrink-0 mt-px">&#9888;</span>
+                    <span>Orphaned: {[...validation.orphanedTasks].join(', ')}</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </Panel>
       </ReactFlow>
       {pendingConnection && (
         <ConnectionDialog
