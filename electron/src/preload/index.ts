@@ -63,12 +63,6 @@ contextBridge.exposeInMainWorld('recent', {
   clear: () => ipcRenderer.invoke('recent:clear'),
 })
 
-contextBridge.exposeInMainWorld('recent', {
-  get: () => ipcRenderer.invoke('recent:get'),
-  add: (projectPath: string) => ipcRenderer.invoke('recent:add', projectPath),
-  clear: () => ipcRenderer.invoke('recent:clear'),
-})
-
 contextBridge.exposeInMainWorld('electronMenu', {
   on: (channel: string, callback: (data?: any) => void) => {
     const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project', 'menu:keyboard-shortcuts', 'menu:about', 'menu:open-recent']

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawn } from 'child_process'
@@ -10,6 +10,93 @@ let mainWindow: BrowserWindow | null = null
 // Recent projects storage
 const MAX_RECENT_PROJECTS = 5
 const recentProjectsPath = path.join(app.getPath('userData'), 'recent-projects.json')
+
+// Window state persistence
+const windowStatePath = path.join(app.getPath('userData'), 'window-state.json')
+
+interface WindowState {
+  x: number
+  y: number
+  width: number
+  height: number
+  isMaximized: boolean
+}
+
+const DEFAULT_WINDOW_STATE: WindowState = {
+  x: -1, // -1 means center on screen
+  y: -1,
+  width: 1400,
+  height: 900,
+  isMaximized: false,
+}
+
+async function loadWindowState(): Promise<WindowState> {
+  try {
+    const data = await fs.readFile(windowStatePath, 'utf-8')
+    const state = JSON.parse(data) as WindowState
+
+    // Validate the state has required fields
+    if (
+      typeof state.width !== 'number' ||
+      typeof state.height !== 'number' ||
+      typeof state.isMaximized !== 'boolean'
+    ) {
+      return DEFAULT_WINDOW_STATE
+    }
+
+    // Enforce minimum dimensions
+    state.width = Math.max(state.width, 1000)
+    state.height = Math.max(state.height, 600)
+
+    // Check if the window position is on a visible display
+    if (typeof state.x === 'number' && typeof state.y === 'number' && state.x !== -1 && state.y !== -1) {
+      const displays = screen.getAllDisplays()
+      const isOnScreen = displays.some(display => {
+        const { x, y, width, height } = display.bounds
+        // Check if at least part of the window is visible on this display
+        return (
+          state.x + state.width > x &&
+          state.x < x + width &&
+          state.y + state.height > y &&
+          state.y < y + height
+        )
+      })
+
+      if (!isOnScreen) {
+        // Reset position to center if saved position is off-screen
+        state.x = -1
+        state.y = -1
+      }
+    }
+
+    return state
+  } catch {
+    // File doesn't exist or is invalid — use defaults
+    return DEFAULT_WINDOW_STATE
+  }
+}
+
+async function saveWindowState(win: BrowserWindow): Promise<void> {
+  try {
+    // Don't save state if window is minimized
+    if (win.isMinimized()) return
+
+    const isMaximized = win.isMaximized()
+    const bounds = isMaximized ? win.getNormalBounds() : win.getBounds()
+
+    const state: WindowState = {
+      x: bounds.x,
+      y: bounds.y,
+      width: bounds.width,
+      height: bounds.height,
+      isMaximized,
+    }
+
+    await fs.writeFile(windowStatePath, JSON.stringify(state, null, 2), 'utf-8')
+  } catch (err) {
+    console.error('Failed to save window state:', err)
+  }
+}
 
 async function loadRecentProjects(): Promise<string[]> {
   try {
@@ -69,10 +156,13 @@ function shortenPath(fullPath: string): string {
 
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
-function createWindow() {
-  mainWindow = new BrowserWindow({
-    width: 1400,
-    height: 900,
+async function createWindow() {
+  const windowState = await loadWindowState()
+
+  // Determine initial window options
+  const windowOptions: Electron.BrowserWindowConstructorOptions = {
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 1000,
     minHeight: 600,
     webPreferences: {
@@ -82,7 +172,23 @@ function createWindow() {
     },
     titleBarStyle: 'hiddenInset',
     backgroundColor: '#0f172a',
-  })
+  }
+
+  // Set position if we have a valid saved position
+  if (windowState.x !== -1 && windowState.y !== -1) {
+    windowOptions.x = windowState.x
+    windowOptions.y = windowState.y
+  } else {
+    // Center on primary display
+    windowOptions.center = true
+  }
+
+  mainWindow = new BrowserWindow(windowOptions)
+
+  // Restore maximized state after window is ready
+  if (windowState.isMaximized) {
+    mainWindow.maximize()
+  }
 
   if (isDev) {
     mainWindow.loadURL('http://localhost:5173')
@@ -90,6 +196,13 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
+
+  // Save window state before closing
+  mainWindow.on('close', async () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      await saveWindowState(mainWindow)
+    }
+  })
 
   mainWindow.on('closed', () => {
     mainWindow = null
