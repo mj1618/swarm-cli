@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
+import { isSoundEnabled, setSoundEnabled, getSoundVolume, setSoundVolume, playSuccess } from '../lib/soundManager'
 
 interface SettingsPanelProps {
   onClose: () => void
@@ -21,6 +22,8 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
   const [systemNotifications, setSystemNotifications] = useState(() =>
     localStorage.getItem('swarm-system-notifications') !== 'false'
   )
+  const [soundAlerts, setSoundAlerts] = useState(isSoundEnabled)
+  const [soundVolume, setSoundVolumeState] = useState(getSoundVolume)
 
   useEffect(() => {
     window.settings.read().then(result => {
@@ -183,6 +186,53 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
               <p className="text-xs text-muted-foreground mt-1.5">
                 Only fires when the window is not focused
               </p>
+            </div>
+
+            {/* Sound Alerts */}
+            <div>
+              <label className={labelClass}>Sound Alerts</label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <button
+                  role="switch"
+                  aria-checked={soundAlerts}
+                  onClick={() => {
+                    const next = !soundAlerts
+                    setSoundAlerts(next)
+                    setSoundEnabled(next)
+                    if (next) playSuccess()
+                  }}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    soundAlerts ? 'bg-primary' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                      soundAlerts ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-foreground">
+                  Play sounds when agents complete or fail
+                </span>
+              </label>
+              {soundAlerts && (
+                <div className="mt-3 flex items-center gap-3">
+                  <span className="text-xs text-muted-foreground w-12">Volume</span>
+                  <input
+                    type="range"
+                    min={0}
+                    max={100}
+                    value={soundVolume}
+                    onChange={e => {
+                      const v = parseInt(e.target.value, 10)
+                      setSoundVolumeState(v)
+                      setSoundVolume(v)
+                    }}
+                    className="flex-1 h-1.5 accent-primary cursor-pointer"
+                  />
+                  <span className="text-xs text-muted-foreground w-8 text-right">{soundVolume}%</span>
+                </div>
+              )}
             </div>
 
             {/* Save Button */}

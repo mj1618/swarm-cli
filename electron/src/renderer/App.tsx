@@ -13,6 +13,7 @@ import SettingsPanel from './components/SettingsPanel'
 import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
 import type { ToastType } from './components/ToastContainer'
+import { playSuccess, playFailure } from './lib/soundManager'
 import { serializeCompose, parseComposeFile } from './lib/yamlParser'
 import type { ComposeFile, TaskDef, TaskDependency, PipelineDef } from './lib/yamlParser'
 import { addDependency, applyPipelineEdits, deletePipeline, deleteTask, deleteEdge } from './lib/yamlWriter'
@@ -498,6 +499,13 @@ function App() {
         }
 
         addToast(type, msg)
+
+        // Play sound alert
+        if (agent.exit_reason === 'crashed') {
+          playFailure()
+        } else if (agent.exit_reason !== 'killed') {
+          playSuccess()
+        }
 
         // Fire system notification if enabled
         const notificationsEnabled = localStorage.getItem('swarm-system-notifications') !== 'false'
