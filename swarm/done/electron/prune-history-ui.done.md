@@ -39,3 +39,28 @@ For the initial implementation, expose at minimum:
 - Option to include logs
 
 The confirmation dialog should warn users that this action is irreversible.
+
+---
+
+## Completion Note (2026-02-13)
+
+Implemented all acceptance criteria in `AgentPanel.tsx`:
+
+1. **Clear History button** - Appears in the Agent Panel header when there are terminated agents. Uses the same styling as the refresh button.
+
+2. **Confirmation dialog** with:
+   - Count of terminated agents to be removed
+   - "Also delete log files" checkbox (maps to `--logs` flag)
+   - Age filter dropdown with options: All, Older than 1/7/30 days (maps to `--older-than` flag)
+   - Warning that the action cannot be undone
+   - Cancel and Clear History buttons
+
+3. **handlePrune function** - Calls `swarm prune --force` with optional `--logs` and `--older-than` flags based on dialog options.
+
+4. **Toast notification** - Shows success message with count of removed agents (parsed from CLI output), or error message on failure.
+
+5. **Auto-refresh** - Already handled by existing `state:changed` watcher.
+
+6. **Button visibility** - Only shows when `hasTerminatedAgents` is true.
+
+No changes needed to preload/index.ts - used existing `window.swarm.run(['prune', ...])` API.
