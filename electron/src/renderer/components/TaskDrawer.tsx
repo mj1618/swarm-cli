@@ -154,6 +154,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
     <div
       ref={drawerRef}
       className="bg-card flex flex-col h-full animate-in slide-in-from-right duration-200"
+      data-testid="task-drawer"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
@@ -185,9 +186,10 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
               }}
               className={`${inputClass} font-mono text-xs ${nameError ? 'border-red-500 focus:ring-red-500' : ''}`}
               placeholder="my-task-name"
+              data-testid="task-name-input"
             />
             {nameError && (
-              <p className="text-[10px] text-red-400 mt-1">{nameError}</p>
+              <p className="text-[10px] text-red-400 mt-1" data-testid="task-name-error">{nameError}</p>
             )}
           </div>
         )}
@@ -216,12 +218,14 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
               rows={4}
               className={inputClass + ' resize-y font-mono text-xs'}
               placeholder="Inline prompt text..."
+              data-testid="prompt-string-textarea"
             />
           ) : promptType === 'prompt' && prompts.length > 0 ? (
             <select
               value={promptValue}
               onChange={e => setPromptValue(e.target.value)}
               className={inputClass + ' font-mono text-xs'}
+              data-testid="prompt-select"
             >
               <option value="">Select a prompt...</option>
               {prompts.map(p => {
@@ -239,6 +243,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
               onChange={e => setPromptValue(e.target.value)}
               className={inputClass + ' font-mono text-xs'}
               placeholder={promptType === 'prompt' ? 'prompt-name' : 'path/to/prompt-file.md'}
+              data-testid="prompt-input"
             />
           )}
         </div>
@@ -337,6 +342,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
         <button
           onClick={onClose}
           className="flex-1 text-xs px-3 py-1.5 border border-border rounded text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="task-drawer-cancel"
         >
           Cancel
         </button>
@@ -344,6 +350,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
           onClick={handleSave}
           disabled={saving}
           className="flex-1 text-xs px-3 py-1.5 bg-primary text-primary-foreground rounded hover:bg-primary/90 disabled:opacity-50 font-medium transition-colors"
+          data-testid="task-drawer-save"
         >
           {saving ? 'Saving...' : 'Save'}
         </button>
