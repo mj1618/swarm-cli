@@ -83,6 +83,11 @@ function App() {
   const { toasts, addToast, removeToast } = useToasts()
   const prevAgentsRef = useRef<Map<string, AgentState>>(new Map())
 
+  // Track dirty files for unsaved changes warning
+  const [dirtyFiles, setDirtyFiles] = useState<Set<string>>(new Set())
+  const [triggerSave, setTriggerSave] = useState(0)
+  const pendingSaveCloseRef = useRef(false)
+
   // Console panel tab + collapse/resize state
   const [consoleActiveTab, setConsoleActiveTab] = useState<string>('console')
   const [consoleCollapsed, setConsoleCollapsed] = useState<boolean>(() => {
@@ -539,6 +544,27 @@ function App() {
     setSelectedFile(filePath)
   }, [])
 
+  // Handle dirty state changes from MonacoFileEditor
+  const handleDirtyChange = useCallback((filePath: string, isDirty: boolean) => {
+    setDirtyFiles(prev => {
+      const next = new Set(prev)
+      if (isDirty) {
+        next.add(filePath)
+      } else {
+        next.delete(filePath)
+      }
+      return next
+    })
+  }, [])
+
+  // Handle save completion from MonacoFileEditor (for save-and-close flow)
+  const handleSaveComplete = useCallback(() => {
+    if (pendingSaveCloseRef.current) {
+      pendingSaveCloseRef.current = false
+      window.editor.notifySaveComplete()
+    }
+  }, [])
+
   // Load default swarm.yaml for when no file is selected
   useEffect(() => {
     let cancelled = false
@@ -639,6 +665,25 @@ function App() {
       unsubscribe()
     }
   }, [])
+
+  // Report dirty state to main process
+  useEffect(() => {
+    window.editor.setDirtyState(dirtyFiles.size > 0)
+  }, [dirtyFiles])
+
+  // Listen for save-and-close requests from main process
+  useEffect(() => {
+    const cleanup = window.editor.onSaveAndClose(() => {
+      if (dirtyFiles.size > 0) {
+        pendingSaveCloseRef.current = true
+        setTriggerSave(prev => prev + 1)
+      } else {
+        // No dirty files, notify completion immediately
+        window.editor.notifySaveComplete()
+      }
+    })
+    return cleanup
+  }, [dirtyFiles])
 
   // Detect agent state transitions and fire toasts
   useEffect(() => {
@@ -1184,7 +1229,13 @@ function App() {
             ) : selectedIsOutputRun && selectedFile ? (
               <OutputRunViewer folderPath={selectedFile} onOpenFile={handleSelectFile} />
             ) : selectedFile && !selectedIsYaml ? (
-              <MonacoFileEditor filePath={selectedFile} theme={effectiveTheme} />
+              <MonacoFileEditor
+                filePath={selectedFile}
+                theme={effectiveTheme}
+                onDirtyChange={handleDirtyChange}
+                triggerSave={triggerSave}
+                onSaveComplete={handleSaveComplete}
+              />
             ) : (
               <>
                 <div className="p-3 border-b border-border">

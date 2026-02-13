@@ -13,6 +13,11 @@ import type { EffectiveTheme } from '../lib/themeManager'
 interface MonacoFileEditorProps {
   filePath: string
   theme?: EffectiveTheme
+  onDirtyChange?: (filePath: string, isDirty: boolean) => void
+  /** Increment to trigger a save operation */
+  triggerSave?: number
+  /** Called after save completes (success or failure) */
+  onSaveComplete?: () => void
 }
 
 function getLanguage(filePath: string): string {
@@ -157,7 +162,7 @@ function computeDecorations(
   return decorations
 }
 
-export default function MonacoFileEditor({ filePath, theme = 'dark' }: MonacoFileEditorProps) {
+export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChange, triggerSave, onSaveComplete }: MonacoFileEditorProps) {
   const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs'
   const [content, setContent] = useState<string | null>(null)
   const [savedContent, setSavedContent] = useState<string | null>(null)
@@ -173,6 +178,8 @@ export default function MonacoFileEditor({ filePath, theme = 'dark' }: MonacoFil
   const decorationsRef = useRef<string[]>([])
   const isDirtyRef = useRef(false)
   const saveRef = useRef<() => void>(() => {})
+  const onDirtyChangeRef = useRef(onDirtyChange)
+  onDirtyChangeRef.current = onDirtyChange
 
   const language = getLanguage(filePath)
   const tabSize = getTabSize(language)
@@ -182,6 +189,37 @@ export default function MonacoFileEditor({ filePath, theme = 'dark' }: MonacoFil
   const isPrompt = isPromptFile(filePath)
   const isDirty = content !== null && savedContent !== null && content !== savedContent
   isDirtyRef.current = isDirty
+
+  // Report dirty state changes to parent
+  useEffect(() => {
+    onDirtyChangeRef.current?.(filePath, isDirty)
+  }, [filePath, isDirty])
+
+  // Clean up dirty state when component unmounts
+  useEffect(() => {
+    return () => {
+      onDirtyChangeRef.current?.(filePath, false)
+    }
+  }, [filePath])
+
+  // Handle save trigger from parent (used for save-and-close flow)
+  const prevTriggerSave = useRef(triggerSave)
+  useEffect(() => {
+    if (triggerSave !== undefined && triggerSave !== prevTriggerSave.current) {
+      prevTriggerSave.current = triggerSave
+      if (isDirtyRef.current) {
+        // Trigger save and notify completion
+        const doSave = async () => {
+          await saveRef.current()
+          onSaveComplete?.()
+        }
+        doSave()
+      } else {
+        // No changes to save, still call completion
+        onSaveComplete?.()
+      }
+    }
+  }, [triggerSave, onSaveComplete])
 
   // Load file content
   useEffect(() => {

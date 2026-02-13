@@ -10,6 +10,12 @@ interface AgentPanelProps {
   onClearSelectedAgent?: () => void
 }
 
+interface PruneDialogState {
+  open: boolean
+  deleteLogs: boolean
+  olderThan: string // '', '1d', '7d', '30d'
+}
+
 export default function AgentPanel({ onViewLog, onToast, selectedAgentId: externalSelectedAgentId, onClearSelectedAgent }: AgentPanelProps = {}) {
   const [agents, setAgents] = useState<AgentState[]>([])
   const [loading, setLoading] = useState(true)
@@ -18,6 +24,8 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
   const [internalSelectedAgentId, setInternalSelectedAgentId] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'terminated'>('all')
+  const [pruneDialog, setPruneDialog] = useState<PruneDialogState>({ open: false, deleteLogs: false, olderThan: '' })
+  const [pruning, setPruning] = useState(false)
 
   // Use external prop if provided, otherwise use internal state
   const selectedAgentId = externalSelectedAgentId ?? internalSelectedAgentId
@@ -133,6 +141,31 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
     }
   }
 
+  const handlePrune = async () => {
+    setPruning(true)
+    try {
+      const args = ['prune', '--force']
+      if (pruneDialog.deleteLogs) {
+        args.push('--logs')
+      }
+      if (pruneDialog.olderThan) {
+        args.push('--older-than', pruneDialog.olderThan)
+      }
+      const result = await window.swarm.run(args)
+      if (result.code !== 0) {
+        onToast?.('error', `Failed to clear history: ${result.stderr}`)
+      } else {
+        // Parse the output to get the count of removed agents
+        const match = result.stdout.match(/Pruned (\d+) terminated agent/)
+        const count = match ? match[1] : '0'
+        onToast?.('success', `Removed ${count} terminated agent${count === '1' ? '' : 's'}`)
+      }
+    } finally {
+      setPruning(false)
+      setPruneDialog({ open: false, deleteLogs: false, olderThan: '' })
+    }
+  }
+
   // Filter agents based on search query and status filter
   const filteredAgents = useMemo(() => {
     let result = agents
@@ -190,6 +223,9 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
 
   // Split filtered agents into running/active vs history
   const runningAgents = filteredAgents.filter(a => a.status === 'running')
+  // Count all terminated agents (not just filtered ones) for the prune button
+  const allTerminatedAgents = agents.filter(a => a.status !== 'running')
+  const hasTerminatedAgents = allTerminatedAgents.length > 0
   const historyAgents = filteredAgents
     .filter(a => a.status !== 'running')
     .sort((a, b) => {
@@ -204,13 +240,24 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
       {/* Header */}
       <div className="p-3 border-b border-border flex items-center justify-between">
         <h2 className="text-sm font-semibold text-foreground">Agents</h2>
-        <button
-          onClick={loadAgents}
-          className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
-          title="Refresh"
-        >
-          ↻
-        </button>
+        <div className="flex items-center gap-1">
+          {hasTerminatedAgents && (
+            <button
+              onClick={() => setPruneDialog({ open: true, deleteLogs: false, olderThan: '' })}
+              className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+              title="Clear terminated agents from history"
+            >
+              Clear History
+            </button>
+          )}
+          <button
+            onClick={loadAgents}
+            className="text-xs px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            title="Refresh"
+          >
+            ↻
+          </button>
+        </div>
       </div>
 
       {/* Search and Filter */}
@@ -300,6 +347,69 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
           </>
         )}
       </div>
+
+      {/* Prune confirmation dialog */}
+      {pruneDialog.open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="rounded-lg border border-border bg-card p-6 shadow-lg max-w-sm mx-4">
+            <h3 className="text-sm font-semibold text-foreground mb-2">Clear History?</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              This will permanently remove {allTerminatedAgents.length} terminated agent{allTerminatedAgents.length === 1 ? '' : 's'} from the state file.
+            </p>
+            
+            {/* Options */}
+            <div className="space-y-3 mb-4">
+              {/* Delete logs checkbox */}
+              <label className="flex items-center gap-2 text-sm text-foreground cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={pruneDialog.deleteLogs}
+                  onChange={(e) => setPruneDialog(prev => ({ ...prev, deleteLogs: e.target.checked }))}
+                  className="rounded border-border bg-background"
+                />
+                Also delete log files
+              </label>
+              
+              {/* Age filter dropdown */}
+              <div className="flex items-center gap-2">
+                <label className="text-sm text-muted-foreground">Only remove agents:</label>
+                <select
+                  value={pruneDialog.olderThan}
+                  onChange={(e) => setPruneDialog(prev => ({ ...prev, olderThan: e.target.value }))}
+                  className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+                >
+                  <option value="">All terminated</option>
+                  <option value="1d">Older than 1 day</option>
+                  <option value="7d">Older than 7 days</option>
+                  <option value="30d">Older than 30 days</option>
+                </select>
+              </div>
+            </div>
+
+            <p className="text-xs text-muted-foreground mb-4">
+              This action cannot be undone.
+            </p>
+            
+            <div className="flex justify-end gap-2">
+              <button
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-secondary text-secondary-foreground hover:bg-secondary/80 border border-border transition-colors"
+                onClick={() => setPruneDialog({ open: false, deleteLogs: false, olderThan: '' })}
+                disabled={pruning}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-3 py-1.5 text-xs font-medium rounded-md bg-red-600 text-white hover:bg-red-700 transition-colors disabled:opacity-50"
+                onClick={handlePrune}
+                disabled={pruning}
+                autoFocus
+              >
+                {pruning ? 'Clearing...' : 'Clear History'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

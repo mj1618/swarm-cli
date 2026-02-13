@@ -75,6 +75,16 @@ contextBridge.exposeInMainWorld('electronMenu', {
   },
 })
 
+contextBridge.exposeInMainWorld('editor', {
+  setDirtyState: (dirty: boolean) => ipcRenderer.send('editor:dirty-state', dirty),
+  notifySaveComplete: () => ipcRenderer.send('editor:save-complete'),
+  onSaveAndClose: (callback: () => void) => {
+    const listener = () => callback()
+    ipcRenderer.on('editor:save-and-close', listener)
+    return () => { ipcRenderer.removeListener('editor:save-and-close', listener) }
+  },
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -184,6 +194,12 @@ export type ElectronMenuAPI = {
   on: (channel: string, callback: (data?: any) => void) => () => void
 }
 
+export type EditorAPI = {
+  setDirtyState: (dirty: boolean) => void
+  notifySaveComplete: () => void
+  onSaveAndClose: (callback: () => void) => () => void
+}
+
 export type StateAPI = {
   read: () => Promise<{ agents: AgentState[]; error?: string }>
   watch: () => Promise<void>
@@ -232,5 +248,6 @@ declare global {
     workspace: WorkspaceAPI
     recent: RecentAPI
     electronMenu: ElectronMenuAPI
+    editor: EditorAPI
   }
 }

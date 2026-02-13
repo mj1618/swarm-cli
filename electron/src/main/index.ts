@@ -7,6 +7,10 @@ import * as os from 'os'
 
 let mainWindow: BrowserWindow | null = null
 
+// Track dirty state reported by renderer
+let hasDirtyFiles = false
+let isQuitting = false
+
 // Recent projects storage
 const MAX_RECENT_PROJECTS = 5
 const recentProjectsPath = path.join(app.getPath('userData'), 'recent-projects.json')
@@ -197,10 +201,44 @@ async function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
-  // Save window state before closing
-  mainWindow.on('close', async () => {
+  // Handle close event with dirty state check
+  mainWindow.on('close', async (e) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
+      // Always save window state
       await saveWindowState(mainWindow)
+
+      // If quitting is already confirmed or no dirty files, allow close
+      if (isQuitting || !hasDirtyFiles) {
+        return
+      }
+
+      // Prevent close and show confirmation dialog
+      e.preventDefault()
+
+      const choice = dialog.showMessageBoxSync(mainWindow, {
+        type: 'warning',
+        buttons: ['Don\'t Save', 'Cancel', 'Save'],
+        defaultId: 2,
+        cancelId: 1,
+        title: 'Unsaved Changes',
+        message: 'You have unsaved changes.',
+        detail: 'Do you want to save your changes before closing?',
+      })
+
+      if (choice === 1) {
+        // Cancel - do nothing, window stays open
+        return
+      }
+
+      if (choice === 2) {
+        // Save - tell renderer to save, then close
+        mainWindow.webContents.send('editor:save-and-close')
+        return
+      }
+
+      // Don't Save - close without saving
+      isQuitting = true
+      mainWindow.close()
     }
   })
 
@@ -379,6 +417,20 @@ app.whenReady().then(async () => {
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') {
     app.quit()
+  }
+})
+
+// IPC handlers for editor dirty state
+ipcMain.on('editor:dirty-state', (_event, dirty: boolean) => {
+  hasDirtyFiles = dirty
+})
+
+ipcMain.on('editor:save-complete', () => {
+  // Renderer has finished saving, now we can close
+  hasDirtyFiles = false
+  isQuitting = true
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.close()
   }
 })
 
@@ -1054,7 +1106,16 @@ async function resolveIncludes(content: string, baseDir: string, seen: Set<strin
   return parts.join('')
 }
 
-app.on('before-quit', () => {
+app.on('before-quit', (e) => {
+  // If we have dirty files and haven't confirmed quitting, let the window close handler deal with it
+  if (!isQuitting && hasDirtyFiles && mainWindow && !mainWindow.isDestroyed()) {
+    e.preventDefault()
+    // This will trigger the close handler which shows the dialog
+    mainWindow.close()
+    return
+  }
+
+  // Clean up watchers
   if (swarmWatcher) {
     swarmWatcher.close()
     swarmWatcher = null
