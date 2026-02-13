@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import FileTree from './components/FileTree'
+import FileViewer from './components/FileViewer'
 
 interface Agent {
   id: string
@@ -13,6 +14,11 @@ function App() {
   const [agents, setAgents] = useState<Agent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [selectedFile, setSelectedFile] = useState<string | null>(null)
+
+  const handleSelectFile = useCallback((filePath: string) => {
+    setSelectedFile(filePath)
+  }, [])
 
   const fetchAgents = async () => {
     try {
@@ -67,21 +73,27 @@ function App() {
       <div className="flex-1 flex overflow-hidden">
         {/* Left sidebar - File tree */}
         <div className="w-64 border-r border-border bg-secondary/30 flex flex-col">
-          <FileTree />
+          <FileTree selectedPath={selectedFile} onSelectFile={handleSelectFile} />
         </div>
 
-        {/* Center - DAG Editor placeholder */}
-        <div className="flex-1 flex flex-col">
-          <div className="p-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-foreground">DAG Editor</h2>
-          </div>
-          <div className="flex-1 flex items-center justify-center text-muted-foreground">
-            <div className="text-center">
-              <div className="text-4xl mb-4">🔗</div>
-              <p>DAG visualization coming soon</p>
-              <p className="text-sm mt-2">Open a swarm.yaml to get started</p>
-            </div>
-          </div>
+        {/* Center - File viewer or DAG Editor placeholder */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {selectedFile ? (
+            <FileViewer filePath={selectedFile} />
+          ) : (
+            <>
+              <div className="p-3 border-b border-border">
+                <h2 className="text-sm font-semibold text-foreground">DAG Editor</h2>
+              </div>
+              <div className="flex-1 flex items-center justify-center text-muted-foreground">
+                <div className="text-center">
+                  <div className="text-4xl mb-4">🔗</div>
+                  <p>DAG visualization coming soon</p>
+                  <p className="text-sm mt-2">Open a swarm.yaml to get started</p>
+                </div>
+              </div>
+            </>
+          )}
         </div>
 
         {/* Right sidebar - Agent panel */}

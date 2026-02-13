@@ -10,7 +10,7 @@ interface FileTreeItemProps {
   entry: DirEntry
   depth: number
   selectedPath: string | null
-  onSelect: (path: string) => void
+  onSelect: (path: string, isDirectory: boolean) => void
 }
 
 function getFileIcon(name: string, isDirectory: boolean, isOpen: boolean): string {
@@ -87,7 +87,7 @@ export default function FileTreeItem({ entry, depth, selectedPath, onSelect }: F
         loadChildren()
       }
     }
-    onSelect(entry.path)
+    onSelect(entry.path, entry.isDirectory)
   }, [entry.isDirectory, entry.path, isOpen, children.length, loadChildren, onSelect])
 
   const icon = getFileIcon(entry.name, entry.isDirectory, isOpen)

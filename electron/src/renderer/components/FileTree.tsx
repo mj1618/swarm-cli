@@ -7,9 +7,13 @@ interface DirEntry {
   isDirectory: boolean
 }
 
-export default function FileTree() {
+interface FileTreeProps {
+  selectedPath: string | null
+  onSelectFile: (filePath: string) => void
+}
+
+export default function FileTree({ selectedPath, onSelectFile }: FileTreeProps) {
   const [entries, setEntries] = useState<DirEntry[]>([])
-  const [selectedPath, setSelectedPath] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,9 +52,11 @@ export default function FileTree() {
     }
   }, [loadRoot])
 
-  const handleSelect = useCallback((filePath: string) => {
-    setSelectedPath(filePath)
-  }, [])
+  const handleSelect = useCallback((filePath: string, isDirectory: boolean) => {
+    if (!isDirectory) {
+      onSelectFile(filePath)
+    }
+  }, [onSelectFile])
 
   return (
     <div className="flex flex-col h-full">
