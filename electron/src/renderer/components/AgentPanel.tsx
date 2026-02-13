@@ -6,14 +6,33 @@ import AgentDetailView from './AgentDetailView'
 interface AgentPanelProps {
   onViewLog?: (logPath: string) => void
   onToast?: (type: 'success' | 'error' | 'warning' | 'info', message: string) => void
+  selectedAgentId?: string | null
+  onClearSelectedAgent?: () => void
 }
 
-export default function AgentPanel({ onViewLog, onToast }: AgentPanelProps = {}) {
+export default function AgentPanel({ onViewLog, onToast, selectedAgentId: externalSelectedAgentId, onClearSelectedAgent }: AgentPanelProps = {}) {
   const [agents, setAgents] = useState<AgentState[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(true)
-  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null)
+  const [internalSelectedAgentId, setInternalSelectedAgentId] = useState<string | null>(null)
+
+  // Use external prop if provided, otherwise use internal state
+  const selectedAgentId = externalSelectedAgentId ?? internalSelectedAgentId
+
+  const setSelectedAgentId = useCallback((id: string | null) => {
+    setInternalSelectedAgentId(id)
+    if (id === null && onClearSelectedAgent) {
+      onClearSelectedAgent()
+    }
+  }, [onClearSelectedAgent])
+
+  // Sync internal state when external selection changes
+  useEffect(() => {
+    if (externalSelectedAgentId != null) {
+      setInternalSelectedAgentId(externalSelectedAgentId)
+    }
+  }, [externalSelectedAgentId])
 
   const loadAgents = useCallback(async () => {
     try {

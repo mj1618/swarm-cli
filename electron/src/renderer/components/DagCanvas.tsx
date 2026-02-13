@@ -36,6 +36,7 @@ interface DagCanvasProps {
   activePipeline?: string | null
   pipelineTasks?: string[] | null
   onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
+  onNavigateToAgent?: (agentId: string) => void
   onAddDependency?: (dep: { source: string; target: string; condition: TaskDependency['condition'] }) => void
   onDeleteTask?: (taskName: string) => void
   onDeleteEdge?: (source: string, target: string) => void
@@ -66,6 +67,7 @@ export default function DagCanvas({
   activePipeline,
   pipelineTasks,
   onSelectTask,
+  onNavigateToAgent,
   onAddDependency,
   onDeleteTask,
   onDeleteEdge,
@@ -226,11 +228,21 @@ export default function DagCanvas({
 
   const handleNodeClick = useCallback(
     (_event: React.MouseEvent, node: Node<TaskNodeData>) => {
+      // If this node has an active agent, navigate to its detail view instead of the task drawer
+      if (onNavigateToAgent && agents && node.data.agentStatus) {
+        const agent = agents.find(
+          (a) => a.name === node.id || a.labels?.task_id === node.id || a.current_task === node.id,
+        )
+        if (agent) {
+          onNavigateToAgent(agent.id)
+          return
+        }
+      }
       if (onSelectTask && compose) {
         onSelectTask({ name: node.data.label, def: node.data.taskDef, compose })
       }
     },
-    [onSelectTask, compose],
+    [onSelectTask, onNavigateToAgent, compose, agents],
   )
 
   // Connection dialog state
