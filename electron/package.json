@@ -2,6 +2,7 @@
   "name": "swarm-desktop",
   "version": "0.1.0",
   "description": "Desktop GUI for swarm-cli - DAG creation, pipeline management, and agent monitoring",
+  "type": "module",
   "main": "dist/main/main/index.js",
   "scripts": {
     "dev": "vite",
