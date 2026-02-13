@@ -131,6 +131,7 @@ export default function FileViewer({ filePath }: FileViewerProps) {
   const fileType = getFileType(filePath)
   const fileName = getFileName(filePath)
   const lines = content?.split('\n') ?? []
+  const yaml = isYamlFile(filePath)
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -159,7 +160,7 @@ export default function FileViewer({ filePath }: FileViewerProps) {
                       {i + 1}
                     </td>
                     <td className="px-3 py-0 whitespace-pre-wrap break-all text-foreground">
-                      {line || '\n'}
+                      {yaml ? highlightYamlLine(line) : (line || '\n')}
                     </td>
                   </tr>
                 ))}
