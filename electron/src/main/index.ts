@@ -682,7 +682,7 @@ async function switchWorkspace(newDir: string): Promise<{ path: string; error?: 
   swarmWatcher = watch(swarmRoot, {
     ignoreInitial: true,
     depth: 10,
-    ignored: /(^|[\/\\])\../,
+    ignored: /(^|[/\\])\../,
   })
   swarmWatcher.on('all', (event, filePath) => {
     if (mainWindow && !mainWindow.isDestroyed()) {
@@ -713,7 +713,7 @@ async function switchWorkspace(newDir: string): Promise<{ path: string; error?: 
   logsWatcher = watch(logsDir, {
     ignoreInitial: true,
     depth: 0,
-    ignored: /(^|[\/\\])\../,
+    ignored: /(^|[/\\])\../,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   })
   logsWatcher.on('all', (event, filePath) => {
@@ -810,7 +810,7 @@ ipcMain.handle('fs:watch', async () => {
   swarmWatcher = watch(swarmRoot, {
     ignoreInitial: true,
     depth: 10,
-    ignored: /(^|[\/\\])\../,
+    ignored: /(^|[/\\])\../,
   })
 
   swarmWatcher.on('all', (event, filePath) => {
@@ -942,7 +942,7 @@ ipcMain.handle('logs:watch', async () => {
   logsWatcher = watch(logsDir, {
     ignoreInitial: true,
     depth: 0,
-    ignored: /(^|[\/\\])\../,
+    ignored: /(^|[/\\])\../,
     awaitWriteFinish: { stabilityThreshold: 200, pollInterval: 50 },
   })
 

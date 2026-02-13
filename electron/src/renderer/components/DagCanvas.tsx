@@ -619,6 +619,31 @@ export default function DagCanvas({
     }
   }, [contextMenu])
 
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/swarm-prompt')) {
+      e.preventDefault()
+      e.dataTransfer.dropEffect = 'copy'
+      setIsDragOver(true)
+    }
+  }, [])
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear when leaving the container (not entering a child)
+    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as globalThis.Node)) {
+      setIsDragOver(false)
+    }
+  }, [])
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault()
+    setIsDragOver(false)
+    const promptName = e.dataTransfer.getData('application/swarm-prompt')
+    if (promptName && onDropCreateTask) {
+      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
+      onDropCreateTask(promptName, position)
+    }
+  }, [onDropCreateTask, screenToFlowPosition])
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -701,31 +726,6 @@ export default function DagCanvas({
       </div>
     )
   }
-
-  const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer.types.includes('application/swarm-prompt')) {
-      e.preventDefault()
-      e.dataTransfer.dropEffect = 'copy'
-      setIsDragOver(true)
-    }
-  }, [])
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    // Only clear when leaving the container (not entering a child)
-    if (e.currentTarget === e.target || !e.currentTarget.contains(e.relatedTarget as globalThis.Node)) {
-      setIsDragOver(false)
-    }
-  }, [])
-
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault()
-    setIsDragOver(false)
-    const promptName = e.dataTransfer.getData('application/swarm-prompt')
-    if (promptName && onDropCreateTask) {
-      const position = screenToFlowPosition({ x: e.clientX, y: e.clientY })
-      onDropCreateTask(promptName, position)
-    }
-  }, [onDropCreateTask, screenToFlowPosition])
 
   return (
     <div

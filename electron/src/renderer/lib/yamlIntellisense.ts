@@ -47,7 +47,7 @@ function extractTaskNames(content: string): string[] {
     }
     // Task names are at 2-space indent under tasks:
     if (inTasksBlock) {
-      const match = line.match(/^  ([a-zA-Z0-9_-]+):\s*$/)
+      const match = line.match(/^ {2}([a-zA-Z0-9_-]+):\s*$/)
       if (match) {
         names.push(match[1])
       }

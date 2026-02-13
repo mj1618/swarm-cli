@@ -140,34 +140,9 @@ export default function LogView({ content, loading, error, searchQuery, filterMo
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 40
     setAutoScroll(isAtBottom)
-  }, [])
+  }, [setAutoScroll])
 
-  if (loading) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-        Loading logs...
-      </div>
-    )
-  }
-
-  if (error) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-sm text-red-400">
-        {error}
-      </div>
-    )
-  }
-
-  if (!content) {
-    return (
-      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
-        No log content
-      </div>
-    )
-  }
-
-  const lines = content.split('\n')
-
+  const lines = content?.split('\n') ?? []
   const query = searchQuery?.trim() || ''
 
   const filteredLines = useMemo(() => {
@@ -198,6 +173,30 @@ export default function LogView({ content, loading, error, searchQuery, filterMo
   useEffect(() => {
     onMatchCount?.(matchCount)
   }, [matchCount, onMatchCount])
+
+  if (loading) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        Loading logs...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-red-400">
+        {error}
+      </div>
+    )
+  }
+
+  if (!content) {
+    return (
+      <div className="flex-1 flex items-center justify-center text-sm text-muted-foreground">
+        No log content
+      </div>
+    )
+  }
 
   return (
     <div className="flex-1 flex flex-col min-h-0 relative">

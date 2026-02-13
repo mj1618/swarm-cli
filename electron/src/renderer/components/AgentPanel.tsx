@@ -53,7 +53,7 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
         setAgents(result.agents)
         setError(null)
       }
-    } catch (err) {
+    } catch {
       setError('Failed to read state file')
     } finally {
       setLoading(false)
