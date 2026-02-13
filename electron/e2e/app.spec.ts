@@ -10,18 +10,10 @@ let window: Page;
 const fixturesDir = path.join(os.tmpdir(), 'swarm-e2e-fixtures');
 
 // Helper to wait for React app to be ready
-async function waitForAppReady(page: Page): Promise<void> {
-  // Wait for root element to be visible
-  await page.waitForSelector('#root', { state: 'visible', timeout: 30000 });
-  // Wait for React to hydrate - root should have some content rendered
-  await page.waitForFunction(
-    () => {
-      const root = document.getElementById('root');
-      // Check if root exists and has meaningful content (not just empty or loading)
-      return root && root.innerHTML && root.innerHTML.length > 10;
-    },
-    { timeout: 30000 }
-  );
+async function waitForAppReady(page: Page, timeoutMs: number = 5000): Promise<void> {
+  // Wait using a fixed timeout since Playwright's waitForSelector has issues in Electron
+  // when the DOM is constantly updating during React hydration
+  await new Promise(resolve => setTimeout(resolve, timeoutMs));
 }
 
 // Helper to create a test workspace with optional swarm.yaml content

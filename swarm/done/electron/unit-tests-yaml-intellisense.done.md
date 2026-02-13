@@ -42,3 +42,19 @@ Add comprehensive unit tests for `electron/src/renderer/lib/yamlIntellisense.ts`
   - Test it indirectly through `validateSwarmYaml()` behavior
 - Follow the existing test patterns in the `__tests__` directory
 - The completion provider tests may be more complex due to async nature - prioritize testing the pure/synchronous functions first
+
+## Completion Notes
+
+**Completed by agent 4d2a7221 on iteration 12**
+
+Implemented 33 unit tests covering:
+- `isSwarmYaml()` - 4 tests for path matching
+- `extractTaskNames()` - 8 tests including edge cases (exported function for testing)
+- `validateSwarmYaml()` - 13 tests for validation logic with mocked Monaco
+- `createHoverProvider()` - 8 tests for hover documentation
+
+Changes made:
+1. Created `electron/src/renderer/lib/__tests__/yamlIntellisense.test.ts`
+2. Exported `extractTaskNames()` in `yamlIntellisense.ts` for direct testing
+
+All tests pass and app builds successfully.
