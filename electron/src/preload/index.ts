@@ -54,6 +54,13 @@ contextBridge.exposeInMainWorld('dialog', {
 contextBridge.exposeInMainWorld('workspace', {
   getCwd: () => ipcRenderer.invoke('workspace:getCwd'),
   open: () => ipcRenderer.invoke('workspace:open'),
+  switch: (dirPath: string) => ipcRenderer.invoke('workspace:switch', dirPath),
+})
+
+contextBridge.exposeInMainWorld('recent', {
+  get: () => ipcRenderer.invoke('recent:get'),
+  add: (projectPath: string) => ipcRenderer.invoke('recent:add', projectPath),
+  clear: () => ipcRenderer.invoke('recent:clear'),
 })
 
 contextBridge.exposeInMainWorld('recent', {
@@ -63,10 +70,10 @@ contextBridge.exposeInMainWorld('recent', {
 })
 
 contextBridge.exposeInMainWorld('electronMenu', {
-  on: (channel: string, callback: () => void) => {
-    const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project', 'menu:keyboard-shortcuts', 'menu:about']
+  on: (channel: string, callback: (data?: any) => void) => {
+    const allowed = ['menu:settings', 'menu:toggle-console', 'menu:command-palette', 'menu:open-project', 'menu:keyboard-shortcuts', 'menu:about', 'menu:open-recent']
     if (!allowed.includes(channel)) return () => {}
-    const listener = () => callback()
+    const listener = (_event: any, data?: any) => callback(data)
     ipcRenderer.on(channel, listener)
     return () => { ipcRenderer.removeListener(channel, listener) }
   },
@@ -166,6 +173,7 @@ export type DialogAPI = {
 export type WorkspaceAPI = {
   getCwd: () => Promise<string>
   open: () => Promise<{ path: string | null; error?: string }>
+  switch: (dirPath: string) => Promise<{ path: string; error?: string }>
 }
 
 export type RecentAPI = {
@@ -175,7 +183,7 @@ export type RecentAPI = {
 }
 
 export type ElectronMenuAPI = {
-  on: (channel: string, callback: () => void) => () => void
+  on: (channel: string, callback: (data?: any) => void) => () => void
 }
 
 export type StateAPI = {

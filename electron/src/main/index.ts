@@ -475,22 +475,23 @@ ipcMain.handle('workspace:getCwd', async (): Promise<string> => {
   return workingDir
 })
 
-ipcMain.handle('workspace:open', async (): Promise<{ path: string | null; error?: string }> => {
-  const result = await dialog.showOpenDialog({
-    properties: ['openDirectory'],
-    title: 'Open Project Directory',
-  })
-  if (result.canceled || result.filePaths.length === 0) {
-    return { path: null }
-  }
-
-  const newDir = result.filePaths[0]
+async function switchWorkspace(newDir: string): Promise<{ path: string; error?: string }> {
   const newSwarmRoot = path.join(newDir, 'swarm')
 
   // Check if swarm/ subdirectory exists
   try {
     await fs.access(newSwarmRoot)
   } catch {
+    // Still switch but mark as no-swarm-dir
+    workingDir = newDir
+    swarmRoot = newSwarmRoot
+    
+    // Update window title
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      const dirName = path.basename(newDir)
+      mainWindow.setTitle(`Swarm Desktop — ${dirName}`)
+    }
+    
     return { path: newDir, error: 'no-swarm-dir' }
   }
 
@@ -563,6 +564,29 @@ ipcMain.handle('workspace:open', async (): Promise<{ path: string | null; error?
   }
 
   return { path: newDir }
+}
+
+ipcMain.handle('workspace:open', async (): Promise<{ path: string | null; error?: string }> => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory'],
+    title: 'Open Project Directory',
+  })
+  if (result.canceled || result.filePaths.length === 0) {
+    return { path: null }
+  }
+
+  const newDir = result.filePaths[0]
+  return switchWorkspace(newDir)
+})
+
+ipcMain.handle('workspace:switch', async (_event, newDir: string): Promise<{ path: string; error?: string }> => {
+  // Verify the directory exists
+  try {
+    await fs.access(newDir)
+  } catch {
+    return { path: newDir, error: 'Directory not found' }
+  }
+  return switchWorkspace(newDir)
 })
 
 // File watcher using chokidar

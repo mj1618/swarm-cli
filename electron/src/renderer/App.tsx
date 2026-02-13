@@ -664,6 +664,40 @@ function App() {
     addToast('success', `Switched to ${result.path}`)
   }, [addToast])
 
+  // Open a recent project directly (called from menu)
+  const handleOpenRecentProject = useCallback(async (recentPath: string) => {
+    // Switch workspace in main process
+    const result = await window.workspace.switch(recentPath)
+    
+    if (result.error === 'Directory not found') {
+      addToast('error', `Directory not found: ${shortenHomePath(recentPath)}`)
+      return
+    }
+    
+    setProjectPath(recentPath)
+    localStorage.setItem('swarm-project-path', recentPath)
+    
+    // Add to recents (moves to top)
+    await window.recent.add(recentPath)
+    
+    // Reset state for new workspace
+    setSelectedFile(null)
+    setSelectedTask(null)
+    setSelectedPipeline(null)
+    
+    // Try to reload swarm.yaml
+    const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+    if (reloaded.error || result.error === 'no-swarm-dir') {
+      setDefaultYamlError(reloaded.error || 'No swarm directory')
+      setDefaultYamlContent(null)
+      addToast('warning', `No swarm/swarm.yaml found in ${shortenHomePath(recentPath)}`)
+    } else {
+      setDefaultYamlContent(reloaded.content)
+      setDefaultYamlError(null)
+      addToast('success', `Switched to ${shortenHomePath(recentPath)}`)
+    }
+  }, [addToast])
+
   // Console panel toggle
   const toggleConsole = useCallback(() => {
     setConsoleCollapsed(prev => {
@@ -798,11 +832,12 @@ function App() {
       window.electronMenu.on('menu:toggle-console', toggleConsole),
       window.electronMenu.on('menu:command-palette', () => setPaletteOpen(prev => !prev)),
       window.electronMenu.on('menu:open-project', handleOpenProject),
+      window.electronMenu.on('menu:open-recent', (path: string) => handleOpenRecentProject(path)),
       window.electronMenu.on('menu:keyboard-shortcuts', () => setShortcutsOpen(true)),
       window.electronMenu.on('menu:about', () => setAboutOpen(true)),
     ]
     return () => { cleanups.forEach(fn => fn()) }
-  }, [toggleConsole, handleOpenProject])
+  }, [toggleConsole, handleOpenProject, handleOpenRecentProject])
 
   const currentCompose = useMemo(() => {
     const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
