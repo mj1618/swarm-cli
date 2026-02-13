@@ -84,26 +84,26 @@ Download the latest binary for your platform from the [releases page](https://gi
 
 **macOS (Apple Silicon):**
 ```bash
-curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_darwin_arm64.tar.gz | tar xz
-sudo mv swarm /usr/local/bin/
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_darwin_arm64.tar.gz | tar xz -C /tmp
+sudo mv /tmp/swarm /usr/local/bin/
 ```
 
 **macOS (Intel):**
 ```bash
-curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_darwin_amd64.tar.gz | tar xz
-sudo mv swarm /usr/local/bin/
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_darwin_amd64.tar.gz | tar xz -C /tmp
+sudo mv /tmp/swarm /usr/local/bin/
 ```
 
 **Linux (x64):**
 ```bash
-curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_linux_amd64.tar.gz | tar xz
-sudo mv swarm /usr/local/bin/
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_linux_amd64.tar.gz | tar xz -C /tmp
+sudo mv /tmp/swarm /usr/local/bin/
 ```
 
 **Linux (ARM64):**
 ```bash
-curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_linux_arm64.tar.gz | tar xz
-sudo mv swarm /usr/local/bin/
+curl -L https://github.com/mj1618/swarm-cli/releases/download/latest/swarm-cli_linux_arm64.tar.gz | tar xz -C /tmp
+sudo mv /tmp/swarm /usr/local/bin/
 ```
 
 ### Install with Go
