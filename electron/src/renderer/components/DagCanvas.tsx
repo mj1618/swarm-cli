@@ -307,7 +307,7 @@ export default function DagCanvas({
 
   // Connection dialog state
   const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
-  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes, setCenter, getZoom, setViewport, getViewport } = useReactFlow()
+  const { flowToScreenPosition, screenToFlowPosition, fitView, getNodes, setCenter, getZoom, setViewport } = useReactFlow()
 
   // Track if we've restored the viewport for this file (to avoid re-restoring after fitView)
   const viewportRestoredRef = useRef(false)
