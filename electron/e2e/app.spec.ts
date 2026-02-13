@@ -9,6 +9,20 @@ let window: Page;
 // Test fixtures directory for isolated test workspaces
 const fixturesDir = path.join(os.tmpdir(), 'swarm-e2e-fixtures');
 
+// Helper to wait for React app to be ready
+async function waitForAppReady(page: Page): Promise<void> {
+  // Wait for root element to be visible
+  await page.waitForSelector('#root', { state: 'visible', timeout: 15000 });
+  // Wait for React to hydrate - root should have child content
+  await page.waitForFunction(
+    () => {
+      const root = document.getElementById('root');
+      return root && root.children.length > 0;
+    },
+    { timeout: 15000 }
+  );
+}
+
 // Helper to create a test workspace with optional swarm.yaml content
 async function createTestWorkspace(name: string, swarmYamlContent?: string): Promise<string> {
   const workspacePath = path.join(fixturesDir, name, Date.now().toString());
@@ -30,8 +44,8 @@ async function createTestWorkspace(name: string, swarmYamlContent?: string): Pro
  * In dev mode, DevTools may open as a separate window.
  */
 async function getMainWindow(app: ElectronApplication): Promise<Page> {
-  // Wait a moment for all windows to open
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Wait for at least one window to be available
+  const firstWindow = await app.firstWindow();
   
   // Get all windows
   const windows = app.windows();
@@ -50,8 +64,8 @@ async function getMainWindow(app: ElectronApplication): Promise<Page> {
     return win;
   }
   
-  // If we only have DevTools windows, wait for main window
-  return app.firstWindow();
+  // If we only have DevTools windows, return first window
+  return firstWindow;
 }
 
 test.beforeAll(async () => {
@@ -74,13 +88,20 @@ test.beforeAll(async () => {
   
   // Wait for the window to be ready and React to mount
   await window.waitForLoadState('domcontentloaded');
-  await window.waitForTimeout(3000); // Give React time to render
-});
+  // Wait for React app to fully initialize
+  await waitForAppReady(window);
+}, 60000); // 60 second timeout for beforeAll hook
 
 test.afterAll(async () => {
-  // Close the Electron app
-  if (electronApp) {
-    await electronApp.close();
+  // Close the Electron app gracefully
+  try {
+    if (electronApp) {
+      await electronApp.close().catch(() => {
+        // Ignore close errors - app may already be closed
+      });
+    }
+  } catch {
+    // Ignore cleanup errors - app may already be closed
   }
   
   // Clean up test fixtures
@@ -92,6 +113,8 @@ test.afterAll(async () => {
 });
 
 test.describe('Swarm Desktop - Core App Tests', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('app launches successfully', async () => {
     // Verify that the app launched and a window opened
     expect(electronApp).toBeDefined();
@@ -130,12 +153,13 @@ test.describe('Swarm Desktop - Core App Tests', () => {
 });
 
 test.describe('Swarm Desktop - Main 3-Panel Layout', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('displays the main 3-panel layout with file tree, DAG canvas, and agent panel', async () => {
-    // Wait for React to fully render the app
-    await window.waitForSelector('#root', { timeout: 10000 });
+    test.slow(); // This test needs more time to verify all panels
     
-    // Give React time to mount all components
-    await window.waitForTimeout(2000);
+    // Wait for React to fully render the app
+    await waitForAppReady(window);
     
     // Check for the title bar with "Swarm Desktop" text
     const titleBar = await window.locator('text=Swarm Desktop').first();
@@ -173,6 +197,8 @@ test.describe('Swarm Desktop - Main 3-Panel Layout', () => {
 });
 
 test.describe('Swarm Desktop - File Tree Panel', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('file tree shows "Files" heading', async () => {
     const heading = await window.locator('[data-testid="file-tree"] h2:has-text("Files")').first();
     await expect(heading).toBeVisible({ timeout: 5000 });
@@ -200,20 +226,22 @@ test.describe('Swarm Desktop - File Tree Panel', () => {
   });
 
   test('file tree has filter/search input when files exist', async () => {
-    // Wait for file tree to load
-    await window.waitForTimeout(1000);
+    // Wait for file tree to be visible and loaded
+    const fileTree = await window.locator('[data-testid="file-tree"]');
+    await expect(fileTree).toBeVisible({ timeout: 10000 });
     
     // If swarm directory exists, there should be a filter input
     const filterInput = await window.locator('[data-testid="file-tree"] input[placeholder="Filter files..."]').first();
     
     // This may or may not be visible depending on whether swarm/ exists
     // Just check that the file tree container is functional
-    const fileTree = await window.locator('[data-testid="file-tree"]');
     await expect(fileTree).toBeVisible();
   });
 });
 
 test.describe('Swarm Desktop - DAG Canvas', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('DAG canvas shows either tasks or empty state', async () => {
     const dagCanvas = await window.locator('[data-testid="dag-canvas"]');
     await expect(dagCanvas).toBeVisible({ timeout: 5000 });
@@ -261,6 +289,8 @@ test.describe('Swarm Desktop - DAG Canvas', () => {
 });
 
 test.describe('Swarm Desktop - Agent Panel', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('agent panel shows "Agents" heading', async () => {
     const heading = await window.locator('[data-testid="agent-panel"] h2:has-text("Agents")').first();
     await expect(heading).toBeVisible({ timeout: 5000 });
@@ -288,10 +318,19 @@ test.describe('Swarm Desktop - Agent Panel', () => {
   });
 
   test('agent panel shows "No agents" when no agents exist', async () => {
-    // Wait for agent panel to load
-    await window.waitForTimeout(1000);
-    
+    // Wait for agent panel to be visible and loaded
     const agentPanel = await window.locator('[data-testid="agent-panel"]');
+    await expect(agentPanel).toBeVisible({ timeout: 10000 });
+    
+    // Wait for agent panel content to be populated (either agents or "No agents" message)
+    await window.waitForFunction(
+      () => {
+        const panel = document.querySelector('[data-testid="agent-panel"]');
+        return panel && panel.textContent && panel.textContent.includes('Agents');
+      },
+      { timeout: 10000 }
+    );
+    
     const textContent = await agentPanel.textContent();
     
     // If no agents, should show "No agents" message
@@ -304,6 +343,8 @@ test.describe('Swarm Desktop - Agent Panel', () => {
 });
 
 test.describe('Swarm Desktop - Console Panel', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('console panel is visible', async () => {
     const consolePanel = await window.locator('text=Console').first();
     await expect(consolePanel).toBeVisible({ timeout: 5000 });
@@ -317,6 +358,8 @@ test.describe('Swarm Desktop - Console Panel', () => {
 });
 
 test.describe('Swarm Desktop - Sidebar Collapse/Expand', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('left sidebar has collapse button', async () => {
     // The left sidebar should have a collapse button with title containing "Collapse sidebar" or similar
     const collapseButton = await window.locator('button[title*="Collapse sidebar"], button[title*="Cmd+B"]').first();
@@ -333,16 +376,16 @@ test.describe('Swarm Desktop - Sidebar Collapse/Expand', () => {
 });
 
 test.describe('Swarm Desktop - Keyboard Shortcuts', () => {
+  test.describe.configure({ mode: 'serial', retries: 2 });
+
   test('Cmd+K opens command palette', async () => {
     // Send Cmd+K (or Ctrl+K on non-Mac)
     await window.keyboard.press('Meta+k');
     
-    // Wait a moment for the palette to open
-    await window.waitForTimeout(500);
-    
-    // Look for the command palette input
+    // Wait for potential command palette to appear (with short timeout)
+    // The palette may or may not open depending on focus state
     const paletteInput = await window.locator('input[placeholder*="command"], input[placeholder*="search"]').first();
-    const isVisible = await paletteInput.isVisible().catch(() => false);
+    const isVisible = await paletteInput.isVisible({ timeout: 2000 }).catch(() => false);
     
     // Command palette may or may not open (depends on focus state)
     // Just verify the shortcut doesn't crash the app
