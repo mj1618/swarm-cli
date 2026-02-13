@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, Notification } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, shell } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
 import { spawn } from 'child_process'
@@ -636,7 +636,17 @@ ipcMain.handle('settings:read', async (): Promise<{ config: SwarmConfig; error?:
 
 ipcMain.handle('settings:write', async (_event, updates: { backend?: string; model?: string }): Promise<{ error?: string }> => {
   try {
-    let content = await fs.readFile(getConfigFilePath(), 'utf-8')
+    let content: string
+    try {
+      content = await fs.readFile(getConfigFilePath(), 'utf-8')
+    } catch (readErr: any) {
+      if (readErr.code === 'ENOENT') {
+        // Config file doesn't exist yet — create with defaults
+        content = `backend = "claude-code"\nmodel = "sonnet"\n`
+      } else {
+        throw readErr
+      }
+    }
     if (updates.backend !== undefined) {
       content = content.replace(/^(backend\s*=\s*)"[^"]*"/m, `$1"${updates.backend}"`)
     }
