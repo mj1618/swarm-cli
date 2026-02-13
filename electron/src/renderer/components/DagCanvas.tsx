@@ -436,10 +436,11 @@ export default function DagCanvas({
       const transform = getViewportForBounds(bounds, imageWidth, imageHeight, 0.5, 2, padding)
 
       // Generate the image
+      const bgColor = theme === 'light' ? '#ffffff' : '#0f172a'
       let dataUrl: string
       if (format === 'svg') {
         dataUrl = await toSvg(viewport, {
-          backgroundColor: '#0f172a', // Match dark theme background
+          backgroundColor: bgColor,
           width: imageWidth,
           height: imageHeight,
           style: {
@@ -448,7 +449,7 @@ export default function DagCanvas({
         })
       } else {
         dataUrl = await toPng(viewport, {
-          backgroundColor: '#0f172a', // Match dark theme background
+          backgroundColor: bgColor,
           width: imageWidth,
           height: imageHeight,
           pixelRatio: 2, // High DPI for better quality
@@ -474,7 +475,7 @@ export default function DagCanvas({
     } finally {
       setIsExporting(false)
     }
-  }, [getNodes, onToast])
+  }, [getNodes, onToast, theme])
 
   const handleNodeContextMenu = useCallback(
     (event: React.MouseEvent, node: Node<TaskNodeData>) => {
@@ -543,6 +544,9 @@ export default function DagCanvas({
   }
 
   if (nodes.length === 0) {
+    // Reference export state to satisfy TypeScript (export only available when nodes exist)
+    void isExporting
+    void handleExport
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
         <div className="text-center max-w-md px-6">
