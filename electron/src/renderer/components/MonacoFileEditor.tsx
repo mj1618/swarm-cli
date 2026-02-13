@@ -416,7 +416,7 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
           {isDirty && <span className="text-orange-400 ml-1" title="Unsaved changes">&bull;</span>}
         </span>
         <span className="text-xs text-muted-foreground truncate ml-auto">{filePath}</span>
-        {isPrompt && (
+        {isMarkdown && (
           <button
             onClick={() => setShowPreview((v) => !v)}
             className={`text-xs px-2 py-1 rounded transition-colors ${
@@ -424,8 +424,9 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
                 ? 'bg-cyan-500/20 text-cyan-300 hover:bg-cyan-500/30'
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
+            title={showPreview ? 'Hide preview' : 'Show preview'}
           >
-            Preview
+            {showPreview ? 'Hide Preview' : 'Preview'}
           </button>
         )}
         {!readOnly && (
@@ -477,24 +478,54 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
         {showPreview && (
           <div className="w-1/2 min-h-0 flex flex-col">
             <div className="px-3 py-1.5 border-b border-border flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Resolved Preview</span>
-              {previewLoading && (
-                <span className="text-xs text-muted-foreground">Loading...</span>
+              <span className="text-xs text-muted-foreground">Markdown Preview</span>
+              {isPrompt && (
+                <>
+                  <span className="text-xs text-muted-foreground">|</span>
+                  <button
+                    onClick={loadPreview}
+                    disabled={previewLoading}
+                    className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors disabled:opacity-50"
+                    title="Resolve template includes and show result"
+                  >
+                    {previewLoading ? 'Resolving...' : 'Resolve Includes'}
+                  </button>
+                </>
               )}
-              <button
-                onClick={loadPreview}
-                className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground hover:bg-muted/80 transition-colors ml-auto"
-              >
-                Refresh
-              </button>
             </div>
             <div className="flex-1 min-h-0 overflow-auto bg-[#1e1e1e]">
               {previewError ? (
                 <div className="p-4 text-sm text-red-400">{previewError}</div>
+              ) : previewContent ? (
+                /* Show resolved content when available (prompt files) */
+                <div
+                  className="p-4 prose prose-sm prose-invert max-w-none
+                    prose-headings:text-[#d4d4d4] prose-headings:font-semibold
+                    prose-p:text-[#d4d4d4] prose-p:leading-relaxed
+                    prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline
+                    prose-code:text-purple-300 prose-code:bg-[#2d2d2d] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+                    prose-pre:bg-[#2d2d2d] prose-pre:border prose-pre:border-[#3d3d3d]
+                    prose-blockquote:border-l-cyan-500 prose-blockquote:text-[#a0a0a0]
+                    prose-strong:text-[#e0e0e0]
+                    prose-ul:text-[#d4d4d4] prose-ol:text-[#d4d4d4]
+                    prose-li:text-[#d4d4d4]"
+                  dangerouslySetInnerHTML={{ __html: marked(previewContent) as string }}
+                />
               ) : (
-                <pre className="p-4 text-sm text-[#d4d4d4] font-mono whitespace-pre-wrap leading-relaxed">
-                  {previewContent ?? ''}
-                </pre>
+                /* Show live markdown preview */
+                <div
+                  className="p-4 prose prose-sm prose-invert max-w-none
+                    prose-headings:text-[#d4d4d4] prose-headings:font-semibold
+                    prose-p:text-[#d4d4d4] prose-p:leading-relaxed
+                    prose-a:text-cyan-400 prose-a:no-underline hover:prose-a:underline
+                    prose-code:text-purple-300 prose-code:bg-[#2d2d2d] prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none
+                    prose-pre:bg-[#2d2d2d] prose-pre:border prose-pre:border-[#3d3d3d]
+                    prose-blockquote:border-l-cyan-500 prose-blockquote:text-[#a0a0a0]
+                    prose-strong:text-[#e0e0e0]
+                    prose-ul:text-[#d4d4d4] prose-ol:text-[#d4d4d4]
+                    prose-li:text-[#d4d4d4]"
+                  dangerouslySetInnerHTML={{ __html: renderedMarkdown as string }}
+                />
               )}
             </div>
           </div>

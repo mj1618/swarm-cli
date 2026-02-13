@@ -10,7 +10,9 @@
     "electron:dev": "npm run build:electron && npx electron .",
     "preview": "vite preview",
     "start": "npm run build && npm run build:electron && npx electron .",
-    "package": "npm run build && npm run build:electron && electron-builder"
+    "package": "npm run build && npm run build:electron && electron-builder",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.main.json --noEmit",
+    "lint": "eslint src/"
   },
   "keywords": [
     "electron",
@@ -38,11 +40,13 @@
     "@monaco-editor/react": "^4.7.0",
     "@types/dagre": "^0.7.53",
     "@types/js-yaml": "^4.0.9",
+    "@types/marked": "^5.0.2",
     "@xyflow/react": "^12.10.0",
     "chokidar": "^5.0.0",
     "dagre": "^0.8.5",
     "html-to-image": "^1.11.13",
     "js-yaml": "^4.1.1",
+    "marked": "^17.0.2",
     "react": "^19.0.0",
     "react-dom": "^19.0.0"
   },
