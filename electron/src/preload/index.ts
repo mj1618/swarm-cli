@@ -42,6 +42,10 @@ contextBridge.exposeInMainWorld('promptResolver', {
   resolve: (filePath: string) => ipcRenderer.invoke('prompt:resolve', filePath),
 })
 
+contextBridge.exposeInMainWorld('notify', {
+  send: (payload: { title: string; body: string }) => ipcRenderer.invoke('notify:send', payload),
+})
+
 contextBridge.exposeInMainWorld('fs', {
   readdir: (dirPath: string) => ipcRenderer.invoke('fs:readdir', dirPath),
   readfile: (filePath: string) => ipcRenderer.invoke('fs:readfile', filePath),
@@ -124,6 +128,10 @@ export type PromptAPI = {
   resolve: (filePath: string) => Promise<{ content: string; error?: string }>
 }
 
+export type NotifyAPI = {
+  send: (payload: { title: string; body: string }) => Promise<void>
+}
+
 export type StateAPI = {
   read: () => Promise<{ agents: AgentState[]; error?: string }>
   watch: () => Promise<void>
@@ -167,5 +175,6 @@ declare global {
     logs: LogsAPI
     settings: SettingsAPI
     promptResolver: PromptAPI
+    notify: NotifyAPI
   }
 }

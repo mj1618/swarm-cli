@@ -18,6 +18,9 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
   const [dirty, setDirty] = useState(false)
   const [originalBackend, setOriginalBackend] = useState('')
   const [originalModel, setOriginalModel] = useState('')
+  const [systemNotifications, setSystemNotifications] = useState(() =>
+    localStorage.getItem('swarm-system-notifications') !== 'false'
+  )
 
   useEffect(() => {
     window.settings.read().then(result => {
@@ -149,6 +152,37 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
               <div className="bg-background/50 border border-border rounded px-2 py-1.5 text-sm text-muted-foreground font-mono">
                 {logsDir}
               </div>
+            </div>
+
+            {/* System Notifications */}
+            <div>
+              <label className={labelClass}>Notifications</label>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <button
+                  role="switch"
+                  aria-checked={systemNotifications}
+                  onClick={() => {
+                    const next = !systemNotifications
+                    setSystemNotifications(next)
+                    localStorage.setItem('swarm-system-notifications', String(next))
+                  }}
+                  className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors ${
+                    systemNotifications ? 'bg-primary' : 'bg-muted-foreground/30'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-3.5 w-3.5 rounded-full bg-white transition-transform ${
+                      systemNotifications ? 'translate-x-[18px]' : 'translate-x-[3px]'
+                    }`}
+                  />
+                </button>
+                <span className="text-sm text-foreground">
+                  System notifications when agents complete or fail
+                </span>
+              </label>
+              <p className="text-xs text-muted-foreground mt-1.5">
+                Only fires when the window is not focused
+              </p>
             </div>
 
             {/* Save Button */}
