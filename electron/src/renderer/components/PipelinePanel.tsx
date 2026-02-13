@@ -108,7 +108,7 @@ export default function PipelinePanel({ pipelineName, compose, onSave, onDelete,
   const labelClass = 'text-xs font-semibold text-muted-foreground mb-1.5 block'
 
   return (
-    <div className="w-80 border-l border-border bg-card flex flex-col h-full animate-in slide-in-from-right duration-200">
+    <div className="bg-card flex flex-col h-full animate-in slide-in-from-right duration-200">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
         <h2 className="text-sm font-semibold text-card-foreground truncate">

@@ -153,7 +153,7 @@ export default function TaskDrawer({ taskName, compose, onSave, onClose }: TaskD
   return (
     <div
       ref={drawerRef}
-      className="w-80 border-l border-border bg-card flex flex-col h-full animate-in slide-in-from-right duration-200"
+      className="bg-card flex flex-col h-full animate-in slide-in-from-right duration-200"
     >
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-border">
