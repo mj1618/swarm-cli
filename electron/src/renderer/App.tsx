@@ -6,8 +6,9 @@ import DagCanvas from './components/DagCanvas'
 import AgentPanel from './components/AgentPanel'
 import ConsolePanel from './components/ConsolePanel'
 import TaskDrawer from './components/TaskDrawer'
-import { serializeCompose } from './lib/yamlParser'
+import { serializeCompose, parseComposeFile } from './lib/yamlParser'
 import type { ComposeFile, TaskDef } from './lib/yamlParser'
+import { addDependency } from './lib/yamlWriter'
 
 function isYamlFile(filePath: string): boolean {
   const ext = filePath.split('.').pop()?.toLowerCase()
@@ -90,6 +91,37 @@ function App() {
   const handleCloseDrawer = useCallback(() => {
     setSelectedTask(null)
   }, [])
+
+  const handleAddDependency = useCallback(
+    async (dep: { source: string; target: string; condition: string }) => {
+      // Get current YAML content to parse fresh compose data
+      const yamlContent = selectedIsYaml && selectedFile
+        ? selectedYamlContent
+        : defaultYamlContent
+      if (!yamlContent) return
+
+      const compose = parseComposeFile(yamlContent)
+      const updated = addDependency(compose, dep.target, dep.source, dep.condition)
+      const yamlStr = serializeCompose(updated)
+
+      const filePath = selectedIsYaml && selectedFile ? selectedFile : 'swarm/swarm.yaml'
+      const result = await window.fs.writefile(filePath, yamlStr)
+      if (result.error) {
+        console.error('Failed to save dependency:', result.error)
+        return
+      }
+
+      // Reload YAML to refresh the DAG
+      if (selectedIsYaml && selectedFile) {
+        const reloaded = await window.fs.readfile(selectedFile)
+        if (!reloaded.error) setSelectedYamlContent(reloaded.content)
+      } else {
+        const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+        if (!reloaded.error) setDefaultYamlContent(reloaded.content)
+      }
+    },
+    [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent],
+  )
 
   const handleSelectFile = useCallback((filePath: string) => {
     setSelectedFile(filePath)
@@ -179,6 +211,7 @@ function App() {
                   loading={selectedIsYaml ? selectedYamlLoading : defaultYamlLoading}
                   error={selectedIsYaml ? selectedYamlError : defaultYamlError}
                   onSelectTask={handleSelectTask}
+                  onAddDependency={handleAddDependency}
                   savedPositions={nodePositions}
                   onPositionsChange={handlePositionsChange}
                   onResetLayout={handleResetLayout}

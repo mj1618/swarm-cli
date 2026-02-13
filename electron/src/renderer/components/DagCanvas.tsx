@@ -106,6 +106,53 @@ export default function DagCanvas({
     [onSelectTask, compose],
   )
 
+  // Connection dialog state
+  const [pendingConnection, setPendingConnection] = useState<PendingConnection | null>(null)
+  const { flowToScreenPosition } = useReactFlow()
+
+  const handleConnect = useCallback(
+    (connection: Connection) => {
+      if (!connection.source || !connection.target) return
+      // Prevent self-references
+      if (connection.source === connection.target) return
+      // Prevent duplicate: check if edge already exists
+      if (edges.some(e => e.source === connection.source && e.target === connection.target)) return
+
+      // Find midpoint between source and target nodes for dialog placement
+      const sourceNode = nodes.find(n => n.id === connection.source)
+      const targetNode = nodes.find(n => n.id === connection.target)
+      if (!sourceNode || !targetNode) return
+
+      const midX = (sourceNode.position.x + targetNode.position.x) / 2 + 100
+      const midY = (sourceNode.position.y + targetNode.position.y) / 2 + 50
+      const screenPos = flowToScreenPosition({ x: midX, y: midY })
+
+      setPendingConnection({
+        source: connection.source,
+        target: connection.target,
+        position: { x: screenPos.x, y: screenPos.y },
+      })
+    },
+    [nodes, edges, flowToScreenPosition],
+  )
+
+  const handleConditionSelect = useCallback(
+    (condition: 'success' | 'failure' | 'any' | 'always') => {
+      if (!pendingConnection || !onAddDependency) return
+      onAddDependency({
+        source: pendingConnection.source,
+        target: pendingConnection.target,
+        condition,
+      })
+      setPendingConnection(null)
+    },
+    [pendingConnection, onAddDependency],
+  )
+
+  const handleConnectionCancel = useCallback(() => {
+    setPendingConnection(null)
+  }, [])
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
@@ -147,9 +194,10 @@ export default function DagCanvas({
         fitViewOptions={{ padding: 0.3 }}
         proOptions={{ hideAttribution: true }}
         nodesDraggable={true}
-        nodesConnectable={false}
+        nodesConnectable={true}
         elementsSelectable={true}
         onNodeClick={handleNodeClick}
+        onConnect={handleConnect}
         colorMode="dark"
       >
         <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="hsl(240 5% 20%)" />
@@ -171,6 +219,15 @@ export default function DagCanvas({
           </Panel>
         )}
       </ReactFlow>
+      {pendingConnection && (
+        <ConnectionDialog
+          sourceTask={pendingConnection.source}
+          targetTask={pendingConnection.target}
+          position={pendingConnection.position}
+          onSelect={handleConditionSelect}
+          onCancel={handleConnectionCancel}
+        />
+      )}
     </div>
   )
 }
