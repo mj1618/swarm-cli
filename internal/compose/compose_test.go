@@ -686,8 +686,8 @@ tasks:
 	if task.DependsOn[0].Task != "coder" {
 		t.Errorf("dependency task = %q, want %q", task.DependsOn[0].Task, "coder")
 	}
-	if task.DependsOn[0].EffectiveCondition() != ConditionSuccess {
-		t.Errorf("dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionSuccess)
+	if task.DependsOn[0].EffectiveCondition() != ConditionAny {
+		t.Errorf("dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionAny)
 	}
 }
 
@@ -769,8 +769,8 @@ tasks:
 	if task.DependsOn[0].Task != "a" {
 		t.Errorf("first dependency task = %q, want %q", task.DependsOn[0].Task, "a")
 	}
-	if task.DependsOn[0].EffectiveCondition() != ConditionSuccess {
-		t.Errorf("first dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionSuccess)
+	if task.DependsOn[0].EffectiveCondition() != ConditionAny {
+		t.Errorf("first dependency condition = %q, want %q", task.DependsOn[0].Condition, ConditionAny)
 	}
 
 	// Second dependency is full form
@@ -1007,7 +1007,7 @@ func TestDependency_EffectiveCondition(t *testing.T) {
 		condition string
 		want      string
 	}{
-		{"", ConditionSuccess},
+		{"", ConditionAny},
 		{ConditionSuccess, ConditionSuccess},
 		{ConditionFailure, ConditionFailure},
 		{ConditionAny, ConditionAny},

@@ -12,9 +12,9 @@ const DefaultFileName = "./swarm/swarm.yaml"
 
 // Dependency condition constants
 const (
-	ConditionSuccess = "success" // Run only if dependency succeeded (default)
+	ConditionSuccess = "success" // Run only if dependency succeeded
 	ConditionFailure = "failure" // Run only if dependency failed
-	ConditionAny     = "any"     // Run regardless of outcome (waits for completion)
+	ConditionAny     = "any"     // Run regardless of outcome (waits for completion) (default)
 	ConditionAlways  = "always"  // Always run after dependency, even if skipped
 )
 
@@ -23,7 +23,7 @@ const (
 // ("depends_on: [{task: task1, condition: success}]").
 type Dependency struct {
 	Task      string `yaml:"task"`      // Name of the task to depend on
-	Condition string `yaml:"condition"` // success, failure, any, always (default: success)
+	Condition string `yaml:"condition"` // success, failure, any, always (default: any)
 }
 
 // UnmarshalYAML implements custom unmarshaling to support both string and object forms.
@@ -31,7 +31,7 @@ func (d *Dependency) UnmarshalYAML(value *yaml.Node) error {
 	// Try simple string form first
 	if value.Kind == yaml.ScalarNode {
 		d.Task = value.Value
-		d.Condition = ConditionSuccess // default
+		d.Condition = ConditionAny // default
 		return nil
 	}
 
@@ -48,7 +48,7 @@ func (d *Dependency) UnmarshalYAML(value *yaml.Node) error {
 		d.Task = raw.Task
 		d.Condition = raw.Condition
 		if d.Condition == "" {
-			d.Condition = ConditionSuccess
+			d.Condition = ConditionAny
 		}
 		return nil
 	}
@@ -56,10 +56,10 @@ func (d *Dependency) UnmarshalYAML(value *yaml.Node) error {
 	return fmt.Errorf("invalid dependency format: expected string or object")
 }
 
-// EffectiveCondition returns the condition to use, defaulting to "success".
+// EffectiveCondition returns the condition to use, defaulting to "any".
 func (d *Dependency) EffectiveCondition() string {
 	if d.Condition == "" {
-		return ConditionSuccess
+		return ConditionAny
 	}
 	return d.Condition
 }

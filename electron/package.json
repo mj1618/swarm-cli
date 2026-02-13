@@ -1,0 +1,67 @@
+{
+  "name": "swarm-desktop",
+  "version": "0.1.0",
+  "description": "Desktop GUI for swarm-cli - DAG creation, pipeline management, and agent monitoring",
+  "main": "dist/main/main/index.js",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "build:electron": "tsc -p tsconfig.main.json",
+    "electron:dev": "npm run build:electron && npx electron .",
+    "preview": "vite preview",
+    "start": "npm run build && npm run build:electron && npx electron .",
+    "package": "npm run build && npm run build:electron && electron-builder"
+  },
+  "keywords": [
+    "electron",
+    "swarm",
+    "dag",
+    "pipeline",
+    "ai-agents"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^22.13.4",
+    "@types/react": "^19.0.8",
+    "@types/react-dom": "^19.0.3",
+    "@vitejs/plugin-react": "^4.3.4",
+    "autoprefixer": "^10.4.20",
+    "electron": "^34.2.0",
+    "electron-builder": "^25.1.8",
+    "postcss": "^8.5.2",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.7.3",
+    "vite": "^6.1.0"
+  },
+  "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
+    "@types/dagre": "^0.7.53",
+    "@types/js-yaml": "^4.0.9",
+    "@xyflow/react": "^12.10.0",
+    "chokidar": "^5.0.0",
+    "dagre": "^0.8.5",
+    "js-yaml": "^4.1.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "build": {
+    "appId": "com.swarm.desktop",
+    "productName": "Swarm Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*"
+    ],
+    "mac": {
+      "target": "dmg"
+    },
+    "win": {
+      "target": "nsis"
+    },
+    "linux": {
+      "target": "AppImage"
+    }
+  }
+}
