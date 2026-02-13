@@ -1,10 +1,19 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
+import type * as monaco from 'monaco-editor'
 import {
   isSwarmYaml,
   extractTaskNames,
   validateSwarmYaml,
   createHoverProvider,
 } from '../yamlIntellisense'
+
+// Helper to extract synchronous hover result (our implementation is sync)
+function getHoverSync(
+  result: monaco.languages.ProviderResult<monaco.languages.Hover>,
+): monaco.languages.Hover | null | undefined {
+  // Our implementation returns synchronously, so this is safe
+  return result as monaco.languages.Hover | null | undefined
+}
 
 describe('isSwarmYaml', () => {
   it('returns true for paths ending in swarm.yaml', () => {
