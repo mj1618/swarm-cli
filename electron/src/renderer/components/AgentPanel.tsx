@@ -67,26 +67,29 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
   }, [loadAgents])
 
   const handlePause = async (agentId: string) => {
-    try {
-      await window.swarm.pause(agentId)
-    } catch {
-      onToast?.('error', 'Failed to pause agent')
+    const result = await window.swarm.pause(agentId)
+    if (result.code !== 0) {
+      onToast?.('error', `Failed to pause agent: ${result.stderr}`)
+    } else {
+      onToast?.('success', 'Agent paused')
     }
   }
 
   const handleResume = async (agentId: string) => {
-    try {
-      await window.swarm.resume(agentId)
-    } catch {
-      onToast?.('error', 'Failed to resume agent')
+    const result = await window.swarm.resume(agentId)
+    if (result.code !== 0) {
+      onToast?.('error', `Failed to resume agent: ${result.stderr}`)
+    } else {
+      onToast?.('success', 'Agent resumed')
     }
   }
 
   const handleKill = async (agentId: string) => {
-    try {
-      await window.swarm.kill(agentId)
-    } catch {
-      onToast?.('error', 'Failed to kill agent')
+    const result = await window.swarm.kill(agentId)
+    if (result.code !== 0) {
+      onToast?.('error', `Failed to stop agent: ${result.stderr}`)
+    } else {
+      onToast?.('success', 'Agent stopped')
     }
   }
 
