@@ -7,6 +7,66 @@ import * as os from 'os'
 
 let mainWindow: BrowserWindow | null = null
 
+// Recent projects storage
+const MAX_RECENT_PROJECTS = 5
+const recentProjectsPath = path.join(app.getPath('userData'), 'recent-projects.json')
+
+async function loadRecentProjects(): Promise<string[]> {
+  try {
+    const data = await fs.readFile(recentProjectsPath, 'utf-8')
+    const parsed = JSON.parse(data)
+    if (Array.isArray(parsed)) {
+      // Filter out paths that no longer exist
+      const valid: string[] = []
+      for (const p of parsed) {
+        try {
+          await fs.access(p)
+          valid.push(p)
+        } catch {
+          // Path no longer exists, skip it
+        }
+      }
+      return valid.slice(0, MAX_RECENT_PROJECTS)
+    }
+  } catch {
+    // File doesn't exist or is invalid
+  }
+  return []
+}
+
+async function saveRecentProjects(projects: string[]): Promise<void> {
+  try {
+    await fs.writeFile(recentProjectsPath, JSON.stringify(projects.slice(0, MAX_RECENT_PROJECTS), null, 2), 'utf-8')
+  } catch (err) {
+    console.error('Failed to save recent projects:', err)
+  }
+}
+
+async function addRecentProject(projectPath: string): Promise<string[]> {
+  const recents = await loadRecentProjects()
+  // Remove if already exists (we'll add to top)
+  const filtered = recents.filter(p => p !== projectPath)
+  // Add to top
+  const updated = [projectPath, ...filtered].slice(0, MAX_RECENT_PROJECTS)
+  await saveRecentProjects(updated)
+  // Rebuild menu to reflect changes
+  await rebuildAppMenu()
+  return updated
+}
+
+async function clearRecentProjects(): Promise<void> {
+  await saveRecentProjects([])
+  await rebuildAppMenu()
+}
+
+function shortenPath(fullPath: string): string {
+  const home = app.getPath('home')
+  if (fullPath.startsWith(home)) {
+    return '~' + fullPath.slice(home.length)
+  }
+  return fullPath
+}
+
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
 
 function createWindow() {
@@ -543,8 +603,8 @@ ipcMain.handle('state:unwatch', async () => {
   }
 })
 
-// Logs directory IPC handlers — read log files from ~/swarm/logs/
-const logsDir = path.join(os.homedir(), 'swarm', 'logs')
+// Logs directory IPC handlers — read log files from ~/.swarm/logs/
+const logsDir = path.join(os.homedir(), '.swarm', 'logs')
 
 export interface LogEntry {
   name: string
