@@ -54,6 +54,27 @@ export default function AgentPanel() {
     await window.swarm.kill(agentId)
   }
 
+  const handleSetIterations = async (agentId: string, iterations: number) => {
+    const result = await window.swarm.run(['update', agentId, '--iterations', String(iterations)])
+    if (result.code !== 0) {
+      console.error('Failed to set iterations:', result.stderr)
+    }
+  }
+
+  const handleSetModel = async (agentId: string, model: string) => {
+    const result = await window.swarm.run(['update', agentId, '--model', model])
+    if (result.code !== 0) {
+      console.error('Failed to set model:', result.stderr)
+    }
+  }
+
+  const handleClone = async (agentId: string) => {
+    const result = await window.swarm.run(['clone', agentId, '-d'])
+    if (result.code !== 0) {
+      console.error('Failed to clone agent:', result.stderr)
+    }
+  }
+
   // Find the selected agent from the live agents list (auto-updates via state:changed)
   const selectedAgent = selectedAgentId
     ? agents.find(a => a.id === selectedAgentId)
@@ -75,6 +96,9 @@ export default function AgentPanel() {
         onPause={handlePause}
         onResume={handleResume}
         onKill={handleKill}
+        onSetIterations={handleSetIterations}
+        onSetModel={handleSetModel}
+        onClone={handleClone}
       />
     )
   }

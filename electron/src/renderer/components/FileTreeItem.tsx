@@ -18,6 +18,8 @@ interface FileTreeItemProps {
   creating: { parentPath: string; type: 'file' | 'dir' } | null
   onCreateSubmit: (parentPath: string, name: string, type: 'file' | 'dir') => void
   onCreateCancel: () => void
+  filterQuery?: string
+  onVisibleChange?: (path: string, visible: boolean) => void
 }
 
 function getFileIcon(name: string, isDirectory: boolean, isOpen: boolean): string {
@@ -56,6 +58,21 @@ function getFileIconColor(name: string, isDirectory: boolean): string {
     default:
       return 'text-muted-foreground'
   }
+}
+
+function HighlightedName({ name, query }: { name: string; query: string }) {
+  if (!query) return <>{name}</>
+  const lower = name.toLowerCase()
+  const qLower = query.toLowerCase()
+  const idx = lower.indexOf(qLower)
+  if (idx === -1) return <>{name}</>
+  return (
+    <>
+      {name.slice(0, idx)}
+      <span className="text-blue-400 font-semibold">{name.slice(idx, idx + query.length)}</span>
+      {name.slice(idx + query.length)}
+    </>
+  )
 }
 
 function InlineInput({
@@ -123,15 +140,56 @@ export default function FileTreeItem({
   creating,
   onCreateSubmit,
   onCreateCancel,
+  filterQuery,
+  onVisibleChange,
 }: FileTreeItemProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [children, setChildren] = useState<DirEntry[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [visibleChildren, setVisibleChildren] = useState<Set<string>>(new Set())
+  const [isDragging, setIsDragging] = useState(false)
+
+  const isDraggable = !entry.isDirectory && entry.path.includes('/prompts/') && entry.name.endsWith('.md')
 
   const isSelected = selectedPath === entry.path
   const isRenaming = renaming === entry.path
   const isCreatingHere = creating && creating.parentPath === entry.path
+  const isFiltering = !!filterQuery
+  const nameMatches = isFiltering
+    ? entry.name.toLowerCase().includes(filterQuery!.toLowerCase())
+    : false
+  const preFilterOpenRef = useRef(false)
+
+  // Determine visibility
+  const isVisible = !isFiltering
+    || nameMatches
+    || (entry.isDirectory && (loading || visibleChildren.size > 0))
+
+  // Report visibility to parent
+  useEffect(() => {
+    onVisibleChange?.(entry.path, isVisible)
+  }, [isVisible, entry.path, onVisibleChange])
+
+  const handleChildVisibleChange = useCallback((path: string, visible: boolean) => {
+    setVisibleChildren((prev) => {
+      const next = new Set(prev)
+      if (visible) {
+        next.add(path)
+      } else {
+        next.delete(path)
+      }
+      // Only update if actually changed
+      if (next.size === prev.size) {
+        let same = true
+        for (const p of next) {
+          if (!prev.has(p)) { same = false; break }
+        }
+        if (same) return prev
+      }
+      return next
+    })
+  }, [])
 
   const loadChildren = useCallback(async () => {
     if (!entry.isDirectory) return
@@ -152,6 +210,23 @@ export default function FileTreeItem({
       setLoading(false)
     }
   }, [entry.path, entry.isDirectory])
+
+  // Auto-expand directories when filter becomes active; restore when cleared
+  useEffect(() => {
+    if (!entry.isDirectory) return
+    if (isFiltering) {
+      preFilterOpenRef.current = isOpen
+      if (!isOpen) {
+        setIsOpen(true)
+        if (children.length === 0) {
+          loadChildren()
+        }
+      }
+    } else {
+      setIsOpen(preFilterOpenRef.current)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFiltering])
 
   // Auto-open directory when a create action targets it
   useEffect(() => {
@@ -186,6 +261,8 @@ export default function FileTreeItem({
   const icon = getFileIcon(entry.name, entry.isDirectory, isOpen)
   const iconColor = getFileIconColor(entry.name, entry.isDirectory)
 
+  if (!isVisible) return null
+
   return (
     <div>
       {isRenaming ? (
@@ -204,12 +281,23 @@ export default function FileTreeItem({
               ? 'bg-accent text-accent-foreground'
               : 'hover:bg-accent/50 text-muted-foreground'
           }`}
-          style={{ paddingLeft: `${depth * 12 + 4}px` }}
+          style={{ paddingLeft: `${depth * 12 + 4}px`, opacity: isDragging ? 0.5 : undefined }}
           onClick={handleClick}
           onContextMenu={handleContextMenu}
+          draggable={isDraggable}
+          onDragStart={isDraggable ? (e) => {
+            const promptName = entry.name.replace(/\.md$/, '')
+            e.dataTransfer.setData('application/swarm-prompt', promptName)
+            e.dataTransfer.setData('text/plain', promptName)
+            e.dataTransfer.effectAllowed = 'copy'
+            setIsDragging(true)
+          } : undefined}
+          onDragEnd={isDraggable ? () => setIsDragging(false) : undefined}
         >
           <span className={`w-4 text-center text-xs mr-1 ${iconColor}`}>{icon}</span>
-          <span className="truncate">{entry.name}</span>
+          <span className="truncate">
+            <HighlightedName name={entry.name} query={filterQuery || ''} />
+          </span>
         </div>
       )}
       {entry.isDirectory && isOpen && (
@@ -254,6 +342,8 @@ export default function FileTreeItem({
               creating={creating}
               onCreateSubmit={onCreateSubmit}
               onCreateCancel={onCreateCancel}
+              filterQuery={filterQuery}
+              onVisibleChange={handleChildVisibleChange}
             />
           ))}
         </div>

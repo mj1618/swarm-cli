@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import FileTreeItem from './FileTreeItem'
 import type { DirEntry } from './FileTreeItem'
 import ContextMenu from './ContextMenu'
@@ -26,6 +26,9 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
   const [renaming, setRenaming] = useState<string | null>(null)
   const [creating, setCreating] = useState<{ parentPath: string; type: 'file' | 'dir' } | null>(null)
   const [confirmDelete, setConfirmDelete] = useState<DirEntry | null>(null)
+  const [filterQuery, setFilterQuery] = useState('')
+  const filterInputRef = useRef<HTMLInputElement>(null)
+  const [visibleRootChildren, setVisibleRootChildren] = useState<Set<string>>(new Set())
 
   const toast = useCallback(
     (type: ToastType, message: string) => {
@@ -169,6 +172,25 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
     setCreating(null)
   }, [])
 
+  const handleRootChildVisibleChange = useCallback((path: string, visible: boolean) => {
+    setVisibleRootChildren((prev) => {
+      const next = new Set(prev)
+      if (visible) {
+        next.add(path)
+      } else {
+        next.delete(path)
+      }
+      if (next.size === prev.size) {
+        let same = true
+        for (const p of next) {
+          if (!prev.has(p)) { same = false; break }
+        }
+        if (same) return prev
+      }
+      return next
+    })
+  }, [])
+
   // Build context menu items based on target
   const contextMenuItems: ContextMenuItem[] = []
   if (contextMenu) {
@@ -237,6 +259,32 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
           ↻
         </button>
       </div>
+      {!loading && !error && entries.length > 0 && (
+        <div className="px-3 pb-2 pt-1">
+          <div className="relative">
+            <input
+              ref={filterInputRef}
+              type="text"
+              value={filterQuery}
+              onChange={(e) => setFilterQuery(e.target.value)}
+              placeholder="Filter files..."
+              className="w-full bg-background border border-border rounded px-2 py-1 text-xs text-foreground outline-none focus:border-blue-500 placeholder:text-muted-foreground/50"
+            />
+            {filterQuery && (
+              <button
+                onClick={() => {
+                  setFilterQuery('')
+                  filterInputRef.current?.focus()
+                }}
+                className="absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs leading-none"
+                title="Clear filter"
+              >
+                ✕
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div
         className="flex-1 overflow-auto p-1 text-sm"
         onContextMenu={handleRootContextMenu}
@@ -296,8 +344,15 @@ export default function FileTree({ selectedPath, onSelectFile, onToast }: FileTr
                 creating={creating}
                 onCreateSubmit={handleCreateSubmit}
                 onCreateCancel={handleCreateCancel}
+                filterQuery={filterQuery || undefined}
+                onVisibleChange={handleRootChildVisibleChange}
               />
             ))}
+            {filterQuery && visibleRootChildren.size === 0 && (
+              <div className="text-xs text-muted-foreground p-2 italic">
+                No files match &apos;{filterQuery}&apos;
+              </div>
+            )}
           </>
         )}
       </div>

@@ -7,6 +7,9 @@ interface AgentDetailViewProps {
   onPause: (id: string) => void
   onResume: (id: string) => void
   onKill: (id: string) => void
+  onSetIterations: (id: string, iterations: number) => void
+  onSetModel: (id: string, model: string) => void
+  onClone: (id: string) => void
 }
 
 function formatDuration(startedAt: string, terminatedAt?: string): string {
@@ -54,11 +57,22 @@ function DetailRow({ label, value }: { label: string; value: React.ReactNode }) 
   )
 }
 
-export default function AgentDetailView({ agent, onBack, onPause, onResume, onKill }: AgentDetailViewProps) {
+export default function AgentDetailView({ agent, onBack, onPause, onResume, onKill, onSetIterations, onSetModel, onClone }: AgentDetailViewProps) {
   const [duration, setDuration] = useState(() => formatDuration(agent.started_at, agent.terminated_at))
+  const [iterationsInput, setIterationsInput] = useState(() => String(agent.iterations))
+  const [modelInput, setModelInput] = useState(() => agent.model)
   const isRunning = agent.status === 'running' && !agent.paused
   const isPaused = agent.paused
   const isActive = agent.status === 'running'
+
+  // Sync inputs when agent changes
+  useEffect(() => {
+    setIterationsInput(String(agent.iterations))
+  }, [agent.iterations])
+
+  useEffect(() => {
+    setModelInput(agent.model)
+  }, [agent.model])
 
   // Tick the duration every second for running agents
   useEffect(() => {
@@ -197,6 +211,54 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
 
         {/* Controls */}
         {isActive && (
+          <Section label="Controls">
+            <div className="bg-zinc-800/50 rounded-lg p-2 space-y-2">
+              {/* Iterations setter */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground w-16 shrink-0">Iterations</span>
+                <input
+                  type="number"
+                  min={1}
+                  value={iterationsInput}
+                  onChange={(e) => setIterationsInput(e.target.value)}
+                  className="flex-1 min-w-0 text-[11px] px-2 py-1 rounded bg-zinc-700 border border-zinc-600 text-foreground font-mono focus:outline-none focus:border-zinc-500"
+                />
+                <button
+                  onClick={() => {
+                    const n = parseInt(iterationsInput, 10)
+                    if (n > 0) onSetIterations(agent.id, n)
+                  }}
+                  className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors shrink-0"
+                >
+                  Set
+                </button>
+              </div>
+
+              {/* Model selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-[11px] text-muted-foreground w-16 shrink-0">Model</span>
+                <select
+                  value={modelInput}
+                  onChange={(e) => setModelInput(e.target.value)}
+                  className="flex-1 min-w-0 text-[11px] px-2 py-1 rounded bg-zinc-700 border border-zinc-600 text-foreground focus:outline-none focus:border-zinc-500"
+                >
+                  <option value="opus">opus</option>
+                  <option value="sonnet">sonnet</option>
+                  <option value="haiku">haiku</option>
+                </select>
+                <button
+                  onClick={() => onSetModel(agent.id, modelInput)}
+                  className="text-[11px] px-2 py-1 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors shrink-0"
+                >
+                  Set
+                </button>
+              </div>
+            </div>
+          </Section>
+        )}
+
+        {/* Action Buttons */}
+        {isActive && (
           <div className="flex gap-2 mt-1">
             {isRunning && (
               <button
@@ -219,6 +281,12 @@ export default function AgentDetailView({ agent, onBack, onPause, onResume, onKi
               className="text-xs px-3 py-1.5 rounded bg-red-900/50 hover:bg-red-900/70 text-red-200 transition-colors"
             >
               Stop
+            </button>
+            <button
+              onClick={() => onClone(agent.id)}
+              className="text-xs px-3 py-1.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 transition-colors"
+            >
+              Clone
             </button>
           </div>
         )}
