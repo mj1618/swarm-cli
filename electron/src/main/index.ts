@@ -87,7 +87,8 @@ const swarmRoot = path.join(workingDir, 'swarm')
 
 function isWithinSwarmDir(targetPath: string): boolean {
   const resolved = path.resolve(targetPath)
-  return resolved.startsWith(path.resolve(swarmRoot))
+  const root = path.resolve(swarmRoot)
+  return resolved === root || resolved.startsWith(root + path.sep)
 }
 
 export interface DirEntry {
@@ -280,7 +281,8 @@ ipcMain.handle('logs:list', async (): Promise<{ entries: LogEntry[]; error?: str
 ipcMain.handle('logs:read', async (_event, filePath: string): Promise<{ content: string; error?: string }> => {
   try {
     const resolved = path.resolve(filePath)
-    if (!resolved.startsWith(path.resolve(logsDir))) {
+    const logsRoot = path.resolve(logsDir)
+    if (resolved !== logsRoot && !resolved.startsWith(logsRoot + path.sep)) {
       return { content: '', error: 'Access denied: path outside logs directory' }
     }
     const content = await fs.readFile(resolved, 'utf-8')
