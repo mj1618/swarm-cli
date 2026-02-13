@@ -18,12 +18,12 @@ interface DagCanvasProps {
   yamlContent: string | null
   loading: boolean
   error: string | null
-  onSelectTask?: (task: { name: string; def: TaskDef }) => void
+  onSelectTask?: (task: { name: string; def: TaskDef; compose: ComposeFile }) => void
 }
 
 export default function DagCanvas({ yamlContent, loading, error, onSelectTask }: DagCanvasProps) {
-  const { nodes, edges, parseError } = useMemo(() => {
-    const empty = { nodes: [] as Node<TaskNodeData>[], edges: [] as Edge[], parseError: null as string | null }
+  const { nodes, edges, parseError, compose } = useMemo(() => {
+    const empty = { nodes: [] as Node<TaskNodeData>[], edges: [] as Edge[], parseError: null as string | null, compose: null as ComposeFile | null }
     if (!yamlContent) return empty
     try {
       const compose: ComposeFile = parseComposeFile(yamlContent)
@@ -31,7 +31,7 @@ export default function DagCanvas({ yamlContent, loading, error, onSelectTask }:
         return { ...empty, parseError: 'No tasks found in swarm.yaml' }
       }
       const result = composeToFlow(compose)
-      return { ...result, parseError: null }
+      return { ...result, parseError: null, compose }
     } catch (e) {
       return { ...empty, parseError: (e as Error).message }
     }
@@ -57,10 +57,10 @@ export default function DagCanvas({ yamlContent, loading, error, onSelectTask }:
   }
 
   const handleNodeClick = useCallback((_event: React.MouseEvent, node: Node<TaskNodeData>) => {
-    if (onSelectTask) {
-      onSelectTask({ name: node.data.label, def: node.data.taskDef })
+    if (onSelectTask && compose) {
+      onSelectTask({ name: node.data.label, def: node.data.taskDef, compose })
     }
-  }, [onSelectTask])
+  }, [onSelectTask, compose])
 
   if (nodes.length === 0) {
     return (
