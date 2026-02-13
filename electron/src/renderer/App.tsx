@@ -240,6 +240,15 @@ function App() {
     setSelectedPipeline(null)
   }, [selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, activePipeline])
 
+  const handleRunPipeline = useCallback(async (pipelineName: string) => {
+    const result = await window.swarm.run(['pipeline', '--name', pipelineName])
+    if (result.code !== 0) {
+      addToast('error', `Pipeline failed: ${result.stderr || 'unknown error'}`)
+    } else {
+      addToast('success', `Pipeline "${pipelineName}" started`)
+    }
+  }, [addToast])
+
   const handleEditPipeline = useCallback((pipelineName: string) => {
     const yamlContent = selectedIsYaml && selectedFile ? selectedYamlContent : defaultYamlContent
     if (!yamlContent) return
@@ -544,6 +553,7 @@ function App() {
                   onUpdatePipeline={handleUpdatePipeline}
                   onEditPipeline={handleEditPipeline}
                   onCreatePipeline={handleCreatePipeline}
+                  onRunPipeline={handleRunPipeline}
                 />
               )}
               <ReactFlowProvider>
