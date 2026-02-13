@@ -1,18 +1,163 @@
 version: "1"
 tasks:
   planner:
-    prompt: planner
-  coder:
-    prompt: coder
+    prompt-string: |
+      # Electron App Planner
+
+      You are planning tasks for the Swarm Desktop Electron app.
+
+      ## Context
+
+      Read and understand the project plan:
+      - `ELECTRON_PLAN.md` - The full design spec for the Electron app
+      - `electron/` - The current implementation (if any exists)
+
+      ## Your Task
+
+      1. Review the ELECTRON_PLAN.md file and the current state of the `electron/` directory
+      2. Identify a single implementation task that:
+         - Follows the phased approach in the plan (Phase 1 → Phase 2 → etc.)
+         - Has clear, measurable completion criteria
+         - Can be completed in a single iteration
+         - Doesn't conflict with any in-progress work
+
+      3. Write the task to `{SWARM_STATE_DIR}/{task-name}.pending.md`
+
+      ## Task File Format
+
+      Your task file should include:
+      - **Goal**: What should be built/changed
+      - **Files**: Which files to create/modify
+      - **Dependencies**: Any prerequisite tasks (reference completed tasks if needed)
+      - **Acceptance Criteria**: How to verify the task is complete
+      - **Notes**: Any implementation hints from ELECTRON_PLAN.md
+
+      ## Exit Condition
+
+      Exit immediately after:
+      - Writing a single task file, OR
+      - Determining there are no more tasks to plan (all phases complete)
+
+  implementer:
+    prompt-string: |
+      # Electron App Implementer
+
+      You are implementing tasks for the Swarm Desktop Electron app.
+
+      ## Context from Planner
+
+      {{output:planner}}
+
+      ## Find Unfinished Tasks
+
+      First, check if you have any tasks in progress from a previous iteration:
+      `{SWARM_STATE_DIR}/*.{your-swarm-agent-id}.processing.md`
+
+      If found, continue working on that task.
+
+      ## Find a Task to Complete
+
+      If no in-progress tasks:
+
+      1. Look for files matching `{SWARM_STATE_DIR}/*.pending.md`
+      2. Claim the task by renaming it to `{SWARM_STATE_DIR}/{task-name}.{your-swarm-agent-id}.processing.md`
+      3. Make sure any dependencies listed in the task are completed first
+
+      If no pending tasks are found, skip to "If Nothing to Do".
+
+      ## Implement the Task
+
+      1. Read the task file thoroughly
+      2. Reference `ELECTRON_PLAN.md` for design guidance
+      3. Implement the feature following these standards:
+         - Use React 19 with TypeScript
+         - Style with Tailwind CSS and shadcn/ui components
+         - Follow the tech stack defined in ELECTRON_PLAN.md
+         - Write clean, maintainable code
+      4. Test your changes:
+         - Verify the app builds: `cd electron && npm run build`
+         - Check for TypeScript errors: `npm run typecheck` (if available)
+         - Manually test the feature works as expected
+      5. When complete:
+         - Move the file to `./swarm/done/electron/{task-name}.done.md`
+         - Add a completion note describing what was implemented
+         - `git add . && git commit -m "feat(electron): {description}" && git push`
+
+      If you cannot complete the task:
+      - Rename back to `{SWARM_STATE_DIR}/{task-name}.pending.md`
+      - Add a note explaining what blocked progress
+
+      ## If Nothing to Do
+
+      If no pending tasks exist:
+      1. Test the existing electron app functionality
+      2. Write any bugs or issues found as new `.pending.md` files in `{SWARM_STATE_DIR}/`
+      3. Exit immediately
     depends_on: [planner]
-  evaluator:
-    prompt: evaluator
-    depends_on: [coder]
-  tester:
-    prompt: tester
-    depends_on: [evaluator]
+
+  reviewer:
+    prompt-string: |
+      # Electron App Reviewer
+
+      You are reviewing implementation work for the Swarm Desktop Electron app.
+
+      ## Context from Implementer
+
+      See SWARM_STATE_DIR for the implementer's output.
+      See ELECTRON_PLAN.md for the design spec.
+
+      ## Your Task
+
+      Review the implementer's work by:
+
+      1. **Reading the completed task file** in `./swarm/done/electron/*.done.md` (most recently modified)
+      2. **Checking the implementation** against:
+         - The task's acceptance criteria
+         - The design spec in `ELECTRON_PLAN.md`
+         - React/TypeScript best practices
+
+      ## Review Checklist
+
+      ### Code Quality
+      - [ ] TypeScript types are properly defined (no `any` unless justified)
+      - [ ] Components are properly structured
+      - [ ] No unused imports or dead code
+      - [ ] Error handling is in place
+
+      ### Design Adherence
+      - [ ] Follows the UI layout from ELECTRON_PLAN.md
+      - [ ] Uses the specified tech stack (shadcn/ui, Tailwind, etc.)
+      - [ ] Component behavior matches the spec
+
+      ### Functionality
+      - [ ] The feature works as described
+      - [ ] Edge cases are handled
+      - [ ] No obvious bugs
+
+      ## Actions
+
+      ### If Issues Found
+
+      Write a new task file `{SWARM_STATE_DIR}/fix-{issue-name}.pending.md` describing:
+      - What the issue is
+      - Which files need changes
+      - How to fix it
+
+      ### If All Good
+
+      If the implementation is solid:
+      1. Note any minor improvements that could be made in a future iteration
+      2. Exit immediately
+
+      ## Output
+
+      Provide a brief summary:
+      - What was reviewed
+      - Overall assessment (approved / needs fixes)
+      - Any follow-up tasks created
+    depends_on: [implementer]
 
 pipelines:
   main:
-    iterations: 20
-    tasks: [planner, coder, evaluator, tester]
+    iterations: 100
+    tasks: [planner, implementer, reviewer]
