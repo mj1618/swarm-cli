@@ -9,6 +9,7 @@ import TaskDrawer from './components/TaskDrawer'
 import PipelinePanel from './components/PipelinePanel'
 import PipelineConfigBar from './components/PipelineConfigBar'
 import CommandPalette from './components/CommandPalette'
+import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp'
 import SettingsPanel from './components/SettingsPanel'
 import type { Command } from './components/CommandPalette'
 import ToastContainer, { useToasts } from './components/ToastContainer'
@@ -40,7 +41,18 @@ const DEFAULT_CONSOLE_HEIGHT = 192
 const MIN_CONSOLE_HEIGHT = 100
 const COLLAPSED_CONSOLE_HEIGHT = 28
 
+function shortenHomePath(fullPath: string): string {
+  const homeMatch = fullPath.match(/^(\/Users\/[^/]+|\/home\/[^/]+)/)
+  if (homeMatch) {
+    return '~' + fullPath.slice(homeMatch[1].length)
+  }
+  return fullPath
+}
+
 function App() {
+  const [projectPath, setProjectPath] = useState<string | null>(() => {
+    return localStorage.getItem('swarm-project-path')
+  })
   const [selectedFile, setSelectedFile] = useState<string | null>(null)
   const [defaultYamlContent, setDefaultYamlContent] = useState<string | null>(null)
   const [defaultYamlLoading, setDefaultYamlLoading] = useState(true)
@@ -51,6 +63,7 @@ function App() {
   const [selectedTask, setSelectedTask] = useState<{ name: string; def: TaskDef; compose: ComposeFile } | null>(null)
   const [paletteOpen, setPaletteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [shortcutsOpen, setShortcutsOpen] = useState(false)
   const [activePipeline, setActivePipeline] = useState<string | null>(null)
   const [selectedPipeline, setSelectedPipeline] = useState<{ name: string; compose: ComposeFile } | null>(null)
   const [agents, setAgents] = useState<AgentState[]>([])
@@ -509,6 +522,14 @@ function App() {
     }
   }, [])
 
+  // Load initial project path from main process CWD
+  useEffect(() => {
+    window.workspace.getCwd().then(cwd => {
+      setProjectPath(cwd)
+      localStorage.setItem('swarm-project-path', cwd)
+    })
+  }, [])
+
   // Detect agent state transitions and fire toasts
   useEffect(() => {
     const prevMap = prevAgentsRef.current
@@ -575,6 +596,34 @@ function App() {
     fitViewRef.current = fn
   }, [])
 
+  // Open project directory picker
+  const handleOpenProject = useCallback(async () => {
+    const result = await window.workspace.open()
+    if (!result.path) return
+    if (result.error === 'no-swarm-dir') {
+      addToast('warning', `No swarm/ directory found in ${result.path}`)
+      setProjectPath(result.path)
+      localStorage.setItem('swarm-project-path', result.path)
+      return
+    }
+    setProjectPath(result.path)
+    localStorage.setItem('swarm-project-path', result.path)
+    // Reset state for new workspace
+    setSelectedFile(null)
+    setSelectedTask(null)
+    setSelectedPipeline(null)
+    // Reload swarm.yaml from new workspace
+    const reloaded = await window.fs.readfile('swarm/swarm.yaml')
+    if (reloaded.error) {
+      setDefaultYamlError(reloaded.error)
+      setDefaultYamlContent(null)
+    } else {
+      setDefaultYamlContent(reloaded.content)
+      setDefaultYamlError(null)
+    }
+    addToast('success', `Switched to ${result.path}`)
+  }, [addToast])
+
   // Console panel toggle
   const toggleConsole = useCallback(() => {
     setConsoleCollapsed(prev => {
@@ -636,6 +685,13 @@ function App() {
           localStorage.setItem('swarm-console-collapsed', String(next))
           return next
         })
+      }
+      if (e.key === '?' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const tag = (e.target as HTMLElement)?.tagName
+        const editable = (e.target as HTMLElement)?.isContentEditable
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || editable) return
+        e.preventDefault()
+        setShortcutsOpen(prev => !prev)
       }
     }
     document.addEventListener('keydown', handleKeyDown)
@@ -752,6 +808,19 @@ function App() {
       action: () => setSettingsOpen(true),
     })
     cmds.push({
+      id: 'keyboard-shortcuts',
+      name: 'Show keyboard shortcuts',
+      description: 'Display all keyboard shortcuts',
+      shortcut: '?',
+      action: () => setShortcutsOpen(true),
+    })
+    cmds.push({
+      id: 'open-project',
+      name: 'Open project',
+      description: 'Switch to a different project directory',
+      action: handleOpenProject,
+    })
+    cmds.push({
       id: 'toggle-console',
       name: 'Toggle console',
       description: 'Show or hide the console panel (Cmd+J)',
@@ -802,10 +871,21 @@ function App() {
         onClose={() => setPaletteOpen(false)}
         commands={paletteCommands}
       />
+      <KeyboardShortcutsHelp
+        open={shortcutsOpen}
+        onClose={() => setShortcutsOpen(false)}
+      />
 
       {/* Title bar drag region */}
-      <div className="h-8 bg-background border-b border-border flex items-center px-4 drag-region">
+      <div className="h-8 bg-background border-b border-border flex items-center justify-between px-4 drag-region">
         <span className="text-sm font-medium text-muted-foreground ml-16">Swarm Desktop</span>
+        <button
+          onClick={handleOpenProject}
+          className="no-drag text-xs text-muted-foreground hover:text-foreground bg-secondary/50 hover:bg-secondary px-2 py-0.5 rounded transition-colors truncate max-w-[300px]"
+          title="Click to switch project"
+        >
+          {projectPath ? shortenHomePath(projectPath) : 'No project'}
+        </button>
       </div>
 
       {/* Main content */}
