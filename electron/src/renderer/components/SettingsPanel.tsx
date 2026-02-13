@@ -29,6 +29,8 @@ export default function SettingsPanel({ onClose, onToast }: SettingsPanelProps) 
     window.settings.read().then(result => {
       if (result.error) {
         onToast('error', `Failed to load settings: ${result.error}`)
+        setLoading(false)
+        return
       }
       setBackend(result.config.backend)
       setModel(result.config.model)

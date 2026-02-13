@@ -857,7 +857,7 @@ function App() {
     })
 
     return cmds
-  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask, toggleConsole])
+  }, [agents, selectedIsYaml, selectedFile, selectedYamlContent, defaultYamlContent, handleResetLayout, currentCompose, handleCreatePipeline, handleRunTask, toggleConsole, handleOpenProject])
 
   const dagLabel = useMemo(() => {
     if (!selectedFile) return 'DAG Editor'
