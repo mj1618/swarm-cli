@@ -1,0 +1,44 @@
+# swarm-cli configuration
+
+# Backend specifies which agent CLI to use
+# Options: "cursor" (Cursor's agent CLI) or "claude-code" (Anthropic's Claude Code CLI)
+backend = "cursor"
+
+# Default model for agent runs
+# For cursor: e.g., "opus-4.5-thinking"
+# For claude-code: e.g., "opus", "sonnet"
+model = "opus-4.5-thinking"
+
+# Default iterations for run command
+iterations = 1
+
+# Default total timeout for run command (e.g., "30m", "2h")
+# Set to "" or omit for no timeout
+# timeout = ""
+
+# Default per-iteration timeout (e.g., "10m")
+# Set to "" or omit for no timeout
+# iter_timeout = ""
+
+# Agent command configuration
+[command]
+# The base command to run (e.g., "agent" for cursor, "claude" for claude-code)
+executable = "agent"
+
+# Arguments template - {model} and {prompt} are replaced at runtime
+args = [
+  "--model",
+  "{model}",
+  "--output-format",
+  "stream-json",
+  "--stream-partial-output",
+  "--sandbox",
+  "disabled",
+  "--print",
+  "--force",
+  "{prompt}"
+]
+
+# If true, output streams directly without parsing (for claude-code)
+# If false, output is parsed through the log parser (for cursor)
+raw_output = false

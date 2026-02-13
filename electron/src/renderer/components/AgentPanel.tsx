@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useMemo } from 'react'
 import type { AgentState } from '../../preload/index'
 import AgentCard from './AgentCard'
 import AgentDetailView from './AgentDetailView'
@@ -16,6 +16,8 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
   const [error, setError] = useState<string | null>(null)
   const [historyExpanded, setHistoryExpanded] = useState(true)
   const [internalSelectedAgentId, setInternalSelectedAgentId] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'running' | 'terminated'>('all')
 
   // Use external prop if provided, otherwise use internal state
   const selectedAgentId = externalSelectedAgentId ?? internalSelectedAgentId
@@ -131,6 +133,31 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
     }
   }
 
+  // Filter agents based on search query and status filter
+  const filteredAgents = useMemo(() => {
+    let result = agents
+
+    // Apply status filter
+    if (statusFilter === 'running') {
+      result = result.filter(a => a.status === 'running')
+    } else if (statusFilter === 'terminated') {
+      result = result.filter(a => a.status !== 'running')
+    }
+
+    // Apply search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase()
+      result = result.filter(a =>
+        a.name?.toLowerCase().includes(query) ||
+        a.id.toLowerCase().includes(query) ||
+        a.model?.toLowerCase().includes(query) ||
+        a.current_task?.toLowerCase().includes(query)
+      )
+    }
+
+    return result
+  }, [agents, searchQuery, statusFilter])
+
   // Find the selected agent from the live agents list (auto-updates via state:changed)
   const selectedAgent = selectedAgentId
     ? agents.find(a => a.id === selectedAgentId)
@@ -161,9 +188,9 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
     )
   }
 
-  // Split agents into running/active vs history
-  const runningAgents = agents.filter(a => a.status === 'running')
-  const historyAgents = agents
+  // Split filtered agents into running/active vs history
+  const runningAgents = filteredAgents.filter(a => a.status === 'running')
+  const historyAgents = filteredAgents
     .filter(a => a.status !== 'running')
     .sort((a, b) => {
       // Most recently terminated first
@@ -186,6 +213,37 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
         </button>
       </div>
 
+      {/* Search and Filter */}
+      <div className="p-2 border-b border-border flex items-center gap-2">
+        <div className="relative flex-1">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search agents..."
+            className="w-full h-7 rounded border border-border bg-background px-2 pr-7 text-xs text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground text-xs"
+              title="Clear search"
+            >
+              ✕
+            </button>
+          )}
+        </div>
+        <select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value as 'all' | 'running' | 'terminated')}
+          className="h-7 rounded border border-border bg-background px-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
+        >
+          <option value="all">All</option>
+          <option value="running">Running</option>
+          <option value="terminated">History</option>
+        </select>
+      </div>
+
       {/* Content */}
       <div className="flex-1 overflow-auto p-2">
         {loading ? (
@@ -194,6 +252,8 @@ export default function AgentPanel({ onViewLog, onToast, selectedAgentId: extern
           <div className="text-sm text-red-400 p-2">{error}</div>
         ) : agents.length === 0 ? (
           <div className="text-sm text-muted-foreground p-2">No agents</div>
+        ) : filteredAgents.length === 0 ? (
+          <div className="text-sm text-muted-foreground p-2">No agents match your search</div>
         ) : (
           <>
             {/* Running agents section */}
