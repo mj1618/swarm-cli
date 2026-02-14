@@ -1,6 +1,11 @@
 import { app, BrowserWindow, dialog, ipcMain, Menu, Notification, screen, shell } from 'electron'
 import * as path from 'path'
 import * as fs from 'fs/promises'
+import { fileURLToPath } from 'url'
+
+// ES Module polyfills for __dirname
+const __filename = fileURLToPath(import.meta.url)
+const __dirname = path.dirname(__filename)
 import { spawn } from 'child_process'
 import { watch, FSWatcher } from 'chokidar'
 import * as os from 'os'
@@ -270,44 +275,44 @@ async function buildAppMenu() {
   // Build Recent Projects submenu
   const recentProjectsSubmenu: Electron.MenuItemConstructorOptions[] = recentProjects.length > 0
     ? [
-        ...recentProjects.map((p, index) => ({
-          label: shortenPath(p),
-          accelerator: index < 9 ? `CmdOrCtrl+${index + 1}` : undefined,
-          click: () => sendToRenderer('menu:open-recent', p),
-        })),
-        { type: 'separator' as const },
-        {
-          label: 'Clear Recent Projects',
-          click: () => clearRecentProjects(),
-        },
-      ]
+      ...recentProjects.map((p, index) => ({
+        label: shortenPath(p),
+        accelerator: index < 9 ? `CmdOrCtrl+${index + 1}` : undefined,
+        click: () => sendToRenderer('menu:open-recent', p),
+      })),
+      { type: 'separator' as const },
+      {
+        label: 'Clear Recent Projects',
+        click: () => clearRecentProjects(),
+      },
+    ]
     : [{ label: 'No Recent Projects', enabled: false }]
 
   const template: Electron.MenuItemConstructorOptions[] = [
     // macOS app menu
     ...(isMac
       ? [
-          {
-            label: app.name,
-            submenu: [
-              { role: 'about' as const },
-              { type: 'separator' as const },
-              {
-                label: 'Settings...',
-                accelerator: 'CmdOrCtrl+,',
-                click: () => sendToRenderer('menu:settings'),
-              },
-              { type: 'separator' as const },
-              { role: 'services' as const },
-              { type: 'separator' as const },
-              { role: 'hide' as const },
-              { role: 'hideOthers' as const },
-              { role: 'unhide' as const },
-              { type: 'separator' as const },
-              { role: 'quit' as const },
-            ],
-          } satisfies Electron.MenuItemConstructorOptions,
-        ]
+        {
+          label: app.name,
+          submenu: [
+            { role: 'about' as const },
+            { type: 'separator' as const },
+            {
+              label: 'Settings...',
+              accelerator: 'CmdOrCtrl+,',
+              click: () => sendToRenderer('menu:settings'),
+            },
+            { type: 'separator' as const },
+            { role: 'services' as const },
+            { type: 'separator' as const },
+            { role: 'hide' as const },
+            { role: 'hideOthers' as const },
+            { role: 'unhide' as const },
+            { type: 'separator' as const },
+            { role: 'quit' as const },
+          ],
+        } satisfies Electron.MenuItemConstructorOptions,
+      ]
       : []),
     // File menu
     {
@@ -372,9 +377,9 @@ async function buildAppMenu() {
         { role: 'zoom' },
         ...(isMac
           ? [
-              { type: 'separator' as const },
-              { role: 'front' as const },
-            ]
+            { type: 'separator' as const },
+            { role: 'front' as const },
+          ]
           : [{ role: 'close' as const }]),
       ],
     },
@@ -656,13 +661,13 @@ async function switchWorkspace(newDir: string): Promise<{ path: string; error?: 
     // Still switch but mark as no-swarm-dir
     workingDir = newDir
     swarmRoot = newSwarmRoot
-    
+
     // Update window title
     if (mainWindow && !mainWindow.isDestroyed()) {
       const dirName = path.basename(newDir)
       mainWindow.setTitle(`Swarm Desktop — ${dirName}`)
     }
-    
+
     return { path: newDir, error: 'no-swarm-dir' }
   }
 

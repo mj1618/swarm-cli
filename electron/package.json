@@ -7,7 +7,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
-    "build:electron": "tsc -p tsconfig.main.json",
+    "build:electron": "tsc -p tsconfig.main.json && tsc -p tsconfig.preload.json",
     "electron:dev": "npm run build:electron && npx electron .",
     "preview": "vite preview",
     "start": "npm run build && npm run build:electron && npx electron .",

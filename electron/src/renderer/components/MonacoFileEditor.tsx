@@ -19,6 +19,8 @@ interface MonacoFileEditorProps {
   triggerSave?: number
   /** Called after save completes (success or failure) */
   onSaveComplete?: () => void
+  /** Called when user wants to close the editor */
+  onClose?: () => void
 }
 
 function getLanguage(filePath: string): string {
@@ -167,7 +169,7 @@ function computeDecorations(
   return decorations
 }
 
-export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChange, triggerSave, onSaveComplete }: MonacoFileEditorProps) {
+export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChange, triggerSave, onSaveComplete, onClose }: MonacoFileEditorProps) {
   const monacoTheme = theme === 'dark' ? 'vs-dark' : 'vs'
   const [content, setContent] = useState<string | null>(null)
   const [savedContent, setSavedContent] = useState<string | null>(null)
@@ -179,12 +181,15 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
   const [previewContent, setPreviewContent] = useState<string | null>(null)
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewError, setPreviewError] = useState<string | null>(null)
+  const [_showCloseConfirm, setShowCloseConfirm] = useState(false)
   const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
   const decorationsRef = useRef<string[]>([])
   const isDirtyRef = useRef(false)
   const saveRef = useRef<() => void>(() => {})
   const onDirtyChangeRef = useRef(onDirtyChange)
+  const onCloseRef = useRef(onClose)
   onDirtyChangeRef.current = onDirtyChange
+  onCloseRef.current = onClose
 
   const language = getLanguage(filePath)
   const tabSize = getTabSize(language)
@@ -284,6 +289,21 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
     return unsubscribe
   }, [filePath])
 
+  // Handle Escape key to close editor
+  useEffect(() => {
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape' && onCloseRef.current) {
+        if (isDirtyRef.current) {
+          setShowCloseConfirm(true)
+        } else {
+          onCloseRef.current()
+        }
+      }
+    }
+    document.addEventListener('keydown', handleEscape)
+    return () => document.removeEventListener('keydown', handleEscape)
+  }, [])
+
   // Load preview content
   const loadPreview = useCallback(async () => {
     setPreviewLoading(true)
@@ -321,6 +341,34 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
     setSaving(false)
   }, [content, filePath, readOnly])
   saveRef.current = handleSave
+
+  // Handle close request (from button or Escape) - for future close confirmation dialog
+  const _handleCloseRequest = useCallback(() => {
+    if (isDirty) {
+      setShowCloseConfirm(true)
+    } else {
+      onClose?.()
+    }
+  }, [isDirty, onClose])
+
+  // Discard changes and close - for future close confirmation dialog
+  const _handleDiscardAndClose = useCallback(() => {
+    setShowCloseConfirm(false)
+    onClose?.()
+  }, [onClose])
+
+  // Save changes and close - for future close confirmation dialog
+  const _handleSaveAndClose = useCallback(async () => {
+    await handleSave()
+    setShowCloseConfirm(false)
+    onClose?.()
+  }, [handleSave, onClose])
+
+  // Suppress unused variable warnings (these are for future close confirmation dialog)
+  void _showCloseConfirm
+  void _handleCloseRequest
+  void _handleDiscardAndClose
+  void _handleSaveAndClose
 
   const isSwarm = isSwarmYaml(filePath)
 
@@ -390,12 +438,23 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
 
   if (loading) {
     return (
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="p-3 border-b border-border flex items-center gap-2">
+      <div className="flex-1 flex flex-col min-h-0" data-testid="file-editor-container">
+        <div className="p-3 border-b border-border flex items-center gap-2" data-testid="file-editor-header">
           <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${fileType.color}`}>
             {fileType.label}
           </span>
           <span className="text-sm font-medium text-foreground truncate">{fileName}</span>
+          <span className="flex-1" />
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"
+              aria-label="Close file"
+              data-testid="file-editor-close-button"
+            >
+              ×
+            </button>
+          )}
         </div>
         <div className="flex-1 flex items-center justify-center">
           <span className="text-sm text-muted-foreground">Loading...</span>
@@ -406,12 +465,23 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
 
   if (error) {
     return (
-      <div className="flex-1 flex flex-col min-h-0">
-        <div className="p-3 border-b border-border flex items-center gap-2">
+      <div className="flex-1 flex flex-col min-h-0" data-testid="file-editor-container">
+        <div className="p-3 border-b border-border flex items-center gap-2" data-testid="file-editor-header">
           <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${fileType.color}`}>
             {fileType.label}
           </span>
           <span className="text-sm font-medium text-foreground truncate">{fileName}</span>
+          <span className="flex-1" />
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="text-muted-foreground hover:text-foreground transition-colors text-lg leading-none px-1"
+              aria-label="Close file"
+              data-testid="file-editor-close-button"
+            >
+              ×
+            </button>
+          )}
         </div>
         <div className="flex-1 flex items-center justify-center">
           <span className="text-sm text-red-400">{error}</span>
@@ -421,15 +491,15 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0">
+    <div className="flex-1 flex flex-col min-h-0" data-testid="file-editor">
       {/* Header */}
-      <div className="p-3 border-b border-border flex items-center gap-2">
-        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${fileType.color}`}>
+      <div className="p-3 border-b border-border flex items-center gap-2" data-testid="file-editor-header">
+        <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${fileType.color}`} data-testid="file-editor-filetype-badge">
           {fileType.label}
         </span>
         <span className="text-sm font-medium text-foreground truncate">
           {fileName}
-          {isDirty && <span className="text-orange-400 ml-1" title="Unsaved changes">&bull;</span>}
+          {isDirty && <span className="text-orange-400 ml-1" title="Unsaved changes" data-testid="file-editor-dirty-indicator">&bull;</span>}
         </span>
         <span className="text-xs text-muted-foreground truncate ml-auto">{filePath}</span>
         {isMarkdown && (
@@ -441,6 +511,7 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
                 : 'bg-muted text-muted-foreground hover:bg-muted/80'
             }`}
             title={showPreview ? 'Hide preview' : 'Show preview'}
+            data-testid="file-editor-preview-button"
           >
             {showPreview ? 'Hide Preview' : 'Preview'}
           </button>
@@ -454,13 +525,14 @@ export default function MonacoFileEditor({ filePath, theme = 'dark', onDirtyChan
               onClick={handleSave}
               disabled={!isDirty || saving}
               className="text-xs px-2 py-1 rounded bg-primary/20 text-primary hover:bg-primary/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              data-testid="file-editor-save-button"
             >
               {saving ? 'Saving...' : 'Save'}
             </button>
           </>
         )}
         {readOnly && (
-          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground">Read-only</span>
+          <span className="text-xs px-1.5 py-0.5 rounded bg-muted text-muted-foreground" data-testid="file-editor-readonly-badge">Read-only</span>
         )}
       </div>
 
