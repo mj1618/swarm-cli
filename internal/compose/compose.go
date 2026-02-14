@@ -125,6 +125,10 @@ type Task struct {
 	// Parallelism is the number of concurrent instances to run (default 1)
 	Parallelism int `yaml:"parallelism"`
 
+	// Concurrency limits how many instances of this task can run simultaneously
+	// across parallel pipeline instances (0 = unlimited)
+	Concurrency int `yaml:"concurrency"`
+
 	// Name is a custom name for the agent (optional, defaults to task name)
 	Name string `yaml:"name"`
 
@@ -248,6 +252,10 @@ func (t *Task) Validate(name string) error {
 		return fmt.Errorf("task %q: parallelism cannot be negative", name)
 	}
 
+	if t.Concurrency < 0 {
+		return fmt.Errorf("task %q: concurrency cannot be negative", name)
+	}
+
 	// Validate dependency conditions
 	for i, dep := range t.DependsOn {
 		if dep.Task == "" {
@@ -345,6 +353,15 @@ func (t *Task) EffectiveParallelism() int {
 		return 1
 	}
 	return t.Parallelism
+}
+
+// EffectiveConcurrency returns the concurrency limit for this task.
+// Returns 0 if not set (unlimited).
+func (t *Task) EffectiveConcurrency() int {
+	if t.Concurrency <= 0 {
+		return 0 // 0 means unlimited
+	}
+	return t.Concurrency
 }
 
 // HasDependencies returns true if any task has dependencies defined.

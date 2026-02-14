@@ -511,6 +511,7 @@ tasks:
       # Planner
       Your detailed prompt instructions go here...
       Multi-line prompts are supported using YAML block scalars.
+    concurrency: 1                     # only one planner runs at a time (critical for task coordination)
   doer-name:
     prompt-string: |
       # Doer
@@ -534,6 +535,7 @@ Rules:
 - Do NOT create separate prompt files — everything goes in swarm.yaml
 - Use ` + "`depends_on`" + ` to define execution order — downstream tasks wait for upstream tasks
 - Set ` + "`parallelism: 1`" + ` explicitly so users can see where to change it
+- Set ` + "`concurrency: 1`" + ` on all planner tasks — only one planner should run at a time to avoid creating duplicate tasks
 - Choose an appropriate number of iterations (10-20 is typical)
 - Design 2-5 tasks that make sense for this template type
 - Name tasks descriptively for the template (e.g. "researcher" not just "doer")
@@ -558,15 +560,16 @@ For example, if the planner writes its output, the doer prompt can include ` + "
 
 All pipelines MUST use this task file lifecycle for coordination between planner and doer agents:
 
-1. **Planner creates** a task file in SWARM_STATE_DIR named: ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + `
+1. **Planner creates** a task file in ` + "`swarm/todos/`" + ` named: ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + `
+   - Create the ` + "`swarm/todos/`" + ` directory if it doesn't exist
    - The timestamp is the current time when the planner creates the task
    - ` + "`{taskName}`" + ` is a short kebab-case name describing the task (e.g. ` + "`implement-auth`" + `, ` + "`write-chapter-3`" + `, ` + "`analyze-dataset`" + `)
    - The file contents are the full task description and instructions
-   - Example: ` + "`2026-02-12-14-30-00-implement-user-auth.todo.md`" + `
+   - Example: ` + "`swarm/todos/2026-02-12-14-30-00-implement-user-auth.todo.md`" + `
 
-2. **Doer picks up** the task by renaming ` + "`.todo.md`" + ` → ` + "`.processing.md`" + ` in SWARM_STATE_DIR
-   - Find the ` + "`.todo.md`" + ` file in SWARM_STATE_DIR
-   - Rename it (e.g. ` + "`2026-02-12-14-30-00-implement-user-auth.processing.md`" + `)
+2. **Doer picks up** the task by renaming ` + "`.todo.md`" + ` → ` + "`.processing.md`" + `
+   - Search ` + "`swarm/todos/`" + ` for any ` + "`.todo.md`" + ` file
+   - Rename it in place (e.g. ` + "`swarm/todos/2026-02-12-14-30-00-implement-user-auth.processing.md`" + `)
    - This signals that work is in progress
 
 3. **Doer completes** the task by moving the file to ` + "`swarm/done/`" + ` and renaming ` + "`.processing.md`" + ` → ` + "`.done.md`" + `
@@ -582,16 +585,17 @@ The entire pipeline revolves around this pattern:
 1. Read ` + "`swarm/PLAN.md`" + ` for the overall project plan
 2. Review the current state of the project directory — what files exist, what's been done already
 3. Review ` + "`swarm/done/`" + ` to see all previously completed tasks (` + "`.done.md`" + ` files) and avoid repeating work
-4. Check SWARM_STATE_DIR for any existing ` + "`.todo.md`" + ` or ` + "`.processing.md`" + ` files to avoid conflicts
-5. Determine what single piece of work should be done next
-6. Write a specific, bite-sized task as a ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` file in SWARM_STATE_DIR (following the Task File Lifecycle above)
-7. The task must be actionable and concrete, not vague
-8. Each iteration the planner MUST identify DIFFERENT work (check ` + "`swarm/done/`" + ` to see what's already been completed)
+4. Check ` + "`swarm/todos/`" + ` for any existing ` + "`.todo.md`" + ` or ` + "`.processing.md`" + ` files — if one exists, DO NOT create a new task (a previous task is still pending)
+5. If a pending task exists, exit early without creating a new task
+6. Determine what single piece of work should be done next
+7. Write a specific, bite-sized task as a ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` file in ` + "`swarm/todos/`" + ` (following the Task File Lifecycle above)
+8. The task must be actionable and concrete, not vague
+9. Each iteration the planner MUST identify DIFFERENT work (check ` + "`swarm/done/`" + ` to see what's already been completed)
 
 **Doer(s)** (middle tasks):
 1. Read ` + "`swarm/PLAN.md`" + ` for context on the overall project
-2. Find the ` + "`.todo.md`" + ` file in SWARM_STATE_DIR and read it for the task assignment
-3. Rename the ` + "`.todo.md`" + ` file to ` + "`.processing.md`" + ` to signal work has started
+2. Search ` + "`swarm/todos/`" + ` for a ` + "`.todo.md`" + ` file and read it for the task assignment
+3. Rename the ` + "`.todo.md`" + ` file to ` + "`.processing.md`" + ` in ` + "`swarm/todos/`" + ` to signal work has started
 4. Execute the task to completion — actually create/modify files, write content, etc.
 5. Be thorough but focused — complete the single assigned task, don't try to do everything at once
 6. **Test your work** — verify that what you built actually works before considering the task complete
@@ -616,10 +620,12 @@ The entire pipeline revolves around this pattern:
 - **Doers must test their work** before marking tasks complete
 - **Reviewers must fix issues** they find, not just report them
 - **CRITICAL**: All prompts MUST follow the Task File Lifecycle:
-  - Planners MUST write tasks as ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` in SWARM_STATE_DIR
-  - Doers MUST rename ` + "`.todo.md`" + ` → ` + "`.processing.md`" + ` when starting work
+  - Planners MUST check ` + "`swarm/todos/`" + ` for existing ` + "`.todo.md`" + ` or ` + "`.processing.md`" + ` files FIRST — if found, exit without creating a new task
+  - Planners MUST write tasks as ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` in ` + "`swarm/todos/`" + `
+  - Doers MUST search ` + "`swarm/todos/`" + ` for a ` + "`.todo.md`" + ` file and rename it to ` + "`.processing.md`" + ` when starting work
   - Doers MUST move completed tasks to ` + "`swarm/done/`" + ` as ` + "`.done.md`" + ` when finished
   - Planners MUST check ` + "`swarm/done/`" + ` to avoid repeating completed work
+- Instruct planner prompts to create ` + "`swarm/todos/`" + ` directory if it doesn't exist before creating task files
 - Instruct doer prompts to create ` + "`swarm/done/`" + ` directory if it doesn't exist before moving files
 
 ## Generate the files now
@@ -627,7 +633,7 @@ The entire pipeline revolves around this pattern:
 Based on the "` + tmpl.Name + `" template and the user's input above, create these two files:
 
 1. ` + "`swarm/PLAN.md`" + ` — a detailed, expanded project plan (see guidelines above)
-2. ` + "`swarm/swarm.yaml`" + ` with an appropriate pipeline (2-5 tasks, sensible dependencies, explicit parallelism: 1, and all prompts inlined as prompt-string values)
+2. ` + "`swarm/swarm.yaml`" + ` with an appropriate pipeline (2-5 tasks, sensible dependencies, explicit parallelism: 1, concurrency: 1 on all planner tasks, and all prompts inlined as prompt-string values)
 
 Create PLAN.md FIRST, then create swarm.yaml. The prompts in swarm.yaml should reference PLAN.md and be specific and tailored to the user's plan. The pipeline should be practical and effective for this kind of work. Don't be generic — reference the specific goals from the user's plan in your prompts.
 

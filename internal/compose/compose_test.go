@@ -1447,3 +1447,87 @@ func TestWarnings_TaskParallelismInPipeline(t *testing.T) {
 		})
 	}
 }
+
+// Tests for concurrency
+
+func TestTaskEffectiveConcurrency(t *testing.T) {
+	tests := []struct {
+		name        string
+		concurrency int
+		want        int
+	}{
+		{"zero returns 0 (unlimited)", 0, 0},
+		{"negative returns 0 (unlimited)", -1, 0},
+		{"one returns 1", 1, 1},
+		{"positive value returned", 5, 5},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			task := Task{Prompt: "test", Concurrency: tt.concurrency}
+			if got := task.EffectiveConcurrency(); got != tt.want {
+				t.Errorf("EffectiveConcurrency() = %d, want %d", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidate_TaskNegativeConcurrency(t *testing.T) {
+	cf := &ComposeFile{
+		Version: "1",
+		Tasks: map[string]Task{
+			"a": {Prompt: "a", Concurrency: -1},
+		},
+	}
+
+	err := cf.Validate()
+	if err == nil {
+		t.Error("expected error for negative task concurrency")
+	}
+	if !strings.Contains(err.Error(), "concurrency cannot be negative") {
+		t.Errorf("error should mention concurrency, got: %v", err)
+	}
+}
+
+func TestLoadWithConcurrency(t *testing.T) {
+	tmpDir, err := os.MkdirTemp("", "compose-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	content := `version: "1"
+tasks:
+  planner:
+    prompt: test
+    concurrency: 1
+  implementer:
+    prompt: test
+    concurrency: 3
+`
+	path := filepath.Join(tmpDir, "swarm.yaml")
+	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	cf, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() failed: %v", err)
+	}
+
+	planner := cf.Tasks["planner"]
+	if planner.Concurrency != 1 {
+		t.Errorf("planner concurrency = %d, want 1", planner.Concurrency)
+	}
+	if planner.EffectiveConcurrency() != 1 {
+		t.Errorf("planner EffectiveConcurrency() = %d, want 1", planner.EffectiveConcurrency())
+	}
+
+	implementer := cf.Tasks["implementer"]
+	if implementer.Concurrency != 3 {
+		t.Errorf("implementer concurrency = %d, want 3", implementer.Concurrency)
+	}
+	if implementer.EffectiveConcurrency() != 3 {
+		t.Errorf("implementer EffectiveConcurrency() = %d, want 3", implementer.EffectiveConcurrency())
+	}
+}

@@ -90,7 +90,7 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 
 		// Create a unique, time-sortable output directory per iteration
 		runID := time.Now().Format("20060102-150405") + "-" + state.GenerateID()
-		outputDir := filepath.Join(e.cfg.WorkingDir, "swarm", "outputs", runID)
+		outputDir := filepath.Join("/private/tmp", "swarm", "outputs", runID)
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
@@ -304,6 +304,14 @@ func (e *Executor) executeTasks(graph *Graph, taskNames []string, tracker *State
 		go func(name string, t compose.Task, out *output.PrefixedWriter) {
 			defer wg.Done()
 			defer out.Flush()
+
+			// Acquire concurrency slot (blocks if limit reached)
+			concurrencyLimit := t.EffectiveConcurrency()
+			if concurrencyLimit > 0 {
+				fmt.Fprintf(out, "Waiting for concurrency slot...\n")
+			}
+			AcquireTaskSlot(name, concurrencyLimit)
+			defer ReleaseTaskSlot(name, concurrencyLimit)
 
 			fmt.Fprintf(out, "Starting (iteration %d)\n", iteration)
 
