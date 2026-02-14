@@ -42,12 +42,11 @@ jobs:
           VERSION=${LATEST_TAG#v}
           MAJOR=$(echo $VERSION | cut -d. -f1)
           MINOR=$(echo $VERSION | cut -d. -f2)
-          PATCH=$(echo $VERSION | cut -d. -f3)
           
-          # Increment patch version
-          PATCH=$((PATCH + 1))
+          # Increment minor version (0.1.0, 0.2.0, etc.)
+          MINOR=$((MINOR + 1))
           
-          NEW_VERSION="v${MAJOR}.${MINOR}.${PATCH}"
+          NEW_VERSION="v${MAJOR}.${MINOR}.0"
           echo "New version: $NEW_VERSION"
           echo "version=$NEW_VERSION" >> $GITHUB_OUTPUT
 
