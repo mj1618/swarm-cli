@@ -5,13 +5,12 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
-	"unicode"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"github.com/fatih/color"
 	"github.com/mj1618/swarm-cli/internal/agent"
 	"github.com/spf13/cobra"
@@ -323,29 +322,78 @@ func getProjectPlan() (string, error) {
 		return initPlan, nil
 	}
 
-	// Interactive plan input using bubbletea for proper key handling
+	// Interactive plan input using vim
 	fmt.Print("  Describe your project and an AI agent will expand it into a detailed plan\n")
 	fmt.Print("  in ")
 	initBold.Print("swarm/PLAN.md")
 	fmt.Println(" that all agents will reference throughout the project.")
 	fmt.Println()
 
-	p := tea.NewProgram(initialPlanInputModel())
-	result, err := p.Run()
+	// Create a temporary file for vim editing
+	tmpFile, err := os.CreateTemp("", "swarm-plan-*.md")
 	if err != nil {
-		return "", fmt.Errorf("input error: %w", err)
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer os.Remove(tmpPath)
+
+	// Write initial content/instructions
+	initialContent := `# Project Plan
+
+<!-- Describe your project below. An AI agent will expand this into a detailed plan. -->
+<!-- Save and quit (:wq) when done. Leave empty or quit without saving (:q!) to abort. -->
+
+`
+	if _, err := tmpFile.WriteString(initialContent); err != nil {
+		tmpFile.Close()
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	tmpFile.Close()
+
+	// Open vim
+	initFaint.Println("  Opening vim...")
+	fmt.Println()
+
+	editor := os.Getenv("EDITOR")
+	if editor == "" {
+		editor = "vim"
 	}
 
-	final := result.(planInputModel)
-	if final.aborted {
-		fmt.Println()
-		initFaint.Println("    Aborted.")
-		return "", nil
+	cmd := exec.Command(editor, tmpPath)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("editor failed: %w", err)
 	}
 
-	plan := strings.TrimSpace(strings.Join(final.lines, "\n"))
+	// Read the result
+	content, err := os.ReadFile(tmpPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read plan: %w", err)
+	}
+
+	// Remove comment lines and trim
+	lines := strings.Split(string(content), "\n")
+	var planLines []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "<!--") && strings.HasSuffix(trimmed, "-->") {
+			continue
+		}
+		// Also skip the header if unchanged
+		if trimmed == "# Project Plan" {
+			continue
+		}
+		planLines = append(planLines, line)
+	}
+	plan := strings.TrimSpace(strings.Join(planLines, "\n"))
+
 	if plan == "" {
-		return "", fmt.Errorf("plan cannot be empty")
+		fmt.Println()
+		initFaint.Println("    Aborted (empty plan).")
+		return "", nil
 	}
 
 	fmt.Println()
@@ -358,182 +406,6 @@ func getProjectPlan() (string, error) {
 	}
 	fmt.Println()
 	return plan, nil
-}
-
-// planInputModel is a bubbletea model for multiline plan text input.
-// Enter submits the plan, Shift+Enter (or Alt+Enter) inserts a newline.
-type planInputModel struct {
-	lines   []string // lines of text
-	row     int      // current line (0-based)
-	col     int      // current column in runes (0-based)
-	done    bool
-	aborted bool
-}
-
-func initialPlanInputModel() planInputModel {
-	return planInputModel{
-		lines: []string{""},
-	}
-}
-
-func (m planInputModel) Init() tea.Cmd {
-	return nil
-}
-
-func (m planInputModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		s := msg.String()
-		switch s {
-		case "enter":
-			content := strings.TrimSpace(strings.Join(m.lines, "\n"))
-			if content == "" {
-				return m, nil
-			}
-			m.done = true
-			return m, tea.Quit
-		case "shift+enter", "alt+enter":
-			// Insert newline: split current line at cursor
-			runes := []rune(m.lines[m.row])
-			before := string(runes[:m.col])
-			after := string(runes[m.col:])
-			newLines := make([]string, 0, len(m.lines)+1)
-			newLines = append(newLines, m.lines[:m.row]...)
-			newLines = append(newLines, before)
-			newLines = append(newLines, after)
-			newLines = append(newLines, m.lines[m.row+1:]...)
-			m.lines = newLines
-			m.row++
-			m.col = 0
-		case "ctrl+c":
-			m.aborted = true
-			return m, tea.Quit
-		case "backspace", "ctrl+h":
-			if m.col > 0 {
-				runes := []rune(m.lines[m.row])
-				m.lines[m.row] = string(append(runes[:m.col-1], runes[m.col:]...))
-				m.col--
-			} else if m.row > 0 {
-				// Join with previous line
-				prevLen := len([]rune(m.lines[m.row-1]))
-				m.lines[m.row-1] += m.lines[m.row]
-				m.lines = append(m.lines[:m.row], m.lines[m.row+1:]...)
-				m.row--
-				m.col = prevLen
-			}
-		case "delete":
-			runes := []rune(m.lines[m.row])
-			if m.col < len(runes) {
-				m.lines[m.row] = string(append(runes[:m.col], runes[m.col+1:]...))
-			} else if m.row < len(m.lines)-1 {
-				// Join with next line
-				m.lines[m.row] += m.lines[m.row+1]
-				m.lines = append(m.lines[:m.row+1], m.lines[m.row+2:]...)
-			}
-		case "left":
-			if m.col > 0 {
-				m.col--
-			} else if m.row > 0 {
-				m.row--
-				m.col = len([]rune(m.lines[m.row]))
-			}
-		case "right":
-			if m.col < len([]rune(m.lines[m.row])) {
-				m.col++
-			} else if m.row < len(m.lines)-1 {
-				m.row++
-				m.col = 0
-			}
-		case "up":
-			if m.row > 0 {
-				m.row--
-				if lineLen := len([]rune(m.lines[m.row])); m.col > lineLen {
-					m.col = lineLen
-				}
-			}
-		case "down":
-			if m.row < len(m.lines)-1 {
-				m.row++
-				if lineLen := len([]rune(m.lines[m.row])); m.col > lineLen {
-					m.col = lineLen
-				}
-			}
-		case "home", "ctrl+a":
-			m.col = 0
-		case "end", "ctrl+e":
-			m.col = len([]rune(m.lines[m.row]))
-		default:
-			// Insert printable characters
-			runes := []rune(s)
-			if len(runes) == 1 && unicode.IsPrint(runes[0]) {
-				lineRunes := []rune(m.lines[m.row])
-				newRunes := make([]rune, len(lineRunes)+1)
-				copy(newRunes, lineRunes[:m.col])
-				newRunes[m.col] = runes[0]
-				copy(newRunes[m.col+1:], lineRunes[m.col:])
-				m.lines[m.row] = string(newRunes)
-				m.col++
-			}
-		}
-	}
-	return m, nil
-}
-
-func (m planInputModel) View() string {
-	if m.done {
-		// Final view: show entered text without cursor or hint
-		var sb strings.Builder
-		for i, line := range m.lines {
-			if i == 0 {
-				sb.WriteString("  \033[36m→\033[0m ")
-			} else {
-				sb.WriteString("    ")
-			}
-			sb.WriteString(line)
-			sb.WriteString("\n")
-		}
-		return sb.String()
-	}
-	if m.aborted {
-		return ""
-	}
-
-	var sb strings.Builder
-
-	// Hint line
-	sb.WriteString("  \033[2mEnter to submit · Shift+Enter for new line\033[0m\n\n")
-
-	// Text area with cursor
-	for i, line := range m.lines {
-		if i == 0 {
-			sb.WriteString("  \033[36m→\033[0m ")
-		} else {
-			sb.WriteString("    ")
-		}
-
-		runes := []rune(line)
-		if i == m.row {
-			// Render line with block cursor at current position
-			for j, r := range runes {
-				if j == m.col {
-					sb.WriteString("\033[7m")
-					sb.WriteRune(r)
-					sb.WriteString("\033[0m")
-				} else {
-					sb.WriteRune(r)
-				}
-			}
-			if m.col >= len(runes) {
-				// Cursor at end of line
-				sb.WriteString("\033[7m \033[0m")
-			}
-		} else {
-			sb.WriteString(line)
-		}
-		sb.WriteString("\n")
-	}
-
-	return sb.String()
 }
 
 // spinner shows an animated indicator with elapsed time while work is in progress.
@@ -722,23 +594,27 @@ The entire pipeline revolves around this pattern:
 3. Rename the ` + "`.todo.md`" + ` file to ` + "`.processing.md`" + ` to signal work has started
 4. Execute the task to completion — actually create/modify files, write content, etc.
 5. Be thorough but focused — complete the single assigned task, don't try to do everything at once
-6. When done, move the ` + "`.processing.md`" + ` file to ` + "`swarm/done/`" + ` and rename to ` + "`.done.md`" + ` (append a completion summary first)
+6. **Test your work** — verify that what you built actually works before considering the task complete
+7. When done, move the ` + "`.processing.md`" + ` file to ` + "`swarm/done/`" + ` and rename to ` + "`.done.md`" + ` (append a completion summary first)
 
 **Reviewer** (optional final task):
 1. Read ` + "`swarm/PLAN.md`" + ` for context
 2. Read the most recent ` + "`.done.md`" + ` file in ` + "`swarm/done/`" + ` to review what the doer accomplished
 3. Review the work for quality, correctness, and completeness
-4. Report any issues that should be addressed in the next iteration
+4. **Fix any issues found** — don't just report problems, actually fix them in the code/content
 
 #### Prompt writing guidelines:
 
+- **Keep prompts concise** — be direct and to the point, avoid verbose instructions or excessive explanation
 - Start every prompt by instructing the agent to read ` + "`swarm/PLAN.md`" + `
-- Make prompts detailed and specific to the template type and the user's plan
+- Make prompts specific to the template type and the user's plan
 - Include clear exit conditions (when should the agent stop/consider the task done?)
 - Use ` + "`{{output:task_name}}`" + ` to pass data between stages — don't hardcode paths
 - Instruct planners to always check current project state before planning (to avoid repeating work)
 - Keep planner output bite-sized: each task should be completable in a single agent session
 - Tell doer agents to actually create/modify project files, not just describe what to do
+- **Doers must test their work** before marking tasks complete
+- **Reviewers must fix issues** they find, not just report them
 - **CRITICAL**: All prompts MUST follow the Task File Lifecycle:
   - Planners MUST write tasks as ` + "`{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md`" + ` in SWARM_STATE_DIR
   - Doers MUST rename ` + "`.todo.md`" + ` → ` + "`.processing.md`" + ` when starting work
