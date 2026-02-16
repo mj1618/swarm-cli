@@ -1,0 +1,86 @@
+version: "1"
+tasks:
+  planner:
+    concurrency: 1
+    prompt-string: |
+      # Planner
+
+      You decide what single task should be done next.
+
+      ## Step 1: Understand Current State
+
+      - Read `swarm/PLAN.md` for the project plan and milestones
+      - Check `swarm/done/` for completed `.done.md` files — don't repeat work
+      - Browse the project directory to see what's been built
+
+      ## Step 2: Check for Pending Tasks
+
+      Look in `swarm/todos/` for any `.todo.md` or `.processing.md` files. If one exists, a task is already pending — exit without creating a new task.
+
+      ## Step 3: Write the Next Task
+
+      Create `{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md` in `swarm/todos/`.
+
+      Keep tasks bite-sized (one component, one feature, one unit of work). Include:
+      - What to build or do
+      - Which files to create/modify
+      - How to verify it works
+
+  developer:
+    prompt-string: |
+      # Developer
+
+      You implement features and complete tasks.
+
+      ## Step 1: Pick Up Your Task
+
+      Find a `.todo.md` file in `swarm/todos/`. Read it, then rename it to `.processing.md`.
+
+      ## Step 2: Implement
+
+      Build the feature or complete the task as described. Follow project conventions and best practices.
+
+      ## Step 3: Test
+
+      Verify your work actually functions correctly. Run tests, check for errors, and confirm the changes work as expected.
+
+      ## Step 4: Complete
+
+      1. Append a summary to the `.processing.md` file (files changed, what was built)
+      2. Move it to `swarm/done/` and rename to `.done.md`
+
+    depends_on: [planner]
+
+  reviewer:
+    prompt-string: |
+      # Reviewer
+
+      You review and fix code. Your job is to catch issues and fix them directly.
+
+      ## Step 1: Find What Was Changed
+
+      Look in `swarm/done/` for the most recent `.done.md` file. Read it to see which files were created or modified.
+
+      ## Step 2: Check for Issues
+
+      Read each modified file and look for:
+      - Errors or bugs
+      - Missing error handling
+      - Code style issues
+      - Obvious problems
+
+      ## Step 3: Fix Issues
+
+      If you find problems, fix them directly in the code. Don't just document them — actually edit the files to correct the issues.
+
+      ## Step 4: Log What You Did
+
+      Append a brief note to the `.done.md` file listing any fixes you made. If everything looked good, note that too.
+
+    depends_on: [developer]
+
+pipelines:
+  main:
+    iterations: 100
+    parallelism: 4
+    tasks: [planner, developer, reviewer]

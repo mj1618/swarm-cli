@@ -66,6 +66,15 @@ func NewExecutor(cfg ExecutorConfig) *Executor {
 
 // RunPipeline runs a pipeline with the given tasks for the specified iterations.
 func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compose.Task) error {
+	// Initialize cumulative stats from persisted state (so costs persist between iterations)
+	if e.cfg.StateManager != nil && e.cfg.TaskID != "" {
+		if agentState, err := e.cfg.StateManager.Get(e.cfg.TaskID); err == nil {
+			e.inputTokens = agentState.InputTokens
+			e.outputTokens = agentState.OutputTokens
+			e.totalCostUSD = agentState.TotalCost
+		}
+	}
+
 	// Get task names for this pipeline
 	taskNames := pipeline.GetPipelineTasks(tasks)
 
