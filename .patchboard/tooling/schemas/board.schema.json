@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "foo board config",
+  "type": "object",
+  "required": [
+    "board"
+  ],
+  "properties": {
+    "board": {
+      "type": "object",
+      "required": [
+        "id",
+        "columns"
+      ],
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "wip_limit": {
+                "type": [
+                  "integer",
+                  "null"
+                ]
+              },
+              "requires_lock": {
+                "type": [
+                  "boolean",
+                  "null"
+                ]
+              }
+            },
+            "additionalProperties": true
+          },
+          "minItems": 2
+        }
+      },
+      "additionalProperties": true
+    },
+    "rules": {
+      "type": [
+        "array",
+        "null"
+      ]
+    }
+  },
+  "additionalProperties": true
+}
