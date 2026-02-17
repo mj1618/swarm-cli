@@ -99,7 +99,7 @@ func (e *Executor) RunPipeline(pipeline compose.Pipeline, tasks map[string]compo
 
 		// Create a unique, time-sortable output directory per iteration
 		runID := time.Now().Format("20060102-150405") + "-" + state.GenerateID()
-		outputDir := filepath.Join("/private/tmp", "swarm", "outputs", runID)
+		outputDir := filepath.Join(os.TempDir(), "swarm", "outputs", runID)
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
 			return fmt.Errorf("failed to create output directory: %w", err)
 		}
