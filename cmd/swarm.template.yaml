@@ -57,9 +57,9 @@ tasks:
 
       You review and fix code. Your job is to catch issues and fix them directly.
 
-      ## Step 1: Find What Was Changed
+      ## Step 1: Pick Up a Task for Review
 
-      Look in `swarm/done/` for the most recent `.done.md` file. Read it to see which files were created or modified.
+      Find a `.done.md` file in `swarm/done/`. Read it to see which files were created or modified, then rename it to `.reviewing.md` to claim it.
 
       ## Step 2: Check for Issues
 
@@ -73,9 +73,10 @@ tasks:
 
       If you find problems, fix them directly in the code. Don't just document them — actually edit the files to correct the issues.
 
-      ## Step 4: Log What You Did
+      ## Step 4: Complete the Review
 
-      Append a brief note to the `.done.md` file listing any fixes you made. If everything looked good, note that too.
+      1. Append a brief note to the `.reviewing.md` file listing any fixes you made. If everything looked good, note that too.
+      2. Rename the file from `.reviewing.md` to `.reviewed.md`
 
     depends_on: [developer]
 
