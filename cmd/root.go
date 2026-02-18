@@ -99,6 +99,7 @@ func init() {
 	rootCmd.AddCommand(cloneCmd)
 	rootCmd.AddCommand(topCmd)
 	rootCmd.AddCommand(initCmd)
+	rootCmd.AddCommand(upgradeCmd)
 }
 
 // GetScope returns the current scope (project or global).
