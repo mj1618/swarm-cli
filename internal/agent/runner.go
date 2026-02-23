@@ -8,27 +8,36 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"sync/atomic"
+	"time"
 
 	"github.com/mj1618/swarm-cli/internal/logparser"
+	"github.com/mj1618/swarm-cli/internal/process"
 )
+
+const defaultResultGracePeriod = 30 * time.Second
 
 // UsageCallback is called when usage stats are updated during agent execution.
 type UsageCallback func(stats logparser.UsageStats)
 
 // Runner manages the execution of an agent process.
 type Runner struct {
-	config        Config
-	cmd           *exec.Cmd
-	cmdMu         sync.RWMutex // protects cmd
-	usageCallback UsageCallback
-	usageStats    logparser.UsageStats
-	statsMu       sync.Mutex
+	config            Config
+	cmd               *exec.Cmd
+	cmdMu             sync.RWMutex // protects cmd
+	usageCallback     UsageCallback
+	usageStats        logparser.UsageStats
+	statsMu           sync.Mutex
+	resultCh          chan struct{}
+	resultOnce        sync.Once
+	killedAfterResult int32 // atomic: set to 1 if force-killed after result event
 }
 
 // NewRunner creates a new agent runner with the given configuration.
 func NewRunner(cfg Config) *Runner {
 	return &Runner{
-		config: cfg,
+		config:   cfg,
+		resultCh: make(chan struct{}),
 	}
 }
 
@@ -99,29 +108,53 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 	// complete first to avoid losing data.
 	var outputWg sync.WaitGroup
 
+	// Grace period: if we see a result event but the process doesn't exit,
+	// force-kill after a timeout to handle stuck child processes (e.g. dev servers).
+	graceCtx, graceCancel := context.WithCancel(ctx)
+	defer graceCancel()
+
+	gracePeriod := r.config.ResultGracePeriod
+	if gracePeriod == 0 {
+		gracePeriod = defaultResultGracePeriod
+	}
+	if gracePeriod > 0 {
+		go func() {
+			select {
+			case <-r.resultCh:
+				select {
+				case <-time.After(gracePeriod):
+					atomic.StoreInt32(&r.killedAfterResult, 1)
+					fmt.Fprintf(out, "\n[swarm] Agent completed but process still running after %v — killing stuck process\n", gracePeriod)
+					r.cmdMu.RLock()
+					if r.cmd != nil && r.cmd.Process != nil {
+						process.ForceKill(r.cmd.Process.Pid)
+					}
+					r.cmdMu.RUnlock()
+				case <-graceCtx.Done():
+				}
+			case <-graceCtx.Done():
+			}
+		}()
+	}
+
 	// Process stdout based on RawOutput setting
 	if r.config.Command.RawOutput {
-		// Direct streaming for Claude Code - continuous stream without parsing
-		// Still try to extract usage stats if callback is set
+		// Direct streaming for Claude Code — tee stdout to parse for usage
+		// stats and detect result events while streaming raw output.
 		outputWg.Add(1)
 		go func() {
 			defer outputWg.Done()
-			if r.usageCallback != nil {
-				// Wrap with a tee reader to parse while streaming
-				pr, pw := io.Pipe()
-				go func() {
-					defer pw.Close()
-					io.Copy(io.MultiWriter(out, pw), stdout)
-				}()
-				scanner := bufio.NewScanner(pr)
-				buf := make([]byte, 0, 64*1024)
-				scanner.Buffer(buf, 1024*1024)
-				for scanner.Scan() {
-					line := scanner.Text()
-					r.extractUsageFromLine(line)
-				}
-			} else {
-				io.Copy(out, stdout)
+			pr, pw := io.Pipe()
+			go func() {
+				defer pw.Close()
+				io.Copy(io.MultiWriter(out, pw), stdout)
+			}()
+			scanner := bufio.NewScanner(pr)
+			buf := make([]byte, 0, 64*1024)
+			scanner.Buffer(buf, 1024*1024)
+			for scanner.Scan() {
+				line := scanner.Text()
+				r.extractUsageFromLine(line)
 			}
 		}()
 	} else {
@@ -138,13 +171,15 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 		go func() {
 			defer outputWg.Done()
 			scanner := bufio.NewScanner(stdout)
-			// Increase buffer size for potentially long lines
 			buf := make([]byte, 0, 64*1024)
 			scanner.Buffer(buf, 1024*1024)
 
 			for scanner.Scan() {
 				line := scanner.Text()
 				parser.ProcessLine(line)
+				if event := logparser.ParseEvent(line); event != nil && event.Type == "result" {
+					r.resultOnce.Do(func() { close(r.resultCh) })
+				}
 			}
 			parser.Flush()
 		}()
@@ -164,6 +199,12 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 	// Wait for command to complete and release resources
 	err = r.cmd.Wait()
 
+	// If we force-killed after a result event, the agent completed successfully
+	// but had a stuck child process — treat as success.
+	if atomic.LoadInt32(&r.killedAfterResult) == 1 {
+		return nil
+	}
+
 	// Check if the error was due to context cancellation/timeout
 	if ctx.Err() == context.DeadlineExceeded {
 		return fmt.Errorf("iteration timed out after %v", r.config.Timeout)
@@ -181,6 +222,10 @@ func (r *Runner) extractUsageFromLine(line string) {
 	event := logparser.ParseEvent(line)
 	if event == nil {
 		return
+	}
+
+	if event.Type == "result" {
+		r.resultOnce.Do(func() { close(r.resultCh) })
 	}
 
 	r.statsMu.Lock()

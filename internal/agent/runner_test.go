@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/mj1618/swarm-cli/internal/config"
 	"github.com/mj1618/swarm-cli/internal/logparser"
@@ -311,6 +312,109 @@ func TestRunnerClaudeCodeRawStream(t *testing.T) {
 	// Usage stats should still be extracted even in raw mode
 	if lastInputTokens != 150 {
 		t.Errorf("Expected 150 input tokens extracted in raw mode, got %d", lastInputTokens)
+	}
+}
+
+// TestRunnerForceKillAfterResultRaw verifies that a stuck process is force-killed
+// after the result event in raw output mode.
+func TestRunnerForceKillAfterResultRaw(t *testing.T) {
+	script := `printf '{"type":"result","subtype":"success","result":"done"}\n'; sleep 120`
+
+	cfg := Config{
+		Model:  "test",
+		Prompt: "test",
+		Command: CommandConfig{
+			Executable: "sh",
+			Args:       []string{"-c", script},
+			RawOutput:  true,
+		},
+		ResultGracePeriod: 2 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+
+	var buf bytes.Buffer
+	start := time.Now()
+	err := runner.Run(&buf)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Expected nil error (force-killed after result), got: %v", err)
+	}
+	if elapsed > 15*time.Second {
+		t.Errorf("Expected completion near grace period (~2s), took %v", elapsed)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, `"type":"result"`) {
+		t.Errorf("Output should contain result event, got: %q", output)
+	}
+	if !strings.Contains(output, "killing stuck process") {
+		t.Errorf("Output should contain force-kill message, got: %q", output)
+	}
+}
+
+// TestRunnerForceKillAfterResultParsed verifies force-kill works in parsed (non-raw) mode.
+func TestRunnerForceKillAfterResultParsed(t *testing.T) {
+	script := `printf '{"type":"result","subtype":"success","result":"done"}\n'; sleep 120`
+
+	cfg := Config{
+		Model:  "test",
+		Prompt: "test",
+		Command: CommandConfig{
+			Executable: "sh",
+			Args:       []string{"-c", script},
+			RawOutput:  false,
+		},
+		ResultGracePeriod: 2 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+
+	var buf bytes.Buffer
+	start := time.Now()
+	err := runner.Run(&buf)
+	elapsed := time.Since(start)
+
+	if err != nil {
+		t.Fatalf("Expected nil error (force-killed after result), got: %v", err)
+	}
+	if elapsed > 15*time.Second {
+		t.Errorf("Expected completion near grace period (~2s), took %v", elapsed)
+	}
+
+	output := buf.String()
+	if !strings.Contains(output, "killing stuck process") {
+		t.Errorf("Output should contain force-kill message, got: %q", output)
+	}
+}
+
+// TestRunnerNormalExitNoForceKill verifies that normal process exit is not affected.
+func TestRunnerNormalExitNoForceKill(t *testing.T) {
+	script := `printf '{"type":"result","subtype":"success","result":"done"}\n'`
+
+	cfg := Config{
+		Model:  "test",
+		Prompt: "test",
+		Command: CommandConfig{
+			Executable: "sh",
+			Args:       []string{"-c", script},
+			RawOutput:  true,
+		},
+		ResultGracePeriod: 5 * time.Second,
+	}
+
+	runner := NewRunner(cfg)
+
+	var buf bytes.Buffer
+	err := runner.Run(&buf)
+	if err != nil {
+		t.Fatalf("Expected nil error, got: %v", err)
+	}
+
+	output := buf.String()
+	if strings.Contains(output, "killing stuck process") {
+		t.Errorf("Should not force-kill on normal exit, got: %q", output)
 	}
 }
 

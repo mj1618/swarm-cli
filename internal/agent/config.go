@@ -22,4 +22,9 @@ type Config struct {
 
 	// Timeout is the per-iteration timeout (0 means no timeout)
 	Timeout time.Duration
+
+	// ResultGracePeriod is how long to wait after seeing a result event
+	// before force-killing a hung process. 0 uses the default (30s).
+	// Negative values disable this feature.
+	ResultGracePeriod time.Duration
 }

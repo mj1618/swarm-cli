@@ -5,7 +5,7 @@ tasks:
     prompt-string: |
       # Planner
 
-      You decide what single task should be done next.
+      You decide what task should be done next.
 
       ## Step 1: Understand Current State
 
@@ -17,11 +17,25 @@ tasks:
 
       Look in `swarm/todos/` for any `.todo.md` or `.processing.md` files. If one exists, a task is already pending — exit without creating a new task.
 
-      ## Step 3: Write the Next Task
+      ## Step 3: Brainstorm
+
+      Before writing a task, think carefully about what would move the project forward most effectively right now. Consider:
+      - What's the highest-impact next step given what's already built?
+      - Are there dependencies or blockers to address first?
+      - What's the right scope — ambitious enough to make real progress, but completable in one shot?
+      - Are there design decisions to make? Settle them here so the developer gets a clear brief.
+
+      Spend most of your effort here. A well-thought-out task is worth more than a quickly written one.
+
+      ## Step 4: Write the Next Task
 
       Create `{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md` in `swarm/todos/`.
 
-      Keep tasks bite-sized (one component, one feature, one unit of work). Include:
+      Tasks should be feature-sized — with opus 4.6, each agent can handle ambitious work, but
+      everything must fit within a single context window. A whole feature is a good unit of work;
+      an epic or multi-feature milestone is too large.
+
+      Include:
       - What to build or do
       - Which files to create/modify
       - How to verify it works
