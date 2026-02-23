@@ -11,16 +11,17 @@ import (
 
 // Backend constants
 const (
-	BackendCursor    = "cursor"
+	BackendCursor     = "cursor"
 	BackendClaudeCode = "claude-code"
+	BackendCodex      = "codex"
 )
 
 // Config holds the application configuration.
 type Config struct {
-	// Backend specifies which agent CLI to use ("cursor" or "claude-code")
+	// Backend specifies which agent CLI to use ("cursor", "claude-code", or "codex")
 	Backend string `toml:"backend"`
 
-	// Model is the default model to use (e.g., "opus-4.5-thinking" for cursor, "opus" for claude-code)
+	// Model is the default model to use (e.g., "opus-4.5-thinking" for cursor, "opus" for claude-code, "o4-mini" for codex)
 	Model string `toml:"model"`
 
 	// Iterations is the default number of iterations for run command
@@ -41,7 +42,7 @@ type Config struct {
 
 // CommandConfig holds the configuration for the agent command.
 type CommandConfig struct {
-	// Executable is the command to run (e.g., "agent" or "claude")
+	// Executable is the command to run (e.g., "agent", "claude", or "codex")
 	Executable string `toml:"executable"`
 
 	// Args is the list of arguments with {model} and {prompt} placeholders
@@ -83,6 +84,11 @@ func DefaultPricing() map[string]*ModelPricing {
 		"gpt-4": {InputPerMillion: 30.0, OutputPerMillion: 60.0},
 		"gpt-4-turbo": {InputPerMillion: 10.0, OutputPerMillion: 30.0},
 		"gpt-4o": {InputPerMillion: 2.5, OutputPerMillion: 10.0},
+		// OpenAI Codex / o-series models
+		"o4-mini":      {InputPerMillion: 1.1, OutputPerMillion: 4.4},
+		"o3":           {InputPerMillion: 10.0, OutputPerMillion: 40.0},
+		"gpt-5-codex":  {InputPerMillion: 2.0, OutputPerMillion: 8.0},
+		"codex-mini":   {InputPerMillion: 1.1, OutputPerMillion: 4.4},
 		// Default fallback
 		"default": {InputPerMillion: 3.0, OutputPerMillion: 15.0},
 	}
@@ -171,6 +177,26 @@ func ClaudeCodeConfig() *Config {
 	}
 }
 
+// CodexConfig returns the configuration preset for OpenAI's Codex CLI.
+func CodexConfig() *Config {
+	return &Config{
+		Backend:    BackendCodex,
+		Model:      "o4-mini",
+		Iterations: 1,
+		Command: CommandConfig{
+			Executable: "codex",
+			Args: []string{
+				"exec",
+				"--json",
+				"--model", "{model}",
+				"--sandbox", "danger-full-access",
+				"{prompt}",
+			},
+			RawOutput: false,
+		},
+	}
+}
+
 // SetBackend updates the config to use the specified backend preset.
 // It preserves the current Iterations value.
 func (c *Config) SetBackend(backend string) error {
@@ -180,8 +206,10 @@ func (c *Config) SetBackend(backend string) error {
 		preset = CursorConfig()
 	case BackendClaudeCode:
 		preset = ClaudeCodeConfig()
+	case BackendCodex:
+		preset = CodexConfig()
 	default:
-		return fmt.Errorf("unknown backend: %s (valid options: %s, %s)", backend, BackendCursor, BackendClaudeCode)
+		return fmt.Errorf("unknown backend: %s (valid options: %s)", backend, strings.Join(ValidBackends(), ", "))
 	}
 
 	// Preserve iterations
@@ -199,7 +227,7 @@ func (c *Config) SetBackend(backend string) error {
 
 // ValidBackends returns the list of valid backend names.
 func ValidBackends() []string {
-	return []string{BackendCursor, BackendClaudeCode}
+	return []string{BackendCursor, BackendClaudeCode, BackendCodex}
 }
 
 // GlobalConfigPath returns the path to the global config file.
@@ -326,7 +354,7 @@ func (c *Config) ToTOML() string {
 	sb.WriteString("# swarm-cli configuration\n\n")
 
 	sb.WriteString("# Backend specifies which agent CLI to use\n")
-	sb.WriteString("# Options: \"cursor\" (Cursor's agent CLI) or \"claude-code\" (Anthropic's Claude Code CLI)\n")
+	sb.WriteString("# Options: \"cursor\", \"claude-code\", or \"codex\"\n")
 	sb.WriteString("backend = \"")
 	sb.WriteString(c.Backend)
 	sb.WriteString("\"\n\n")
@@ -334,6 +362,7 @@ func (c *Config) ToTOML() string {
 	sb.WriteString("# Default model for agent runs\n")
 	sb.WriteString("# For cursor: e.g., \"opus-4.5-thinking\"\n")
 	sb.WriteString("# For claude-code: e.g., \"opus\", \"sonnet\"\n")
+	sb.WriteString("# For codex: e.g., \"o4-mini\", \"o3\"\n")
 	sb.WriteString("model = \"")
 	sb.WriteString(c.Model)
 	sb.WriteString("\"\n\n")
@@ -357,7 +386,7 @@ func (c *Config) ToTOML() string {
 
 	sb.WriteString("# Agent command configuration\n")
 	sb.WriteString("[command]\n")
-	sb.WriteString("# The base command to run (e.g., \"agent\" for cursor, \"claude\" for claude-code)\n")
+	sb.WriteString("# The base command to run (e.g., \"agent\" for cursor, \"claude\" for claude-code, \"codex\" for codex)\n")
 	sb.WriteString("executable = \"")
 	sb.WriteString(c.Command.Executable)
 	sb.WriteString("\"\n\n")

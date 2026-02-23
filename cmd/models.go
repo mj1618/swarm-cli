@@ -24,7 +24,8 @@ var modelsCmd = &cobra.Command{
 The default model (from config) is highlighted with an asterisk (*).
 
 For the cursor backend, models are fetched from the 'agent --list-models' command.
-For the claude-code backend, a fixed set of known models is shown.`,
+For the claude-code backend, a fixed set of known models is shown.
+For the codex backend, a fixed set of known models is shown.`,
 	Example: `  # List all available models
   swarm models
 
@@ -52,6 +53,8 @@ For the claude-code backend, a fixed set of known models is shown.`,
 			models, err = getCursorModels()
 		case config.BackendClaudeCode:
 			models = getClaudeCodeModels()
+		case config.BackendCodex:
+			models = getCodexModels()
 		default:
 			return fmt.Errorf("unknown backend: %s", backend)
 		}
@@ -213,6 +216,16 @@ func getClaudeCodeModels() []ModelInfo {
 	return []ModelInfo{
 		{ID: "opus", Description: "Claude 4 Opus"},
 		{ID: "sonnet", Description: "Claude 4 Sonnet"},
+	}
+}
+
+// getCodexModels returns the known models for OpenAI's Codex CLI.
+func getCodexModels() []ModelInfo {
+	return []ModelInfo{
+		{ID: "o4-mini", Description: "OpenAI o4-mini"},
+		{ID: "o3", Description: "OpenAI o3"},
+		{ID: "gpt-5-codex", Description: "GPT-5 Codex"},
+		{ID: "codex-mini", Description: "Codex Mini"},
 	}
 }
 

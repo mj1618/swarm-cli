@@ -65,7 +65,7 @@ swarm kill-all
 - **Automatic restart on failure** when running multiple iterations
 - **Manage running agents** - list, view details, and control them
 - **Live configuration updates** - change model or iterations while agents are running
-- **Multiple backends** - supports Cursor's agent CLI and Claude Code CLI
+- **Multiple backends** - supports Cursor's agent CLI, Claude Code CLI, and OpenAI's Codex CLI
 - **Project & global scoping** - organize prompts and agents per-project or globally
 - **Pipelines & DAG execution** - define task dependencies with conditional branching (success/failure/any/always)
 - **Configurable** - TOML configuration with sensible defaults
@@ -77,6 +77,7 @@ swarm kill-all
 You need one of the supported agent backends installed:
 - [Cursor](https://cursor.sh) with the `agent` CLI
 - [Claude Code](https://docs.anthropic.com/en/docs/claude-code) CLI
+- [Codex CLI](https://github.com/openai/codex) (OpenAI's coding agent)
 
 ### Download Binary (Recommended)
 
@@ -125,12 +126,13 @@ sudo mv swarm /usr/local/bin/
 
 ## Choosing Your Agent Backend
 
-Swarm CLI supports two agent backends. Choose one based on what you have installed:
+Swarm CLI supports three agent backends. Choose one based on what you have installed:
 
 | Backend | CLI Command | Best For |
 |---------|-------------|----------|
 | **Cursor** | `agent` | Cursor IDE users with agent CLI access |
 | **Claude Code** | `claude` | Standalone Claude Code CLI users |
+| **Codex** | `codex` | OpenAI Codex CLI users |
 
 ### Set Your Backend
 
@@ -140,6 +142,9 @@ swarm config set-backend claude-code
 
 # Use Cursor's agent CLI
 swarm config set-backend cursor
+
+# Use OpenAI Codex CLI
+swarm config set-backend codex
 ```
 
 To verify your chosen backend is working:
@@ -150,6 +155,9 @@ agent --version
 
 # For Claude Code
 claude --version
+
+# For Codex
+codex --version
 ```
 
 The backend can also be configured per-project in `swarm/swarm.toml` or globally in `~/.config/swarm/config.toml`. See the [Configuration](#configuration) section for details.
@@ -436,6 +444,9 @@ swarm config set-backend cursor
 # Use Claude Code CLI
 swarm config set-backend claude-code
 
+# Use OpenAI Codex CLI
+swarm config set-backend codex
+
 # Update global config instead of project
 swarm config set-backend claude-code --global
 ```
@@ -456,7 +467,7 @@ Swarm CLI uses TOML configuration files with the following priority (highest to 
 ```toml
 # swarm-cli configuration
 
-# Backend: "cursor" or "claude-code"
+# Backend: "cursor", "claude-code", or "codex"
 backend = "claude-code"
 
 # Default model for agent runs
@@ -498,13 +509,25 @@ Uses Cursor's `agent` CLI with JSON streaming output and log parsing.
 
 #### Claude Code (`claude-code`)
 
-Uses Anthropic's `claude` CLI with direct text streaming.
+Uses Anthropic's `claude` CLI with stream-json output.
 
 **Default model:** `opus`
 
 **Available models:**
 - `opus` - Claude Opus
 - `sonnet` - Claude Sonnet
+
+#### Codex (`codex`)
+
+Uses OpenAI's `codex` CLI with JSONL output.
+
+**Default model:** `o4-mini`
+
+**Available models:**
+- `o4-mini` - OpenAI o4-mini (default)
+- `o3` - OpenAI o3
+- `gpt-5-codex` - GPT-5 Codex
+- `codex-mini` - Codex Mini
 
 ## Prompts
 
@@ -929,6 +952,9 @@ agent --list-models
 
 # For Claude Code backend
 claude --version
+
+# For Codex backend
+codex --version
 ```
 
 ### Clearing stale agent state

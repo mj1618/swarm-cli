@@ -10,14 +10,11 @@ tasks:
       ## Step 1: Understand Current State
 
       - Read `swarm/PLAN.md` for the project plan and milestones
+      - Check `swarm/todos/` for any `.todo.md` or `.processing.md` files. Don't double-up on tasks.
       - Check `swarm/done/` for completed `.done.md` files — don't repeat work
       - Browse the project directory to see what's been built
 
-      ## Step 2: Check for Pending Tasks
-
-      Look in `swarm/todos/` for any `.todo.md` or `.processing.md` files. If one exists, a task is already pending — exit without creating a new task.
-
-      ## Step 3: Brainstorm
+      ## Step 2: Brainstorm
 
       Before writing a task, think carefully about what would move the project forward most effectively right now. Consider:
       - What's the highest-impact next step given what's already built?
@@ -27,7 +24,7 @@ tasks:
 
       Spend most of your effort here. A well-thought-out task is worth more than a quickly written one.
 
-      ## Step 4: Write the Next Task
+      ## Step 3: Write the Next Task
 
       Create `{YYYY-MM-DD-HH-MM-SS}-{taskName}.todo.md` in `swarm/todos/`.
 

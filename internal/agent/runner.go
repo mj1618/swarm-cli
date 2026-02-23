@@ -177,8 +177,10 @@ func (r *Runner) RunWithContext(ctx context.Context, out io.Writer) error {
 			for scanner.Scan() {
 				line := scanner.Text()
 				parser.ProcessLine(line)
-				if event := logparser.ParseEvent(line); event != nil && event.Type == "result" {
-					r.resultOnce.Do(func() { close(r.resultCh) })
+				if event := logparser.ParseEvent(line); event != nil {
+					if event.Type == "result" || event.Type == "turn.completed" {
+						r.resultOnce.Do(func() { close(r.resultCh) })
+					}
 				}
 			}
 			parser.Flush()
@@ -224,7 +226,7 @@ func (r *Runner) extractUsageFromLine(line string) {
 		return
 	}
 
-	if event.Type == "result" {
+	if event.Type == "result" || event.Type == "turn.completed" {
 		r.resultOnce.Do(func() { close(r.resultCh) })
 	}
 
@@ -233,7 +235,7 @@ func (r *Runner) extractUsageFromLine(line string) {
 	updated := false
 
 	// Find usage from the best available location:
-	// 1. Top-level usage (result events)
+	// 1. Top-level usage (result events, turn.completed)
 	// 2. message.usage (assistant events)
 	usage := event.Usage
 	if usage == nil && event.Message != nil {
@@ -241,7 +243,7 @@ func (r *Runner) extractUsageFromLine(line string) {
 	}
 
 	if usage != nil {
-		inputTokens := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+		inputTokens := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens + usage.CachedInputTokens
 		if inputTokens == 0 {
 			inputTokens = usage.PromptTokens
 		}

@@ -78,13 +78,14 @@ var configPathCmd = &cobra.Command{
 }
 
 var configSetBackendCmd = &cobra.Command{
-	Use:   "set-backend [cursor|claude-code]",
+	Use:   "set-backend [cursor|claude-code|codex]",
 	Short: "Switch the agent backend",
 	Long: `Switch between different agent CLI backends.
 
 Available backends:
   cursor      - Cursor's agent CLI (uses stream-json output with log parsing)
-  claude-code - Anthropic's Claude Code CLI (uses direct text streaming)
+  claude-code - Anthropic's Claude Code CLI (uses stream-json output with log parsing)
+  codex       - OpenAI's Codex CLI (uses JSONL output with log parsing)
 
 This command updates the config file with the appropriate preset for the chosen backend.
 By default, updates the project config (swarm/swarm.toml). Use --global to update the global config.`,
@@ -93,6 +94,9 @@ By default, updates the project config (swarm/swarm.toml). Use --global to updat
 
   # Use Claude Code backend
   swarm config set-backend claude-code
+
+  # Use Codex backend
+  swarm config set-backend codex
 
   # Update global config instead of project
   swarm config set-backend claude-code --global`,

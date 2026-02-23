@@ -47,6 +47,18 @@ type LogEvent struct {
 	Name     string                 `json:"name,omitempty"`
 	Input    map[string]interface{} `json:"input,omitempty"`
 	Content  string                 `json:"content,omitempty"`
+	// Codex CLI fields
+	Item     *CodexItem `json:"item,omitempty"`
+	ThreadID string     `json:"thread_id,omitempty"`
+}
+
+// CodexItem represents an item in a Codex CLI JSONL event.
+type CodexItem struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Text    string `json:"text,omitempty"`
+	Command string `json:"command,omitempty"`
+	Status  string `json:"status,omitempty"`
 }
 
 // Usage represents token usage from an API response.
@@ -56,6 +68,7 @@ type Usage struct {
 	TotalTokens              int64 `json:"total_tokens"`
 	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	CachedInputTokens        int64 `json:"cached_input_tokens"`
 	// Alternative field names used by some APIs
 	PromptTokens     int64 `json:"prompt_tokens"`
 	CompletionTokens int64 `json:"completion_tokens"`
@@ -146,7 +159,7 @@ func (sp *StreamingParser) extractUsage(line string) {
 	}
 
 	if usage != nil {
-		inputTokens := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens
+		inputTokens := usage.InputTokens + usage.CacheReadInputTokens + usage.CacheCreationInputTokens + usage.CachedInputTokens
 		if inputTokens == 0 {
 			inputTokens = usage.PromptTokens
 		}
@@ -221,6 +234,15 @@ func (sp *StreamingParser) updateCurrentTask(event *LogEvent) bool {
 		if event.Subtype != "" {
 			newTask = "Result: " + event.Subtype
 		}
+	// Codex CLI events
+	case "item.started", "item.completed":
+		if event.Item != nil {
+			newTask = sp.summarizeCodexItemForTask(event.Item)
+		}
+	case "turn.started":
+		newTask = "Processing..."
+	case "turn.completed":
+		newTask = "Turn complete"
 	}
 
 	if newTask != "" && newTask != sp.stats.CurrentTask {
@@ -228,6 +250,41 @@ func (sp *StreamingParser) updateCurrentTask(event *LogEvent) bool {
 		return true
 	}
 	return false
+}
+
+// summarizeCodexItemForTask creates a short summary for Codex item events.
+func (sp *StreamingParser) summarizeCodexItemForTask(item *CodexItem) string {
+	switch item.Type {
+	case "command_execution":
+		if item.Command != "" {
+			cmd := sp.asSingleLine(item.Command)
+			if len(cmd) > 40 {
+				cmd = cmd[:37] + "..."
+			}
+			return "Shell: " + cmd
+		}
+		return "Shell"
+	case "agent_message":
+		if item.Text != "" {
+			text := sp.asSingleLine(item.Text)
+			if len(text) > 50 {
+				text = text[:47] + "..."
+			}
+			return "Thinking: " + text
+		}
+		return "Thinking..."
+	case "file_change":
+		return "File change"
+	case "mcp_tool_call":
+		return "MCP tool call"
+	case "web_search":
+		return "Web search"
+	case "reasoning":
+		return "Reasoning..."
+	case "plan_update":
+		return "Planning..."
+	}
+	return item.Type
 }
 
 // summarizeToolCallForTask creates a short summary for the current task display.
@@ -427,6 +484,18 @@ func (p *Parser) ProcessLine(line string) {
 		return
 	}
 
+	// Codex CLI: merge agent_message item text
+	if event.Type == "item.completed" && event.Item != nil && event.Item.Type == "agent_message" {
+		text := p.sanitizeSingleLine(event.Item.Text)
+		p.startOrAppendRun("assistant", "[assistant]", text)
+		return
+	}
+
+	// Codex CLI: skip noise events
+	if event.Type == "thread.started" || event.Type == "turn.started" {
+		return
+	}
+
 	// Non-mergeable event: flush and print
 	p.flushRun()
 	p.maybePrintHeader(header)
@@ -602,11 +671,75 @@ func (p *Parser) bodyFor(event *LogEvent) string {
 		return fmt.Sprintf("Result: %s", msg)
 	}
 
+	// Codex CLI item events
+	if (event.Type == "item.started" || event.Type == "item.completed") && event.Item != nil {
+		return p.summarizeCodexItem(event.Item, event.Type == "item.completed")
+	}
+
+	// Codex CLI turn.completed
+	if event.Type == "turn.completed" {
+		if event.Usage != nil {
+			return fmt.Sprintf("Turn complete (in=%d, out=%d tokens)",
+				event.Usage.InputTokens+event.Usage.CachedInputTokens,
+				event.Usage.OutputTokens)
+		}
+		return "Turn complete"
+	}
+
+	// Codex CLI turn.failed
+	if event.Type == "turn.failed" {
+		return "Turn failed"
+	}
+
 	// Fallback
 	if event.Type != "" {
 		return fmt.Sprintf("%s event", event.Type)
 	}
 	return "(unknown event)"
+}
+
+// summarizeCodexItem creates a human-readable summary for a Codex item event.
+func (p *Parser) summarizeCodexItem(item *CodexItem, completed bool) string {
+	status := "started"
+	if completed {
+		status = "completed"
+	}
+
+	switch item.Type {
+	case "command_execution":
+		if item.Command != "" {
+			return fmt.Sprintf("Shell (%s): %s", status, p.asSingleLine(item.Command))
+		}
+		return fmt.Sprintf("Shell (%s)", status)
+	case "agent_message":
+		if item.Text != "" {
+			msg := p.asSingleLine(item.Text)
+			if len(msg) > 200 {
+				msg = msg[:197] + "..."
+			}
+			return msg
+		}
+		return "(message)"
+	case "file_change":
+		return fmt.Sprintf("File change (%s)", status)
+	case "mcp_tool_call":
+		return fmt.Sprintf("MCP tool call (%s)", status)
+	case "web_search":
+		return fmt.Sprintf("Web search (%s)", status)
+	case "reasoning":
+		if item.Text != "" {
+			msg := p.asSingleLine(item.Text)
+			if len(msg) > 200 {
+				msg = msg[:197] + "..."
+			}
+			return msg
+		}
+		return "(reasoning)"
+	case "plan_update":
+		return fmt.Sprintf("Plan update (%s)", status)
+	}
+
+	return fmt.Sprintf("%s (%s)", item.Type, status)
 }
 
 func (p *Parser) summarizeToolCall(event *LogEvent) string {
