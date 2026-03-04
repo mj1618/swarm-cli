@@ -1,3 +1,5 @@
+//go:build windows
+
 package dag
 
 import (
@@ -5,8 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
-	"syscall"
 	"time"
+
+	"golang.org/x/sys/windows"
 )
 
 // lockDir is the directory for cross-process lock files.
@@ -41,8 +44,16 @@ func AcquireTaskSlot(taskName string, limit int) {
 				continue
 			}
 
-			// Try non-blocking exclusive lock
-			err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+			// Try non-blocking exclusive lock using Windows API
+			ol := &windows.Overlapped{}
+			err = windows.LockFileEx(
+				windows.Handle(f.Fd()),
+				windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
+				0,
+				1,
+				0,
+				ol,
+			)
 			if err == nil {
 				// Successfully acquired lock
 				activeLocksMu.Lock()
@@ -80,7 +91,8 @@ func ReleaseTaskSlot(taskName string, limit int) {
 	activeLocks[taskName] = locks[:len(locks)-1]
 
 	// Unlock and close
-	syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+	ol := &windows.Overlapped{}
+	windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, ol)
 	f.Close()
 }
 
@@ -91,7 +103,8 @@ func ResetTaskSemaphores() {
 
 	for _, locks := range activeLocks {
 		for _, f := range locks {
-			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			ol := &windows.Overlapped{}
+			windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, ol)
 			f.Close()
 		}
 	}
@@ -119,10 +132,18 @@ func CleanupLockFiles() {
 		}
 
 		// Try non-blocking lock - if we get it, file is orphaned
-		err = syscall.Flock(int(f.Fd()), syscall.LOCK_EX|syscall.LOCK_NB)
+		ol := &windows.Overlapped{}
+		err = windows.LockFileEx(
+			windows.Handle(f.Fd()),
+			windows.LOCKFILE_EXCLUSIVE_LOCK|windows.LOCKFILE_FAIL_IMMEDIATELY,
+			0,
+			1,
+			0,
+			ol,
+		)
 		if err == nil {
 			// Got the lock, file was orphaned - unlock and remove
-			syscall.Flock(int(f.Fd()), syscall.LOCK_UN)
+			windows.UnlockFileEx(windows.Handle(f.Fd()), 0, 1, 0, ol)
 			f.Close()
 			os.Remove(lockPath)
 		} else {
