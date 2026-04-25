@@ -246,6 +246,83 @@ func TestProjectConfigPath(t *testing.T) {
 	}
 }
 
+func TestAgentCommandInjectsSystemPrompt(t *testing.T) {
+	cfg := ClaudeCodeConfig()
+	cfg.SystemPrompt = "Be terse."
+
+	got := cfg.AgentCommand().Args
+
+	// Original args slice must be unchanged (defensive copy semantics).
+	for _, a := range cfg.Command.Args {
+		if a == "--system-prompt" {
+			t.Fatalf("AgentCommand mutated the source Command.Args slice")
+		}
+	}
+
+	// Find --system-prompt and verify it sits immediately before {prompt}.
+	foundFlag := -1
+	promptIdx := -1
+	for i, a := range got {
+		if a == "--system-prompt" && foundFlag < 0 {
+			foundFlag = i
+		}
+		if a == "{prompt}" {
+			promptIdx = i
+		}
+	}
+	if foundFlag < 0 {
+		t.Fatalf("expected --system-prompt in args, got %v", got)
+	}
+	if got[foundFlag+1] != "Be terse." {
+		t.Errorf("expected value 'Be terse.' after --system-prompt, got %q", got[foundFlag+1])
+	}
+	if promptIdx != foundFlag+2 {
+		t.Errorf("expected {prompt} immediately after the system prompt value, got args=%v", got)
+	}
+}
+
+func TestAgentCommandSkipsForNonClaudeBackend(t *testing.T) {
+	cfg := CursorConfig()
+	cfg.SystemPrompt = "Be terse."
+
+	got := cfg.AgentCommand().Args
+	for _, a := range got {
+		if a == "--system-prompt" {
+			t.Errorf("--system-prompt must not be injected for backend=%s", cfg.Backend)
+		}
+	}
+}
+
+func TestAgentCommandNoOpWhenEmpty(t *testing.T) {
+	cfg := ClaudeCodeConfig()
+	got := cfg.AgentCommand().Args
+	for _, a := range got {
+		if a == "--system-prompt" {
+			t.Errorf("--system-prompt must not appear when SystemPrompt is empty")
+		}
+	}
+}
+
+func TestSystemPromptRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "swarm.toml")
+
+	cfg := ClaudeCodeConfig()
+	cfg.SystemPrompt = "Line one.\nLine two with \"quotes\".\nLine three."
+
+	if err := os.WriteFile(path, []byte(cfg.ToTOML()), 0644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	loaded := DefaultConfig()
+	if err := loadConfigFile(path, loaded); err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	if loaded.SystemPrompt != cfg.SystemPrompt {
+		t.Errorf("round-trip mismatch:\n  got:  %q\n  want: %q", loaded.SystemPrompt, cfg.SystemPrompt)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsHelper(s, substr))
 }

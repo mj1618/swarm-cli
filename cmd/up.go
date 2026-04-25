@@ -778,7 +778,7 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		cfg := agent.Config{
 			Model:   effectiveModel,
 			Prompt:  iterationPrompt,
-			Command: appConfig.Command,
+			Command: appConfig.AgentCommand(),
 		}
 		runner := agent.NewRunner(cfg)
 		if err := runner.Run(out); err != nil {
@@ -860,7 +860,7 @@ func runSingleTask(taskName string, task compose.Task, promptsDir, workingDir st
 		cfg := agent.Config{
 			Model:   agentState.Model,
 			Prompt:  iterationPrompt,
-			Command: appConfig.Command,
+			Command: appConfig.AgentCommand(),
 		}
 
 		runner := agent.NewRunner(cfg)

@@ -330,7 +330,7 @@ labels on the restarted agent.`,
 			cfg := agent.Config{
 				Model:   effectiveModel,
 				Prompt:  iterationPrompt,
-				Command: appConfig.Command,
+				Command: appConfig.AgentCommand(),
 				Env:     expandedEnv,
 			}
 
@@ -371,7 +371,7 @@ labels on the restarted agent.`,
 			Manager:           mgr,
 			AgentState:        agentState,
 			PromptContent:     promptContent,
-			Command:           appConfig.Command,
+			Command:           appConfig.AgentCommand(),
 			Config:            appConfig,
 			Env:               expandedEnv,
 			Output:            os.Stdout,

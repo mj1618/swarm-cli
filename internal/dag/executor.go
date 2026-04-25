@@ -384,7 +384,7 @@ func (e *Executor) runTask(taskName string, task compose.Task, out io.Writer, it
 	cfg := agent.Config{
 		Model:   effectiveModel,
 		Prompt:  promptContent,
-		Command: e.cfg.AppConfig.Command,
+		Command: e.cfg.AppConfig.AgentCommand(),
 	}
 
 	runner := agent.NewRunner(cfg)
