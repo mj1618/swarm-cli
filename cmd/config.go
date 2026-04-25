@@ -163,6 +163,159 @@ By default, updates the project config (swarm/swarm.toml). Use --global to updat
 	},
 }
 
+var configSystemPromptFile bool
+
+// resolveConfigPath returns the path of the config file to mutate (project by
+// default, global if useGlobal is true).
+func resolveConfigPath(useGlobal bool) (string, error) {
+	if useGlobal {
+		return config.GlobalConfigPath()
+	}
+	return config.ProjectConfigPath(), nil
+}
+
+// loadOrDefaultConfig returns the merged effective config if any config file
+// exists on disk, or a fresh DefaultConfig() otherwise. Used by `set-*`
+// subcommands so writes preserve existing settings.
+func loadOrDefaultConfig(configPath string) (*config.Config, error) {
+	cfg := config.DefaultConfig()
+	if _, err := os.Stat(configPath); err == nil {
+		loadedCfg, err := config.Load()
+		if err != nil {
+			return nil, fmt.Errorf("failed to load existing config: %w", err)
+		}
+		cfg = loadedCfg
+	}
+	return cfg, nil
+}
+
+// writeConfig writes cfg as TOML to configPath, creating parent dirs as needed.
+func writeConfig(cfg *config.Config, configPath string) error {
+	dir := filepath.Dir(configPath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return fmt.Errorf("failed to create directory %s: %w", dir, err)
+	}
+	if err := os.WriteFile(configPath, []byte(cfg.ToTOML()), 0644); err != nil {
+		return fmt.Errorf("failed to write config file: %w", err)
+	}
+	return nil
+}
+
+// PersistSystemPrompt updates the configured system prompt and writes the
+// change to the appropriate config file (project unless useGlobal is true).
+// It is exported via the package for use by the `swarm run` command, which
+// allows users to set + persist a system prompt in the same step.
+func PersistSystemPrompt(content string, useGlobal bool) (string, error) {
+	configPath, err := resolveConfigPath(useGlobal)
+	if err != nil {
+		return "", fmt.Errorf("failed to determine config path: %w", err)
+	}
+	cfg, err := loadOrDefaultConfig(configPath)
+	if err != nil {
+		return "", err
+	}
+	cfg.SystemPrompt = content
+	if err := writeConfig(cfg, configPath); err != nil {
+		return "", err
+	}
+	return configPath, nil
+}
+
+// readSystemPromptInput resolves the user-supplied system prompt value into a
+// string. When fromFile is true the value is treated as a file path; otherwise
+// it's treated as raw text. Empty input is rejected so users don't accidentally
+// clear the configured prompt — `swarm config remove-system-prompt` is the
+// explicit clear path.
+func readSystemPromptInput(value string, fromFile bool) (string, error) {
+	if fromFile {
+		if value == "" {
+			return "", fmt.Errorf("--file requires a path")
+		}
+		data, err := os.ReadFile(value)
+		if err != nil {
+			return "", fmt.Errorf("failed to read system prompt file %s: %w", value, err)
+		}
+		content := strings.TrimRight(string(data), "\n")
+		if content == "" {
+			return "", fmt.Errorf("system prompt file %s is empty", value)
+		}
+		return content, nil
+	}
+	if value == "" {
+		return "", fmt.Errorf("system prompt content cannot be empty (use `swarm config remove-system-prompt` to clear)")
+	}
+	return value, nil
+}
+
+var configSetSystemPromptCmd = &cobra.Command{
+	Use:   "set-system-prompt [text]",
+	Short: "Set the custom system prompt for claude-code runs",
+	Long: `Set the custom system prompt that swarm passes to the agent via the
+` + "`--system-prompt`" + ` flag (currently only honored by the claude-code backend).
+
+The prompt can be supplied either as inline text or read from a file with --file.
+The value is persisted to the project config (swarm/swarm.toml) by default;
+pass --global to update the global config instead.
+
+To remove the configured system prompt later, run:
+  swarm config remove-system-prompt`,
+	Example: `  # Set inline text
+  swarm config set-system-prompt "You are a senior code reviewer. Be terse."
+
+  # Read from a file
+  swarm config set-system-prompt --file ./system-prompt.md
+
+  # Persist globally
+  swarm config set-system-prompt "Always cite sources." --global`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) error {
+		var raw string
+		if len(args) == 1 {
+			raw = args[0]
+		}
+		if configSystemPromptFile && raw == "" {
+			return fmt.Errorf("--file requires a path argument")
+		}
+		if !configSystemPromptFile && raw == "" {
+			return fmt.Errorf("system prompt text is required (or pass --file <path>)")
+		}
+		content, err := readSystemPromptInput(raw, configSystemPromptFile)
+		if err != nil {
+			return err
+		}
+		path, err := PersistSystemPrompt(content, configGlobal)
+		if err != nil {
+			return err
+		}
+		fmt.Printf("Custom system prompt updated (%d chars)\n", len(content))
+		fmt.Printf("Updated config: %s\n", path)
+		return nil
+	},
+}
+
+var configRemoveSystemPromptCmd = &cobra.Command{
+	Use:     "remove-system-prompt",
+	Aliases: []string{"unset-system-prompt", "clear-system-prompt"},
+	Short:   "Remove the custom system prompt",
+	Long: `Clear any previously configured custom system prompt. After running this,
+agent invocations will no longer include the ` + "`--system-prompt`" + ` flag.
+
+By default updates the project config (swarm/swarm.toml); pass --global to
+update the global config instead.`,
+	Example: `  swarm config remove-system-prompt
+  swarm config remove-system-prompt --global`,
+	Args: cobra.NoArgs,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		path, err := PersistSystemPrompt("", configGlobal)
+		if err != nil {
+			return err
+		}
+		fmt.Println("Custom system prompt removed")
+		fmt.Printf("Updated config: %s\n", path)
+		return nil
+	},
+}
+
 var configSetModelCmd = &cobra.Command{
 	Use:   "set-model [model]",
 	Short: "Set the default model",
@@ -235,9 +388,14 @@ func init() {
 	configCmd.AddCommand(configPathCmd)
 	configCmd.AddCommand(configSetBackendCmd)
 	configCmd.AddCommand(configSetModelCmd)
+	configCmd.AddCommand(configSetSystemPromptCmd)
+	configCmd.AddCommand(configRemoveSystemPromptCmd)
 
 	configSetBackendCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
 	configSetModelCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
+	configSetSystemPromptCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
+	configSetSystemPromptCmd.Flags().BoolVarP(&configSystemPromptFile, "file", "f", false, "Treat the positional argument as a path to a file whose contents become the system prompt")
+	configRemoveSystemPromptCmd.Flags().BoolVarP(&configGlobal, "global", "g", false, "Update global config instead of project config")
 
 	rootCmd.AddCommand(configCmd)
 }
