@@ -1,6 +1,11 @@
+---
+name: swarm-up
+description: "Orchestrate multi-agent AI workflows with swarm-cli compose files. Creates swarm.yaml task definitions, configures planner/doer/reviewer DAG pipelines, sets task dependencies with conditions, manages agent lifecycle (run, pause, kill, monitor), and uses runtime variables for inter-task communication. Use when setting up multi-agent orchestration, writing swarm compose files, configuring AI agent pipelines, debugging swarm task execution, or managing concurrent agent workflows."
+---
+
 # swarm up
 
-Run multi-task AI agent workflows using compose files.
+Orchestrate multi-agent AI workflows using swarm-cli compose files. Define tasks, wire up DAG pipelines, and run agents in parallel or sequence.
 
 ## Quick Start
 
@@ -20,33 +25,7 @@ Tasks are coordinated through files with specific extensions:
 2. **Doer claims**: Renames `.todo.md` → `.processing.md`
 3. **Doer completes**: Moves to `swarm/done/` as `.done.md`
 
-### Example: Build an Application
-
-**`swarm/PLAN.md`** — Your project plan (source of truth for all agents):
-
-```markdown
-# Project Plan
-
-## Overview
-Build a CLI tool for managing bookmarks with tagging and search.
-
-## Goals
-- Store bookmarks with title, URL, tags
-- Search by tag or text
-- Import/export functionality
-
-## Tech Stack
-- Go with Cobra for CLI
-- SQLite for storage
-
-## Milestones
-1. Basic CRUD operations
-2. Tag management
-3. Search functionality
-4. Import/export
-```
-
-**`swarm/swarm.yaml`**:
+### Example: Planner/Doer/Reviewer Pipeline
 
 ```yaml
 version: "1"
@@ -54,59 +33,21 @@ version: "1"
 tasks:
   planner:
     prompt-string: |
-      # Planner
-
-      Read `swarm/PLAN.md` for the project plan.
-
-      ## Your Job
-
-      1. Review current project state — what files exist, what's been built
-      2. Check `swarm/done/` for completed tasks (avoid repeating work)
-      3. Check SWARM_STATE_DIR for existing `.todo.md` or `.processing.md` files
-      4. Identify the NEXT single piece of work needed
-      5. Write a task file: `{YYYY-MM-DD-HH-MM-SS}-{task-name}.todo.md` in SWARM_STATE_DIR
-
-      ## Task File Format
-
-      Include:
-      - **Goal**: What to build/change
-      - **Files**: Which files to create/modify
-      - **Acceptance Criteria**: How to verify completion
-
-      Keep tasks bite-sized — completable in one agent session.
+      Read swarm/PLAN.md. Review project state and swarm/done/ for completed work.
+      Write ONE bite-sized task as {timestamp}-{name}.todo.md in SWARM_STATE_DIR.
+      Include: Goal, Files to modify, Acceptance Criteria.
 
   implementer:
     prompt-string: |
-      # Implementer
-
-      Read `swarm/PLAN.md` for project context.
-
-      ## Your Job
-
-      1. Find the `.todo.md` file in SWARM_STATE_DIR
-      2. Rename it to `.processing.md` to claim the task
-      3. Read the task and implement it fully
-      4. Test your work — verify it actually works
-      5. Create `swarm/done/` directory if needed
-      6. Move the file to `swarm/done/{name}.done.md`
-      7. Append a summary of what you accomplished
-
-      Do NOT just describe what to do — actually write the code.
+      Read swarm/PLAN.md for context. Claim the .todo.md file by renaming to
+      .processing.md. Implement the task fully, test it, then move to
+      swarm/done/{name}.done.md with a completion summary.
     depends_on: [planner]
 
   reviewer:
     prompt-string: |
-      # Reviewer
-
-      Read `swarm/PLAN.md` for project context.
-
-      ## Your Job
-
-      1. Find the most recent `.done.md` file in `swarm/done/`
-      2. Review the implementation for quality and correctness
-      3. FIX any issues you find (don't just report them)
-      4. Run tests if they exist
-      5. Commit changes if everything looks good
+      Read swarm/PLAN.md for context. Review the most recent .done.md in
+      swarm/done/. Fix any issues found, run tests, commit if good.
     depends_on: [implementer]
 
 pipelines:
@@ -118,28 +59,24 @@ pipelines:
 
 ## swarm.yaml Reference
 
-### Full Structure
-
 ```yaml
 version: "1"
 
 tasks:
   task-name:
-    prompt-string: |
-      Your prompt here (multi-line supported)
-    model: sonnet              # optional, overrides default
-    iterations: 5              # optional, default 1
-    parallelism: 3             # optional, run N instances
-    name: custom-name          # optional, defaults to task name
-    prefix: "Context..."       # optional, prepended to prompt
-    suffix: "Remember..."      # optional, appended to prompt
-    depends_on: [other-task]   # optional, for DAG workflows
+    prompt-string: "Your prompt here"   # or prompt-file / prompt
+    model: sonnet                       # optional, overrides default
+    iterations: 5                       # optional, default 1
+    parallelism: 3                      # optional, run N instances
+    prefix: "Context..."                # optional, prepended to prompt
+    suffix: "Remember..."               # optional, appended to prompt
+    depends_on: [other-task]            # optional, for DAG workflows
 
 pipelines:
   main:
-    iterations: 10             # run entire DAG this many times
-    parallelism: 4             # run N concurrent pipeline instances
-    tasks: [task1, task2]      # tasks to include
+    iterations: 10
+    parallelism: 4
+    tasks: [task1, task2]
 ```
 
 ### Prompt Sources (pick one)
@@ -164,9 +101,7 @@ depends_on:
     condition: always    # even if skipped
 ```
 
-## Runtime Variables
-
-These are automatically available in prompts:
+### Runtime Variables
 
 | Variable | Description |
 |----------|-------------|
@@ -177,23 +112,12 @@ These are automatically available in prompts:
 ## Running
 
 ```bash
-# Run all pipelines in background
-swarm up -d
-
-# Run specific tasks only
-swarm up -d task1 task2
-
-# Run a specific pipeline
-swarm up -d -p main
-
-# Use a custom compose file
-swarm up -d -f custom.yaml
-
-# Run in foreground (blocks until complete)
-swarm up
+swarm up -d                     # Run all pipelines in background
+swarm up -d task1 task2         # Run specific tasks only
+swarm up -d -p main             # Run a specific pipeline
+swarm up -d -f custom.yaml      # Use a custom compose file
+swarm up                        # Run in foreground (blocks until complete)
 ```
-
-## Flags
 
 | Flag | Short | Description |
 |------|-------|-------------|
@@ -205,7 +129,7 @@ swarm up
 
 ```bash
 swarm list          # See running agents
-swarm logs <id>     # View agent output  
+swarm logs <id>     # View agent output
 swarm inspect <id>  # Check agent details
 swarm kill <id>     # Stop an agent
 ```
