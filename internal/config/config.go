@@ -38,6 +38,12 @@ type Config struct {
 
 	// Pricing holds model pricing configuration (model name -> pricing)
 	Pricing map[string]*ModelPricing `toml:"pricing"`
+
+	// SystemPrompt is the optional custom system prompt content passed to the
+	// underlying agent (currently only honored by the claude-code backend via
+	// the `--system-prompt` flag). When empty, no `--system-prompt` flag is
+	// added to the agent invocation.
+	SystemPrompt string `toml:"system_prompt"`
 }
 
 // CommandConfig holds the configuration for the agent command.
@@ -279,13 +285,14 @@ func loadConfigFile(path string, cfg *Config) error {
 		RawOutput  *bool    `toml:"raw_output"` // pointer to detect if set
 	}
 	type rawConfig struct {
-		Backend     string                    `toml:"backend"`
-		Model       string                    `toml:"model"`
-		Iterations  int                       `toml:"iterations"`
-		Timeout     string                    `toml:"timeout"`
-		IterTimeout string                    `toml:"iter_timeout"`
-		Command     rawCommandConfig          `toml:"command"`
-		Pricing     map[string]*ModelPricing  `toml:"pricing"`
+		Backend      string                    `toml:"backend"`
+		Model        string                    `toml:"model"`
+		Iterations   int                       `toml:"iterations"`
+		Timeout      string                    `toml:"timeout"`
+		IterTimeout  string                    `toml:"iter_timeout"`
+		Command      rawCommandConfig          `toml:"command"`
+		Pricing      map[string]*ModelPricing  `toml:"pricing"`
+		SystemPrompt *string                   `toml:"system_prompt"` // pointer to detect explicit removal
 	}
 
 	var fileCfg rawConfig
@@ -321,6 +328,11 @@ func loadConfigFile(path string, cfg *Config) error {
 	}
 	if fileCfg.Command.RawOutput != nil {
 		cfg.Command.RawOutput = *fileCfg.Command.RawOutput
+	}
+
+	// Merge system prompt (project file overrides global; empty string explicitly clears it)
+	if fileCfg.SystemPrompt != nil {
+		cfg.SystemPrompt = *fileCfg.SystemPrompt
 	}
 
 	// Merge pricing (add/override individual models)
@@ -384,6 +396,21 @@ func (c *Config) ToTOML() string {
 	sb.WriteString(c.IterTimeout)
 	sb.WriteString("\"\n\n")
 
+	// System prompt MUST be written before any [section] header — once we
+	// enter `[command]`, subsequent top-level keys would be parsed as
+	// `command.<key>` per TOML semantics.
+	sb.WriteString("# Custom system prompt for the agent.\n")
+	sb.WriteString("# When set, claude-code runs are invoked with `--system-prompt <content>`.\n")
+	sb.WriteString("# Manage via `swarm config set-system-prompt` / `swarm config remove-system-prompt`,\n")
+	sb.WriteString("# or `swarm run --system-prompt[-file] ...` to set + persist before running.\n")
+	if c.SystemPrompt == "" {
+		sb.WriteString("system_prompt = \"\"\n\n")
+	} else {
+		sb.WriteString("system_prompt = ")
+		sb.WriteString(tomlQuoteMultiline(c.SystemPrompt))
+		sb.WriteString("\n\n")
+	}
+
 	sb.WriteString("# Agent command configuration\n")
 	sb.WriteString("[command]\n")
 	sb.WriteString("# The base command to run (e.g., \"agent\" for cursor, \"claude\" for claude-code, \"codex\" for codex)\n")
@@ -415,6 +442,62 @@ func (c *Config) ToTOML() string {
 	sb.WriteString("\n")
 
 	return sb.String()
+}
+
+// tomlQuoteMultiline returns a TOML-safe representation of s, preferring a
+// triple-quoted multiline string for content containing newlines and falling
+// back to a basic quoted string otherwise.
+func tomlQuoteMultiline(s string) string {
+	if strings.ContainsAny(s, "\n\r") {
+		// Triple-quoted multiline basic string. Escape any embedded `"""` to be safe.
+		escaped := strings.ReplaceAll(s, `\`, `\\`)
+		escaped = strings.ReplaceAll(escaped, `"""`, `\"\"\"`)
+		return "\"\"\"\n" + escaped + "\"\"\""
+	}
+	escaped := strings.ReplaceAll(s, `\`, `\\`)
+	escaped = strings.ReplaceAll(escaped, `"`, `\"`)
+	return "\"" + escaped + "\""
+}
+
+// AgentCommand returns the effective CommandConfig used to launch the agent.
+// It is a copy of c.Command with c.SystemPrompt injected as `--system-prompt`
+// before the `{prompt}` placeholder when both are set and the active backend
+// is claude-code (the only backend that currently supports the flag).
+//
+// Callers should use this in place of c.Command when constructing agent.Config
+// so that a configured system prompt is honored uniformly across `swarm run`,
+// `swarm up`, `swarm restart`, `swarm clone`, the DAG executor, and the
+// multi-iteration loop runner.
+func (c *Config) AgentCommand() CommandConfig {
+	cmd := c.Command
+	if c.SystemPrompt == "" || c.Backend != BackendClaudeCode {
+		return cmd
+	}
+	cmd.Args = CommandArgsWithSystemPrompt(c.Command.Args, c.SystemPrompt)
+	return cmd
+}
+
+// CommandArgsWithSystemPrompt returns a copy of the command args with
+// `--system-prompt <content>` injected before the `{prompt}` placeholder when
+// systemPrompt is non-empty. If `{prompt}` is not present, the flag is
+// appended to the end. When systemPrompt is empty, args are returned unchanged.
+func CommandArgsWithSystemPrompt(args []string, systemPrompt string) []string {
+	if systemPrompt == "" {
+		return args
+	}
+	out := make([]string, 0, len(args)+2)
+	inserted := false
+	for _, a := range args {
+		if !inserted && a == "{prompt}" {
+			out = append(out, "--system-prompt", systemPrompt)
+			inserted = true
+		}
+		out = append(out, a)
+	}
+	if !inserted {
+		out = append(out, "--system-prompt", systemPrompt)
+	}
+	return out
 }
 
 // itoa converts an int to string (simple implementation to avoid strconv import)

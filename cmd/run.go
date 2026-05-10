@@ -49,6 +49,9 @@ var (
 	runInternalSuffix      string
 	runParent              string
 	runInternalParent      string
+	runSystemPrompt        string
+	runSystemPromptFile    string
+	runSystemPromptGlobal  bool
 )
 
 var runCmd = &cobra.Command{
@@ -147,6 +150,35 @@ Labels can be attached to agents for categorization and filtering using the
 			if err != nil {
 				return fmt.Errorf("failed to get working directory: %w", err)
 			}
+		}
+
+		// Handle --system-prompt / --system-prompt-file: persist to config so the
+		// custom system prompt is applied for this run AND remembered for future
+		// runs. Detached children re-load config from disk, so persistence (rather
+		// than in-memory mutation) is what makes this work across the parent/child
+		// boundary.
+		if cmd.Flags().Changed("system-prompt") || cmd.Flags().Changed("system-prompt-file") {
+			if runSystemPrompt != "" && runSystemPromptFile != "" {
+				return fmt.Errorf("only one of --system-prompt or --system-prompt-file can be specified")
+			}
+			var raw string
+			var fromFile bool
+			if runSystemPromptFile != "" {
+				raw = runSystemPromptFile
+				fromFile = true
+			} else {
+				raw = runSystemPrompt
+			}
+			content, err := readSystemPromptInput(raw, fromFile)
+			if err != nil {
+				return err
+			}
+			path, err := PersistSystemPrompt(content, runSystemPromptGlobal)
+			if err != nil {
+				return err
+			}
+			appConfig.SystemPrompt = content
+			fmt.Printf("Custom system prompt saved (%d chars) to %s\n", len(content), path)
 		}
 
 		// Get prompts directory based on scope
@@ -665,7 +697,7 @@ Labels can be attached to agents for categorization and filtering using the
 			cfg := agent.Config{
 				Model:   effectiveModel,
 				Prompt:  iterationPrompt,
-				Command: appConfig.Command,
+				Command: appConfig.AgentCommand(),
 				Env:     expandedEnv,
 				Timeout: singleIterTimeout,
 			}
@@ -756,7 +788,7 @@ Labels can be attached to agents for categorization and filtering using the
 			Manager:           mgr,
 			AgentState:        agentState,
 			PromptContent:     promptContent,
-			Command:           appConfig.Command,
+			Command:           appConfig.AgentCommand(),
 			Config:            appConfig,
 			Env:               expandedEnv,
 			Output:            os.Stdout,
@@ -822,6 +854,9 @@ func init() {
 	runCmd.Flags().StringVarP(&runParent, "parent", "P", "", "Parent task ID (for creating sub-agents)")
 	runCmd.Flags().StringVar(&runInternalParent, "_internal-parent", "", "Internal flag for passing parent ID to detached child")
 	runCmd.Flags().MarkHidden("_internal-parent")
+	runCmd.Flags().StringVar(&runSystemPrompt, "system-prompt", "", "Set and persist a custom system prompt (inline text). Passed to claude as --system-prompt. Clear via 'swarm config remove-system-prompt'.")
+	runCmd.Flags().StringVar(&runSystemPromptFile, "system-prompt-file", "", "Set and persist a custom system prompt loaded from the given file path.")
+	runCmd.Flags().BoolVar(&runSystemPromptGlobal, "system-prompt-global", false, "When setting --system-prompt[-file], persist to the global config instead of the project config.")
 
 	// Add dynamic completion for prompt and model flags
 	runCmd.RegisterFlagCompletionFunc("prompt", completePromptName)

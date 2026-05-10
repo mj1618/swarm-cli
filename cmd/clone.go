@@ -374,7 +374,7 @@ to run in the source agent's original directory.`,
 			cfg := agent.Config{
 				Model:   effectiveModel,
 				Prompt:  promptContent,
-				Command: appConfig.Command,
+				Command: appConfig.AgentCommand(),
 				Env:     expandedEnv,
 			}
 
@@ -422,7 +422,7 @@ to run in the source agent's original directory.`,
 			Manager:           mgr,
 			AgentState:        agentState,
 			PromptContent:     promptContent,
-			Command:           appConfig.Command,
+			Command:           appConfig.AgentCommand(),
 			Config:            appConfig,
 			Env:               expandedEnv,
 			Output:            os.Stdout,
